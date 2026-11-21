@@ -38,13 +38,16 @@ export function usedSlots(character, library) {
   return SLOTS.filter((s) => ids.has(s.id));
 }
 
-/** Picks a default variant for required parts so a fresh character is never invisible. */
+/**
+ * Picks a default variant for required parts so a fresh character is never invisible.
+ * A part set to null was deliberately cleared ("None") and stays empty.
+ */
 export function applyDefaults(character, library) {
   const body = library.bodyTypes.get(character.bodyType);
   if (!body) return character;
   for (const part of REQUIRED_PARTS) {
     const variants = body.parts.get(part);
-    if (variants?.size && !character.parts[part]) character.parts[part] = [...variants.keys()][0];
+    if (variants?.size && character.parts[part] === undefined) character.parts[part] = [...variants.keys()][0];
   }
   return character;
 }

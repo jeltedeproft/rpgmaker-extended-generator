@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { recolorLayer, blendOver, createImage, matchSlot } from '../src/recolor.js';
 import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
 import { composeSheet, layersForSheet, orderIndex } from '../src/compose.js';
-import { randomize, serializeCharacter, deserializeCharacter, resolveVariant } from '../src/character.js';
+import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter } from '../src/character.js';
 import { createLibrary, addPack } from '../src/parse.js';
 
 function solid(w, h, [r, g, b, a]) {
@@ -163,4 +163,12 @@ test('randomize keeps locked parts and always picks required parts', () => {
     assert.equal(next.parts.FrontHair, null);
     assert.equal(next.colors.skin, 'g');
   }
+});
+
+test('a body or face set to None stays empty; new characters still get one', () => {
+  const lib = sampleLibrary();
+  const fresh = applyDefaults(createCharacter('Male'), lib);
+  assert.ok(fresh.parts.Body);
+  const cleared = applyDefaults({ ...fresh, parts: { ...fresh.parts, Body: null } }, lib);
+  assert.equal(cleared.parts.Body, null);
 });

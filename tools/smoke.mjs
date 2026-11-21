@@ -132,6 +132,23 @@ try {
     await sleep(900);
     check('face offset moves the part', (await evaluate(faceSig)) !== beforeNudge);
     await shot('4-real-pack.png');
+
+    // Parts that only exist on the face can't be moved on sprites (and say so).
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Eyes')).click()`);
+    await sleep(500);
+    await click('#variants .variant:nth-child(2)');
+    await sleep(900);
+    check('face-only part disables sprite offsets', await evaluate(`document.getElementById('off-sprite-x').disabled && !document.getElementById('off-face-x').disabled && document.getElementById('offsets-note').textContent.length > 0`));
+    // "Other colours" stays open after picking from it.
+    const picked = await evaluate(`(() => { const d = document.querySelector('.slot details'); if (!d) return 'no list'; d.open = true; d.dispatchEvent(new Event('toggle')); d.querySelector('.swatch').click(); return 'ok'; })()`);
+    await sleep(600);
+    check('other colours stay open after a pick', picked === 'ok' && await evaluate(`document.querySelector('.slot details').open`), picked);
+    // Body can be set to None.
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
+    await sleep(500);
+    await evaluate(`[...document.querySelectorAll('#variants .variant')].find(b => b.title === 'None').click()`);
+    await sleep(900);
+    check('body can be set to None', await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).querySelector('.value').textContent`) === 'none');
   }
 
   check('no uncaught errors', errors.length === 0, errors.join(' | '));

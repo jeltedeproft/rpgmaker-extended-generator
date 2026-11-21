@@ -1,6 +1,6 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
-import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, REQUIRED_PARTS } from './format.js';
+import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS } from './format.js';
 import { createLibrary, addPack, variantLabel, variantsForPart } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import { composeSheet, selectedVariants } from './compose.js';
@@ -41,6 +41,8 @@ const state = {
   settings: loadSettings(),
   selectedPart: ALL_COLOURS,
   locked: new Set(),
+  /** Slots whose "Other colours" list is unfolded; kept open while picking. */
+  openColourLists: new Set(),
   walkDir: 0,
   svMotion: 0,
   composites: {},
@@ -71,12 +73,12 @@ function gradientsById() {
 }
 
 let toastTimer;
-function toast(message) {
+function toast(message, ms = 4000) {
   const t = $('toast');
   t.textContent = message;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), 4000);
+  toastTimer = setTimeout(() => (t.hidden = true), ms);
 }
 
 // ---------- importing ----------
@@ -87,7 +89,11 @@ async function importEntries(entries, packName) {
     toast('No PNG files found in that folder.');
     return;
   }
+  const partsBefore = state.library.variants.size;
+  const gradientFilesBefore = state.library.gradientFiles.length;
   const pack = addPack(state.library, packName, pngs);
+  const addedParts = state.library.variants.size - partsBefore;
+  const addedGradientFiles = state.library.gradientFiles.length - gradientFilesBefore;
 
   const newGradientFiles = { gradientFiles: state.library.gradientFiles.slice(state.loadedGradientFiles) };
   state.loadedGradientFiles = state.library.gradientFiles.length;
@@ -95,10 +101,13 @@ async function importEntries(entries, packName) {
   state.fileGradients.push(...gradients);
   state.problems.push(...errors);
 
-  if (!state.library.bodyTypes.size) {
-    toast('No generator parts recognised. See the import report.');
-    showApp();
-    renderProblems();
+  if (!addedParts) {
+    toast(`Nothing usable in "${pack.name}": ${unsupportedHint(addedGradientFiles)} See the import report.`, 12000);
+    if (state.character) renderAll();
+    else {
+      showApp();
+      renderProblems();
+    }
     return;
   }
   if (!state.character) {
@@ -106,9 +115,16 @@ async function importEntries(entries, packName) {
     state.character = applyDefaults(createCharacter(bodyType), state.library);
   }
   assignDefaultColours();
-  toast(`Added "${pack.name}": ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.`);
+  toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.`);
   showApp();
   renderAll();
+}
+
+/** Why a folder gave no parts, in words a user can act on. */
+function unsupportedHint(gradientFiles) {
+  if (gradientFiles) return `only colour sheets were found (${gradientFiles}); they've been added to the colour lists.`;
+  return 'no files are named like MV/MZ generator parts (FG_..., TV_..., SV_...). '
+    + 'VX Ace and older generator folders use a different format that is not supported yet.';
 }
 
 /** Gives every still-uncoloured slot the first suggested gradient. */
@@ -188,8 +204,7 @@ async function renderEditor() {
   $('other-bodies').hidden = true;
   if (!isColours) {
     const { own, others } = variantsForPart(state.library, part, state.character.bodyType);
-    const options = REQUIRED_PARTS.has(part) && own.length ? own : [null, ...own];
-    for (const variant of options) $('variants').append(variantTile(part, variant));
+    for (const variant of [null, ...own]) $('variants').append(variantTile(part, variant));
     if (others.length) {
       $('other-bodies').hidden = false;
       // Keep it open when the current choice comes from another body type.
@@ -225,6 +240,17 @@ function variantTile(part, variant) {
 
 function renderOffsets() {
   const o = state.character.offsets?.[state.selectedPart] || {};
+  const variant = state.library.variants.get(state.character.parts[state.selectedPart]);
+  const sheets = new Set(variant?.layers.map((l) => l.sheet));
+  const hasFace = sheets.has('FG');
+  const hasSprite = ['TV', 'TVD', 'SV'].some((s) => sheets.has(s));
+  for (const id of ['off-face-x', 'off-face-y']) $(id).disabled = !hasFace;
+  for (const id of ['off-sprite-x', 'off-sprite-y']) $(id).disabled = !hasSprite;
+  $('offsets-note').textContent = !hasSprite
+    ? 'This part only appears on the face, so it has no sprite position.'
+    : !hasFace
+      ? 'This part only appears on the sprites, so it has no face position.'
+      : '';
   $('off-face-x').value = o.face?.x || 0;
   $('off-face-y').value = o.face?.y || 0;
   $('off-sprite-x').value = o.sprite?.x || 0;
@@ -294,7 +320,12 @@ function renderSlots() {
       const swatches = el('div', { className: 'swatches' }, groups.get(key).map((g) => swatchButton(slot, g)));
       if (key === 'Other') {
         // Long lists (RPG Maker ships 100+ skin rows) stay folded away.
-        wrap.append(el('details', {}, [el('summary', { className: 'swatch-group', textContent: `Other colours (${groups.get(key).length})` }), swatches]));
+        const details = el('details', { open: state.openColourLists.has(slot.id) }, [el('summary', { className: 'swatch-group', textContent: `Other colours (${groups.get(key).length})` }), swatches]);
+        details.addEventListener('toggle', () => {
+          if (details.open) state.openColourLists.add(slot.id);
+          else state.openColourLists.delete(slot.id);
+        });
+        wrap.append(details);
       } else {
         if (ordered.length > 1) wrap.append(el('div', { className: 'swatch-group', textContent: key }));
         wrap.append(swatches);

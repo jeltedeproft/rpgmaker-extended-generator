@@ -8,6 +8,19 @@
 - [ ] More control over colour use: e.g. a different gradient per item of the same slot, colour
       linking (eyebrows follow hair).
 
+## Tester feedback, round 2 (2026-11-21)
+- ✅ Body and Face can be set to None.
+- ✅ "Other colours" list stays open while picking.
+- ✅ Sprite offsets: disabled (with a note) for parts that only exist on the face, e.g. Eyes. That
+  was probably why they "did nothing". Confirm with the tester.
+- ✅ A folder with no recognisable parts now says so instead of "Added ...".
+- [ ] Eyes come out as "two colours / alien" with official parts. Can't reproduce with the
+      SomeNewWork pack (eyes look right). Need: screenshot, which eye part + colour, and ideally the
+      official `FG_Eyes_*` files and `grad_eyes.png`. Likely the brightness measure (FORMAT.md Q1).
+- [ ] VX Ace generator folders: different format. Need a file listing to support it.
+- [ ] Odd-eyed bodies from "Basic Resources": need the folder layout/filenames. If they reuse the
+      official names, opening them as a second folder may already work (packs never overwrite).
+
 ## Blocked on RPG Maker's own generator (trial: rpgmakerweb.com/free-trials, or the tester's files)
 - [ ] Settle the open questions in `docs/FORMAT.md` (brightness measure first).
 - [ ] Compare one character pixel-for-pixel with RPG Maker's own generator.
