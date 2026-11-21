@@ -237,15 +237,15 @@ for (const [name] of faceParts) {
   save(`Variation/${BODY_TYPE}/icon_${part}_${pid}.png`, p.base);
 }
 
-// ---------- gradients (MZ-style, one file per category), dark -> light ----------
+// ---------- gradients (MZ-style, one file per category), light -> dark like the real ones ----------
 function ramp(hex) {
   const v = parseInt(hex.slice(1), 16);
   const c = [(v >> 16) & 255, (v >> 8) & 255, v & 255];
   const toHex = (rgb) => '#' + rgb.map((n) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0')).join('');
   return gradientFromStops([
-    { pos: 0, color: toHex(c.map((n) => n * 0.18)) },
-    { pos: 0.6, color: hex },
-    { pos: 1, color: toHex(c.map((n) => n + (255 - n) * 0.7)) },
+    { pos: 0, color: toHex(c.map((n) => n + (255 - n) * 0.7)) },
+    { pos: 0.4, color: hex },
+    { pos: 1, color: toHex(c.map((n) => n * 0.18)) },
   ]);
 }
 const gradientSets = {

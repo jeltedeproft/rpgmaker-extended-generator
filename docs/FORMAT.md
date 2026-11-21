@@ -1,36 +1,41 @@
 # RPG Maker MV/MZ generator format: what we know
 
 Sources: Naoso's guide on the RPG Maker forums (MZ), the RPG Maker MV character generator tutorial PDF,
-and the Extended Generator tutorials page. **No real RPG Maker assets have been tested yet.** Every
-assumption lives in `src/format.js`, so corrections go there.
+the Extended Generator tutorials page, and **one real third-party MZ pack** (SomeNewWork's Generator
+Pack EX, 366 files, kept locally in git-ignored `test-assets/`). We haven't tested RPG Maker's own
+parts yet. All format assumptions live in `src/format.js`.
 
 ## Folder layout
 ```
 Generator/
-  Face/{Male,Female,Kid}/   FG_<Layer>_p<NN>_c<cell>[_m<NNN>].png   144x144 (some MZ parts 160x160)
-  TV/{...}/                 TV_<Layer>_p<NN>.png + TV_<Layer>_p<NN>_c.png   144x192 (3x4 frames of 48)
-  TVD/{...}/                TVD_<Layer>_p<NN>[_c].png   144x48 (3x1 frames of 48)
-  SV/{...}/                 SV_<Layer>_p<NN>[_c].png    576x384 (9x6 frames of 64)
-  Variation/{...}/          icon_<Part>_p<NN>.png       64x64 thumbnails
+  Face/{Male,Female,Kid}/   FG_<Layer>_p<N>_c<cell>[_m<NNN>].png   144x144, some MZ parts 160x160
+  TV/{...}/                 TV_<Layer>_p<N>.png + TV_<Layer>_p<N>_c.png   144x192 (3x4 frames of 48)
+  TVD/{...}/                TVD_<Layer>_p<N>[_c].png   144x48 (3x1 frames of 48)
+  SV/{...}/                 SV_<Layer>_p<N>[_c].png    576x384 (9x6 frames of 64)
+  Variation/{...}/          icon_<Part>_p<N>.png       64x64 thumbnails
   gradients.png             MV: one sheet, 256 wide, 4px per gradient
   grad_{skin,hair,eyes,common}.png   MZ: one sheet per category
 ```
-`<Layer>` = part name + optional layer number (`FrontHair1`, `FrontHair2`, `Clothing2`, ...).
+- `<Layer>` = part name + optional layer number (`FrontHair1`, `Clothing2`, ...).
+- `<N>` is any number of digits. ✅ Real packs use numbers like `p3459` and `p835` to avoid clashes.
+- ✅ Face cells without `_mNNN` (e.g. `FG_Eyes_p2002_c2.png`) are fixed-colour layers (outlines, eye whites).
+- ✅ Empty images are used as "none" variants (e.g. "no ears").
 
 ## Colouring
-- **TV/TVD/SV:** the `_c` mask marks recolourable pixels with a fixed RGB per slot (skin `#F9C19D`,
-  hair `#FCCB0A`, ...). White means "leave as is". The base pixel's brightness picks a colour from
-  the slot's 256px gradient.
-- **FG:** no masks. `_mNNN` assigns the whole layer to a slot (m001 skin, m003 hair, ...).
+- **TV/TVD/SV:** the `_c` mask marks recolourable pixels with a fixed RGB per slot. White = keep.
+  ✅ Every mask pixel in the real pack matches our slot table exactly. Masks are often palette PNGs
+  (1/2/4/8-bit).
+- **FG:** no masks. `_mNNN` assigns the whole layer to a slot.
+- ✅ **Gradients run light → dark:** column 0 is white/highlight, column 255 is black/shadow, so
+  a pixel's brightness B reads column `255 - B`. Real MZ sheets have 148 skin, 48 hair, 24 eye and
+  68 common rows. Row 0 of `grad_common` is plain white.
 
-## Open questions (check with real assets)
-1. **Gradient direction:** does brightness 0 read column 0 or column 255? The default is column 0,
-   and there's a toggle under Settings. Check it once against an RTP part with a known gradient.
-2. **Draw order direction:** the PDF lists are assumed to be top-most first (Wing2/Cloak2/RearHair2
-   at the end = behind the body).
-3. **Eyebrows:** the forum says hair colour (m003), the PDF says skin (m001). We follow the filename's m-number.
-4. **Clothing/Cloak sub-colour labels:** garbled in the PDF; only the labels could be wrong, not the colours.
-5. **`_c` masks:** indexed without alpha, or RGBA? Both decode fine, but check antialiased edges
-   (the matcher tolerates ±6 per channel).
-6. **MZ 160px faces:** currently centred onto the body layer's canvas. Check that it lines up.
-7. Is a single 144x144 face PNG accepted by RPG Maker, or does it need a 576x288 sheet?
+## Open questions (need RPG Maker's own generator to compare)
+1. **How brightness is measured.** 34–47% of pixels in recolourable areas are coloured, not grey.
+   We use luminance (0.299R + 0.587G + 0.114B). RPG Maker might use a single channel or max(R,G,B).
+2. **Draw order direction:** assumed top-most first (Wing2/Cloak2/RearHair2 at the end = behind body).
+3. **160px face parts:** centred on the 144px face (8px cropped on each side). The horizontal
+   centres in the real pack support this, but it hasn't been checked against RPG Maker's output.
+4. **Eyebrows:** the forum says hair (m003) and the PDF says skin (m001). The real pack uses m003.
+   We follow the filename either way.
+5. Is a single 144x144 face PNG accepted by RPG Maker, or does it need a 576x288 sheet?

@@ -1,6 +1,6 @@
 // Composites a character's selected parts into one sheet image.
 
-import { DRAW_ORDER, DEFAULT_SIZE } from './format.js';
+import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
 import { createImage, recolorLayer, blendOver } from './recolor.js';
 
 /**
@@ -19,22 +19,26 @@ export function orderIndex(sheet, key, part) {
   return 0;
 }
 
-/** The variants a character currently uses, in a stable order. */
-export function selectedVariants(character, body) {
+/** The variants a character currently uses (from any body type), in a stable order. */
+export function selectedVariants(character, library) {
   const result = [];
-  if (!body) return result;
-  for (const [part, variantId] of Object.entries(character.parts)) {
-    if (!variantId) continue;
-    const variant = body.parts.get(part)?.get(variantId);
+  for (const variantId of Object.values(character.parts)) {
+    const variant = variantId && library.variants.get(variantId);
     if (variant) result.push(variant);
   }
   return result;
 }
 
+/** Offset of a part on a sheet: "face" for FG, "sprite" for walk/damage/battler. */
+export function partOffset(character, part, sheet) {
+  const o = character.offsets?.[part]?.[sheet === 'FG' ? 'face' : 'sprite'];
+  return { x: o?.x || 0, y: o?.y || 0 };
+}
+
 /** Layers to draw for one sheet, bottom-most first. */
-export function layersForSheet(sheet, character, body) {
+export function layersForSheet(sheet, character, library) {
   const layers = [];
-  for (const variant of selectedVariants(character, body)) {
+  for (const variant of selectedVariants(character, library)) {
     for (const layer of variant.layers) {
       if (layer.sheet === sheet) layers.push(layer);
     }
@@ -48,6 +52,8 @@ export function layersForSheet(sheet, character, body) {
 function sheetSize(sheet, layers) {
   const body = layers.find((l) => l.part === 'Body' && l.base.pixels);
   if (body) return { w: body.base.pixels.width, h: body.base.pixels.height };
+  // Faces are 144px; MZ ships some 160px parts (ears, accessories) that are centred and cropped.
+  if (sheet === 'FG') return DEFAULT_SIZE.FG;
   let w = 0;
   let h = 0;
   for (const l of layers) {
@@ -59,17 +65,18 @@ function sheetSize(sheet, layers) {
 }
 
 /**
- * Renders one sheet. All layer pixels must be decoded first (see loader.ensureDecoded).
+ * Renders one sheet. All layer pixels must be decoded first (see loader.ensureVariants).
  * @param {Map<string,{colors:Uint8ClampedArray}>} gradientsById
  * @returns {{image:object|null, problems:string[]}}
  */
-export function composeSheet(sheet, character, body, gradientsById, settings) {
-  const layers = layersForSheet(sheet, character, body);
+export function composeSheet(sheet, character, library, gradientsById, settings) {
+  const layers = layersForSheet(sheet, character, library);
   const problems = [];
   if (!layers.length) return { image: null, problems };
 
   const size = sheetSize(sheet, layers);
   const out = createImage(size.w, size.h);
+  const frame = SHEETS[sheet].frame;
   const gradientFor = (slotId) => {
     const id = character.colors[slotId];
     return id ? gradientsById.get(id)?.colors ?? null : null;
@@ -86,10 +93,16 @@ export function composeSheet(sheet, character, body, gradientsById, settings) {
       problems.push(`${layer.mask.path}: mask is ${mask.width}x${mask.height}, image is ${base.width}x${base.height}`);
     }
     const colored = recolorLayer(base, mask, layer.slotId, gradientFor, settings);
-    // Parts of a different size (e.g. 160px MZ faces vs 144px) are centred.
-    const ox = Math.round((size.w - base.width) / 2);
-    const oy = Math.round((size.h - base.height) / 2);
-    blendOver(out, colored, ox, oy);
+    const offset = partOffset(character, layer.part, sheet);
+    if (frame && base.width === size.w && base.height === size.h) {
+      // Sprite sheets: shift inside each animation frame.
+      blendOver(out, colored, offset.x, offset.y, frame);
+    } else {
+      // Parts of a different size (e.g. 160px MZ faces vs 144px) are centred.
+      const ox = Math.round((size.w - base.width) / 2) + offset.x;
+      const oy = Math.round((size.h - base.height) / 2) + offset.y;
+      blendOver(out, colored, ox, oy);
+    }
   }
   return { image: out, problems };
 }

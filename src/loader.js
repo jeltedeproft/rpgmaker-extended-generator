@@ -154,3 +154,69 @@ export function downloadImage(image, fileName) {
     resolve();
   }, 'image/png'));
 }
+
+// ---------- remembered folders (File System Access API: Chrome/Edge) ----------
+// Other browsers fall back to <input webkitdirectory>, which can't be remembered.
+
+export const canRememberFolders = typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+
+export async function pickFolder() {
+  return window.showDirectoryPicker({ id: 'xgen-generator', mode: 'read' });
+}
+
+/** Entries from a directory handle; paths start with the folder's name like webkitRelativePath. */
+export async function entriesFromHandle(handle, prefix = handle.name + '/') {
+  const entries = [];
+  for await (const [name, child] of handle.entries()) {
+    if (child.kind === 'directory') entries.push(...(await entriesFromHandle(child, `${prefix}${name}/`)));
+    else if (/\.png$/i.test(name)) entries.push({ path: prefix + name, src: await child.getFile() });
+  }
+  return entries;
+}
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('xgen', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('folders');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function withStore(mode, fn) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('folders', mode);
+    const result = fn(tx.objectStore('folders'));
+    tx.oncomplete = () => resolve(result.result ?? result);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function rememberFolder(handle) {
+  try {
+    await withStore('readwrite', (s) => s.put(handle, handle.name));
+  } catch { /* storage blocked: the folder just won't be remembered */ }
+}
+
+export async function forgetFolder(name) {
+  try {
+    await withStore('readwrite', (s) => s.delete(name));
+  } catch { /* ignore */ }
+}
+
+/** @returns {Promise<FileSystemDirectoryHandle[]>} */
+export async function rememberedFolders() {
+  try {
+    return (await withStore('readonly', (s) => s.getAll())) || [];
+  } catch {
+    return [];
+  }
+}
+
+/** Asks for read access again (must run inside a click handler). */
+export async function ensureReadPermission(handle) {
+  const opts = { mode: 'read' };
+  if ((await handle.queryPermission(opts)) === 'granted') return true;
+  return (await handle.requestPermission(opts)) === 'granted';
+}

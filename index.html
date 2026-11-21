@@ -30,6 +30,8 @@
         <h2>Drop a generator folder here</h2>
         <p>Point it at RPG Maker's <code>Generator</code> folder, an asset pack, or both. Every folder you add becomes its own pack, so nothing gets overwritten.</p>
         <p class="muted">Everything runs in your browser and no files are uploaded.</p>
+        <p class="muted small">RPG Maker MZ on Steam keeps its parts in<br><code>steamapps\common\RPG Maker MZ\generator</code></p>
+        <div id="recent-folders" class="recent" hidden></div>
       </div>
     </section>
 
@@ -50,6 +52,23 @@
         <label class="lock"><input type="checkbox" id="lock-part"> Lock when randomizing</label>
       </div>
       <div id="variants" class="variants"></div>
+      <details id="other-bodies" class="other-bodies" hidden>
+        <summary>Parts from other body types</summary>
+        <div id="other-variants" class="variants"></div>
+      </details>
+      <div id="offsets" class="offsets" hidden>
+        <h3>Position</h3>
+        <div class="offset-grid">
+          <span>Face</span>
+          <label>x <input type="number" id="off-face-x" step="1" value="0"></label>
+          <label>y <input type="number" id="off-face-y" step="1" value="0"></label>
+          <span>Sprites</span>
+          <label>x <input type="number" id="off-sprite-x" step="1" value="0"></label>
+          <label>y <input type="number" id="off-sprite-y" step="1" value="0"></label>
+        </div>
+        <button id="off-reset" class="small-button">Reset position</button>
+        <p class="muted small">Moves this part in pixels. Sprite offsets apply to each walk, damage and battler frame.</p>
+      </div>
       <div id="slots" class="slots"></div>
     </section>
 
@@ -87,8 +106,8 @@
       <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>. Battlers go in <code>img/sv_actors</code> and faces in <code>img/faces</code>.</p>
       <details class="settings">
         <summary>Settings</summary>
-        <label><input type="checkbox" id="invert-gradient"> Invert gradient direction</label>
-        <p class="muted small">Turn this on if colours come out with light and dark swapped.</p>
+        <label><input type="checkbox" id="flip-gradient"> Flip gradient direction</label>
+        <p class="muted small">Only for packs whose gradients run dark → light. RPG Maker's own run light → dark.</p>
       </details>
       <details id="problems" class="problems" hidden>
         <summary>Import report</summary>

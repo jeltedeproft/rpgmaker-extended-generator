@@ -100,6 +100,14 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .variant canvas, .variant .placeholder { width: 64px; height: 64px; image-rendering: pixelated; }
 .variant .placeholder { display: grid; place-items: center; font-size: 18px; }
 
+.other-bodies { margin-top: 10px; }
+.other-bodies summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+.offsets h3 { margin-top: 14px; }
+.offset-grid { display: grid; grid-template-columns: auto auto auto; gap: 6px 12px; align-items: center; justify-content: start; font-size: 13px; }
+.offset-grid input { width: 64px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.small-button { margin-top: 8px; padding: 3px 9px; font-size: 12px; }
+.recent { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; }
+.recent .forget { padding: 2px 7px; font-size: 12px; color: var(--muted); }
 .slots { margin-top: 6px; }
 .slot { margin-top: 14px; }
 .slot-head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 6px; }

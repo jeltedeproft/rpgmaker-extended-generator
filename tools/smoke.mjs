@@ -111,6 +111,29 @@ try {
   })()`);
   check('modules importable', roundTrip);
 
+  // Optional: a real pack served by the dev server (PACK=test-assets/<name>, needs a manifest.json).
+  if (process.env.PACK) {
+    await send('Page.navigate', { url: `${URL_UNDER_TEST}&pack=${encodeURIComponent(process.env.PACK)}` });
+    await sleep(4000);
+    check('real pack imported', await evaluate(`document.querySelectorAll('#packs div').length >= 3`));
+    check('both body types offered', await evaluate(`[...document.querySelectorAll('#body-type option')].map(o => o.value).join(',')`) === 'Male,Female');
+    // Male character wearing a Female-only accessory.
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('AccA')).click()`);
+    await sleep(500);
+    await evaluate(`document.getElementById('other-bodies').open = true`);
+    const borrowed = await evaluate(`(() => { const t = [...document.querySelectorAll('#other-variants .variant')].find(b => b.title.includes('/Female/')); t?.click(); return t?.title; })()`);
+    await sleep(1200);
+    check('female part selectable on male body', !!borrowed, borrowed);
+    check('borrowed part shows in sidebar', await evaluate(`[...document.querySelectorAll('#part-list button')].some(b => b.textContent.includes('Female'))`));
+    // Nudge it: the battler sprite (static frame size, animates) is compared via the export source.
+    const faceSig = `[...document.getElementById('face-canvas').getContext('2d').getImageData(0,0,144,144).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`;
+    const beforeNudge = await evaluate(faceSig);
+    await evaluate(`(() => { const i = document.getElementById('off-face-y'); i.value = -6; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(900);
+    check('face offset moves the part', (await evaluate(faceSig)) !== beforeNudge);
+    await shot('4-real-pack.png');
+  }
+
   check('no uncaught errors', errors.length === 0, errors.join(' | '));
 } catch (e) {
   check('smoke run', false, e.stack);

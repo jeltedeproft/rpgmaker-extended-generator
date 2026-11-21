@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { recolorLayer, blendOver, createImage, matchSlot } from '../src/recolor.js';
 import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
 import { composeSheet, layersForSheet, orderIndex } from '../src/compose.js';
-import { randomize, serializeCharacter, deserializeCharacter } from '../src/character.js';
+import { randomize, serializeCharacter, deserializeCharacter, resolveVariant } from '../src/character.js';
 import { createLibrary, addPack } from '../src/parse.js';
 
 function solid(w, h, [r, g, b, a]) {
@@ -12,20 +12,21 @@ function solid(w, h, [r, g, b, a]) {
   return img;
 }
 const px = (img, x, y) => [...img.data.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 4)];
-const redToBlue = gradientFromStops([{ pos: 0, color: '#ff0000' }, { pos: 1, color: '#0000ff' }]);
-const settings = { invertGradient: false };
+// RPG Maker orientation: highlight on the left (column 0), shadow on the right.
+const lightToDark = gradientFromStops([{ pos: 0, color: '#ff0000' }, { pos: 1, color: '#0000ff' }]);
+const settings = { flipGradient: false };
 
 test('gradient from stops interpolates end to end', () => {
-  assert.deepEqual([...redToBlue.slice(0, 4)], [255, 0, 0, 255]);
-  assert.deepEqual([...redToBlue.slice(255 * 4, 256 * 4)], [0, 0, 255, 255]);
+  assert.deepEqual([...lightToDark.slice(0, 4)], [255, 0, 0, 255]);
+  assert.deepEqual([...lightToDark.slice(255 * 4, 256 * 4)], [0, 0, 255, 255]);
 });
 
 test('gradient sheets round-trip', () => {
-  const sheet = gradientsToImage([{ colors: redToBlue }, { colors: redToBlue }]);
+  const sheet = gradientsToImage([{ colors: lightToDark }, { colors: lightToDark }]);
   assert.equal(sheet.height, 8);
   const rows = splitGradientImage(sheet, { pack: 'P', name: 'gradients', category: 'all' });
   assert.equal(rows.length, 2);
-  assert.deepEqual(rows[1].colors, redToBlue);
+  assert.deepEqual(rows[1].colors, lightToDark);
 });
 
 test('mask colours select slots, white is left alone, near-matches are tolerated', () => {
@@ -35,30 +36,37 @@ test('mask colours select slots, white is left alone, near-matches are tolerated
   assert.equal(matchSlot(0x123456), null);
 });
 
-test('masked recolour uses brightness as gradient index and keeps alpha', () => {
-  const base = solid(2, 1, [255, 255, 255, 200]); // white -> index 255 -> blue
+test('bright pixels read the left (highlight) end of the gradient; alpha is kept', () => {
+  const base = solid(2, 1, [255, 255, 255, 200]);
   const mask = createImage(2, 1);
   mask.data.set([0xfc, 0xcb, 0x0a, 255, 255, 255, 255, 255]); // hair, ignore
-  const out = recolorLayer(base, mask, null, (id) => (id === 'hair' ? redToBlue : null), settings);
-  assert.deepEqual(px(out, 0, 0), [0, 0, 255, 200]);
+  const out = recolorLayer(base, mask, null, (id) => (id === 'hair' ? lightToDark : null), settings);
+  assert.deepEqual(px(out, 0, 0), [255, 0, 0, 200]);
   assert.deepEqual(px(out, 1, 0), [255, 255, 255, 200]);
 
-  const inverted = recolorLayer(base, mask, null, () => redToBlue, { invertGradient: true });
-  assert.deepEqual(px(inverted, 0, 0), [255, 0, 0, 200]);
+  const flipped = recolorLayer(base, mask, null, () => lightToDark, { flipGradient: true });
+  assert.deepEqual(px(flipped, 0, 0), [0, 0, 255, 200]);
 });
 
 test('face layers recolour as a whole via slot id', () => {
-  const base = solid(1, 1, [0, 0, 0, 255]);
-  const out = recolorLayer(base, null, 'skin', () => redToBlue, settings);
-  assert.deepEqual(px(out, 0, 0), [255, 0, 0, 255]);
-  const untouched = recolorLayer(base, null, 'skin', () => null, settings);
-  assert.deepEqual(px(untouched, 0, 0), [0, 0, 0, 255]);
+  const dark = solid(1, 1, [0, 0, 0, 255]);
+  assert.deepEqual(px(recolorLayer(dark, null, 'skin', () => lightToDark, settings), 0, 0), [0, 0, 255, 255]);
+  assert.deepEqual(px(recolorLayer(dark, null, 'skin', () => null, settings), 0, 0), [0, 0, 0, 255]);
 });
 
-test('blendOver handles opaque and translucent pixels', () => {
+test('blendOver handles translucency and clips offsets to the animation frame', () => {
   const target = solid(1, 1, [0, 0, 0, 255]);
   blendOver(target, solid(1, 1, [255, 255, 255, 128]));
   assert.deepEqual(px(target, 0, 0), [128, 128, 128, 255]);
+
+  // Two 2px frames side by side; shifting right by 1 must not leak frame 0 into frame 1.
+  const sheet = createImage(4, 1);
+  const top = createImage(4, 1);
+  top.data.set([10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255, 40, 40, 40, 255]);
+  blendOver(sheet, top, 1, 0, { w: 2, h: 1 });
+  assert.deepEqual(px(sheet, 1, 0), [10, 10, 10, 255]);
+  assert.deepEqual(px(sheet, 2, 0), [0, 0, 0, 0]); // frame 0's last pixel was clipped, not moved
+  assert.deepEqual(px(sheet, 3, 0), [30, 30, 30, 255]);
 });
 
 test('draw order: listed top-most first, unknown parts on top', () => {
@@ -75,19 +83,20 @@ function sampleLibrary() {
     { path: 'TV/Male/TV_Body_p01_c.png', src: 'bodyMask' },
     { path: 'TV/Male/TV_FrontHair1_p01.png', src: 'hair' },
     { path: 'TV/Male/TV_FrontHair2_p01.png', src: 'hairBack' },
+    { path: 'TV/Female/TV_Body_p01.png', src: 'body' },
+    { path: 'TV/Female/TV_AccA_p07.png', src: 'acc' },
   ]);
   const pixels = {
-    body: solid(2, 2, [255, 255, 255, 255]),
+    body: solid(2, 2, [0, 0, 0, 255]), // dark -> shadow end of the gradient
     bodyMask: solid(2, 2, [0xf9, 0xc1, 0x9d, 255]),
     hair: (() => { const i = createImage(2, 2); i.data.set([10, 20, 30, 255], 0); return i; })(),
     hairBack: solid(2, 2, [99, 99, 99, 255]),
+    acc: (() => { const i = createImage(2, 2); i.data.set([77, 77, 77, 255], 12); return i; })(),
   };
-  for (const variants of lib.bodyTypes.get('Male').parts.values()) {
-    for (const v of variants.values()) {
-      for (const l of v.layers) {
-        l.base.pixels = pixels[l.base.src];
-        if (l.mask) l.mask.pixels = pixels[l.mask.src];
-      }
+  for (const v of lib.variants.values()) {
+    for (const l of v.layers) {
+      l.base.pixels = pixels[l.base.src];
+      if (l.mask) l.mask.pixels = pixels[l.mask.src];
     }
   }
   return lib;
@@ -95,36 +104,62 @@ function sampleLibrary() {
 
 test('composeSheet layers front hair over body over back hair, recoloured', () => {
   const lib = sampleLibrary();
-  const body = lib.bodyTypes.get('Male');
-  const character = { bodyType: 'Male', parts: { Body: 'P/p01', FrontHair: 'P/p01' }, colors: { skin: 'g' } };
-  const keys = layersForSheet('TV', character, body).map((l) => l.key);
-  assert.deepEqual(keys, ['FrontHair2', 'Body', 'FrontHair1']);
+  const character = { bodyType: 'Male', parts: { Body: 'P/Male/Body/p01', FrontHair: 'P/Male/FrontHair/p01' }, colors: { skin: 'g' } };
+  assert.deepEqual(layersForSheet('TV', character, lib).map((l) => l.key), ['FrontHair2', 'Body', 'FrontHair1']);
 
-  const { image } = composeSheet('TV', character, body, new Map([['g', { colors: redToBlue }]]), settings);
+  const { image } = composeSheet('TV', character, lib, new Map([['g', { colors: lightToDark }]]), settings);
   assert.deepEqual(px(image, 0, 0), [10, 20, 30, 255]); // front hair on top
-  assert.deepEqual(px(image, 1, 1), [0, 0, 255, 255]); // body recoloured (white -> blue)
+  assert.deepEqual(px(image, 1, 1), [0, 0, 255, 255]); // body recoloured (black -> shadow end)
 });
 
-test('character save/load survives a renamed pack', () => {
+test('a male character can wear a female-only part, with an offset', () => {
   const lib = sampleLibrary();
-  const character = { name: 'Hero', bodyType: 'Male', parts: { Body: 'Old name/p01', Tail: null }, colors: { skin: 'custom/1' } };
-  const custom = [{ id: 'custom/1', label: 'Mine', stops: [{ pos: 0, color: '#000000' }, { pos: 1, color: '#ffffff' }] }];
+  const character = {
+    bodyType: 'Male',
+    parts: { Body: 'P/Male/Body/p01', AccA: 'P/Female/AccA/p07' },
+    colors: {},
+    offsets: { AccA: { sprite: { x: -1, y: 0 } } },
+  };
+  const { image } = composeSheet('TV', character, lib, new Map(), settings);
+  // The accessory pixel at (1,1) moved to (0,1).
+  assert.deepEqual(px(image, 0, 1), [77, 77, 77, 255]);
+});
+
+test('character save/load survives a renamed pack and keeps offsets', () => {
+  const lib = sampleLibrary();
+  const character = {
+    name: 'Hero', bodyType: 'Male',
+    parts: { Body: 'Old name/Male/Body/p01', AccA: 'Old name/Female/AccA/p07', Tail: null },
+    colors: { skin: 'custom/1' },
+    offsets: { AccA: { face: { x: 2, y: 3 } } },
+  };
+  const custom = [{ id: 'custom/1', label: 'Mine', stops: [{ pos: 0, color: '#ffffff' }, { pos: 1, color: '#000000' }] }];
   const loaded = deserializeCharacter(serializeCharacter(character, custom), lib);
-  assert.equal(loaded.character.parts.Body, 'P/p01');
+  assert.equal(loaded.character.parts.Body, 'P/Male/Body/p01');
+  assert.equal(loaded.character.parts.AccA, 'P/Female/AccA/p07');
+  assert.deepEqual(loaded.character.offsets, character.offsets);
   assert.deepEqual(loaded.missing, []);
-  assert.equal(loaded.customGradients.length, 1);
   assert.equal(loaded.customGradients[0].colors.length, 1024);
+});
+
+test('version 1 save files (ids without body type) still load', () => {
+  const lib = sampleLibrary();
+  const v1 = JSON.stringify({
+    format: 'rpgmaker-xgen-character', version: 1,
+    character: { name: 'Old', bodyType: 'Female', parts: { Body: 'P/p01' }, colors: {} },
+  });
+  assert.equal(deserializeCharacter(v1, lib).character.parts.Body, 'P/Female/Body/p01');
+  assert.equal(resolveVariant(lib, 'AccA', 'Gone/p07', 'Male'), 'P/Female/AccA/p07'); // falls back to any body type
 });
 
 test('randomize keeps locked parts and always picks required parts', () => {
   const lib = sampleLibrary();
-  const body = lib.bodyTypes.get('Male');
   let seed = 1;
   const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const base = { bodyType: 'Male', parts: { FrontHair: null }, colors: {} };
   for (let i = 0; i < 20; i++) {
-    const next = randomize(base, body, [{ id: 'g', category: 'all' }], { rng, locked: new Set(['FrontHair']) });
-    assert.equal(next.parts.Body, 'P/p01');
+    const next = randomize(base, lib, [{ id: 'g', category: 'all' }], { rng, locked: new Set(['FrontHair']) });
+    assert.equal(next.parts.Body, 'P/Male/Body/p01');
     assert.equal(next.parts.FrontHair, null);
     assert.equal(next.colors.skin, 'g');
   }

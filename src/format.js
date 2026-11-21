@@ -117,10 +117,13 @@ export const REQUIRED_PARTS = new Set(['Body', 'Face']);
 
 /**
  * Gradient lookup: a pixel's brightness (0..255) picks a column of a 256px gradient row.
- * Whether column 0 is used for black or white pixels is UNVERIFIED; the UI exposes a toggle.
+ * Verified on real MZ gradient sheets: column 0 is the highlight (white) and column 255 the
+ * shadow (black), so column = 255 - brightness. `flipGradient` reverses that, for odd packs.
+ * Whether RPG Maker measures brightness as luminance is UNVERIFIED: real parts contain coloured
+ * (not only grey) pixels inside recolourable areas.
  */
 export const DEFAULT_SETTINGS = {
-  invertGradient: false,
+  flipGradient: false,
 };
 
 export const GRADIENT_WIDTH = 256;

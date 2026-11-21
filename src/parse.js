@@ -78,6 +78,8 @@ export function createLibrary() {
     packs: [],
     /** @type {Map<string, {parts: Map<string, Map<string, object>>}>} */
     bodyTypes: new Map(),
+    /** Every variant by its globally unique id ("pack/bodyType/part/pNN"). */
+    variants: new Map(),
     /** Gradient sources awaiting decode: {pack, path, category, src}. */
     gradientFiles: [],
     unrecognized: [],
@@ -96,11 +98,14 @@ function getVariant(library, packName, parsed) {
     variants = new Map();
     body.parts.set(parsed.part, variants);
   }
-  const id = `${packName}/${parsed.pid}`;
+  // Ids are globally unique ("pack/bodyType/part/pNN") so one character can mix parts from
+  // Male, Female, Kid, ... and Body p01 never collides with Tail p01.
+  const id = `${packName}/${parsed.bodyType}/${parsed.part}/${parsed.pid}`;
   let variant = variants.get(id);
   if (!variant) {
-    variant = { id, pack: packName, pid: parsed.pid, part: parsed.part, icon: null, layers: [] };
+    variant = { id, pack: packName, bodyType: parsed.bodyType, pid: parsed.pid, part: parsed.part, icon: null, layers: [] };
     variants.set(id, variant);
+    library.variants.set(id, variant);
   }
   return variant;
 }
@@ -179,7 +184,23 @@ export function addPack(library, packName, entries) {
   return pack;
 }
 
-/** Variant labels like "p03" or "p03 · MyPack" when several packs are loaded. */
-export function variantLabel(library, variant) {
-  return library.packs.length > 1 ? `${variant.pid} · ${variant.pack}` : variant.pid;
+/**
+ * Variant labels like "p03", plus the pack when several are loaded and the body type when it
+ * differs from the character's.
+ */
+export function variantLabel(library, variant, bodyType) {
+  let label = variant.pid;
+  if (library.packs.length > 1) label += ` · ${variant.pack}`;
+  if (bodyType && variant.bodyType !== bodyType) label += ` · ${variant.bodyType}`;
+  return label;
+}
+
+/** All variants of a part across body types, the given body type first. */
+export function variantsForPart(library, part, bodyType) {
+  const own = [...(library.bodyTypes.get(bodyType)?.parts.get(part)?.values() || [])];
+  const others = [];
+  for (const [name, body] of library.bodyTypes) {
+    if (name !== bodyType) others.push(...(body.parts.get(part)?.values() || []));
+  }
+  return { own, others };
 }

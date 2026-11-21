@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
-import { SHEET_KEYS, SLOTS, SLOT_BY_ID, DEFAULT_SETTINGS, REQUIRED_PARTS } from './format.js';
-import { createLibrary, addPack, variantLabel } from './parse.js';
+import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, REQUIRED_PARTS } from './format.js';
+import { createLibrary, addPack, variantLabel, variantsForPart } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import { composeSheet, selectedVariants } from './compose.js';
 import {
@@ -11,6 +11,8 @@ import {
 import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage,
   ensureVariants, loadGradients, toCanvas, downloadBlob, downloadImage,
+  canRememberFolders, pickFolder, entriesFromHandle, rememberFolder, forgetFolder, rememberedFolders,
+  ensureReadPermission,
 } from './loader.js';
 
 const ALL_COLOURS = '__colours';
@@ -43,6 +45,7 @@ const state = {
   svMotion: 0,
   composites: {},
   problems: [],
+  renderProblems: [],
   editorToken: 0,
   previewToken: 0,
 };
@@ -66,9 +69,6 @@ function allGradients() {
 function gradientsById() {
   return new Map(allGradients().map((g) => [g.id, g]));
 }
-function currentBody() {
-  return state.character ? state.library.bodyTypes.get(state.character.bodyType) : null;
-}
 
 let toastTimer;
 function toast(message) {
@@ -76,7 +76,7 @@ function toast(message) {
   t.textContent = message;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), 3500);
+  toastTimer = setTimeout(() => (t.hidden = true), 4000);
 }
 
 // ---------- importing ----------
@@ -89,7 +89,7 @@ async function importEntries(entries, packName) {
   }
   const pack = addPack(state.library, packName, pngs);
 
-  const newGradientFiles = { ...state.library, gradientFiles: state.library.gradientFiles.slice(state.loadedGradientFiles) };
+  const newGradientFiles = { gradientFiles: state.library.gradientFiles.slice(state.loadedGradientFiles) };
   state.loadedGradientFiles = state.library.gradientFiles.length;
   const { gradients, errors } = await loadGradients(newGradientFiles);
   state.fileGradients.push(...gradients);
@@ -103,23 +103,29 @@ async function importEntries(entries, packName) {
   }
   if (!state.character) {
     const bodyType = state.library.bodyTypes.has('Male') ? 'Male' : [...state.library.bodyTypes.keys()][0];
-    state.character = applyDefaults(createCharacter(bodyType), state.library.bodyTypes.get(bodyType));
-    assignDefaultColours();
+    state.character = applyDefaults(createCharacter(bodyType), state.library);
   }
-  const partCount = [...state.library.bodyTypes.values()].reduce((n, b) => n + [...b.parts.values()].reduce((m, v) => m + v.size, 0), 0);
-  toast(`Added "${pack.name}": ${state.library.bodyTypes.size} body type(s), ${partCount} parts, ${allGradients().length} colours.`);
+  assignDefaultColours();
+  toast(`Added "${pack.name}": ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.`);
   showApp();
   renderAll();
 }
 
+/** Gives every still-uncoloured slot the first suggested gradient. */
 function assignDefaultColours() {
   const gradients = allGradients();
   if (!gradients.length) return;
   for (const slot of SLOTS) {
     if (state.character.colors[slot.id]) continue;
     const preferred = gradients.filter((g) => g.category === preferredCategory(slot.id));
-    state.character.colors[slot.id] = (preferred[0] || gradients[0]).id;
+    // Row 0 of RPG Maker's sheets can be plain white; prefer a row with some colour in it.
+    const pool = preferred.length ? preferred : gradients;
+    state.character.colors[slot.id] = (pool.find((g) => !isFlat(g)) || pool[0]).id;
   }
+}
+function isFlat(gradient) {
+  const c = gradient.colors;
+  return c[0] === c[128 * 4] && c[1] === c[128 * 4 + 1] && c[2] === c[128 * 4 + 2];
 }
 
 function showApp() {
@@ -139,20 +145,18 @@ function renderAll() {
 }
 
 function renderSidebar() {
-  const body = currentBody();
+  const lib = state.library;
   const select = $('body-type');
-  select.replaceChildren(...[...state.library.bodyTypes.keys()].map((name) => el('option', { value: name, textContent: name })));
+  select.replaceChildren(...[...lib.bodyTypes.keys()].map((name) => el('option', { value: name, textContent: name })));
   select.value = state.character.bodyType;
   $('character-name').value = state.character.name;
 
-  const list = $('part-list');
   const items = [[ALL_COLOURS, 'All colours', '']];
-  for (const part of partNames(body)) {
-    const id = state.character.parts[part];
-    const variant = id && body.parts.get(part).get(id);
-    items.push([part, part, variant ? variant.pid : 'none']);
+  for (const part of partNames(lib, state.character.bodyType)) {
+    const variant = lib.variants.get(state.character.parts[part]);
+    items.push([part, part, variant ? variantLabel(lib, variant, state.character.bodyType) : 'none']);
   }
-  list.replaceChildren(...items.map(([key, label, value]) => {
+  $('part-list').replaceChildren(...items.map(([key, label, value]) => {
     const button = el('button', { className: key === state.selectedPart ? 'active' : '' }, [
       el('span', { textContent: label + (state.locked.has(key) ? ' 🔒' : '') }),
       el('span', { className: 'value', textContent: value }),
@@ -167,29 +171,37 @@ function renderSidebar() {
 
   $('packs').replaceChildren(
     el('div', { textContent: 'Packs' }),
-    ...state.library.packs.map((p) => el('div', { textContent: `• ${p.name} (${p.fileCount} files)` })),
+    ...lib.packs.map((p) => el('div', { textContent: `• ${p.name} (${p.fileCount} files)` })),
   );
 }
 
 async function renderEditor() {
-  const body = currentBody();
   const part = state.selectedPart;
   const isColours = part === ALL_COLOURS;
   $('editor-title').textContent = isColours ? 'All colours' : part;
   $('lock-part').checked = state.locked.has(part);
   $('lock-part').parentElement.hidden = isColours;
+  $('offsets').hidden = isColours || !state.character.parts[part];
 
-  const variantsBox = $('variants');
-  variantsBox.replaceChildren();
+  $('variants').replaceChildren();
+  $('other-variants').replaceChildren();
+  $('other-bodies').hidden = true;
   if (!isColours) {
-    const variants = [...(body.parts.get(part)?.values() || [])];
-    const options = REQUIRED_PARTS.has(part) ? variants : [null, ...variants];
-    for (const variant of options) variantsBox.append(variantTile(part, variant));
+    const { own, others } = variantsForPart(state.library, part, state.character.bodyType);
+    const options = REQUIRED_PARTS.has(part) && own.length ? own : [null, ...own];
+    for (const variant of options) $('variants').append(variantTile(part, variant));
+    if (others.length) {
+      $('other-bodies').hidden = false;
+      // Keep it open when the current choice comes from another body type.
+      if (others.some((v) => v.id === state.character.parts[part])) $('other-bodies').open = true;
+      for (const variant of others) $('other-variants').append(variantTile(part, variant));
+    }
+    renderOffsets();
   }
 
-  // Slots depend on decoded masks, so make sure the relevant variants are decoded first.
+  // Colour slots depend on decoded masks, so decode the selected variants first.
   const token = ++state.editorToken;
-  await ensureVariants(selectedVariants(state.character, body));
+  await ensureVariants(selectedVariants(state.character, state.library));
   if (token !== state.editorToken) return;
   renderSlots();
 }
@@ -198,7 +210,7 @@ function variantTile(part, variant) {
   const selected = (state.character.parts[part] || null) === (variant?.id || null);
   const tile = el('button', { className: 'variant' + (selected ? ' selected' : ''), title: variant ? variant.id : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
-  tile.append(thumb, el('span', { textContent: variant ? variantLabel(state.library, variant) : 'None' }));
+  tile.append(thumb, el('span', { textContent: variant ? variantLabel(state.library, variant, state.character.bodyType) : 'None' }));
   if (variant?.icon) {
     ensureImage(variant.icon).then((pixels) => thumb.replaceWith(toCanvas(pixels))).catch(() => {});
   }
@@ -211,11 +223,27 @@ function variantTile(part, variant) {
   return tile;
 }
 
+function renderOffsets() {
+  const o = state.character.offsets?.[state.selectedPart] || {};
+  $('off-face-x').value = o.face?.x || 0;
+  $('off-face-y').value = o.face?.y || 0;
+  $('off-sprite-x').value = o.sprite?.x || 0;
+  $('off-sprite-y').value = o.sprite?.y || 0;
+}
+
+function updateOffset() {
+  const read = (id) => Math.max(-64, Math.min(64, Math.round(Number($(id).value) || 0)));
+  const offsets = (state.character.offsets ||= {});
+  offsets[state.selectedPart] = {
+    face: { x: read('off-face-x'), y: read('off-face-y') },
+    sprite: { x: read('off-sprite-x'), y: read('off-sprite-y') },
+  };
+  renderPreview();
+}
+
 function slotsForEditor() {
-  const body = currentBody();
-  if (state.selectedPart === ALL_COLOURS) return usedSlots(state.character, body);
-  const id = state.character.parts[state.selectedPart];
-  const variant = id && body.parts.get(state.selectedPart)?.get(id);
+  if (state.selectedPart === ALL_COLOURS) return usedSlots(state.character, state.library);
+  const variant = state.library.variants.get(state.character.parts[state.selectedPart]);
   if (!variant) return [];
   const ids = new Set();
   for (const layer of variant.layers) {
@@ -241,7 +269,8 @@ function renderSlots() {
   const box = $('slots');
   const slots = slotsForEditor();
   if (!slots.length) {
-    box.replaceChildren(el('p', { className: 'muted', textContent: state.selectedPart === ALL_COLOURS ? 'The selected parts have no recolourable areas.' : 'This part has no recolourable areas.' }));
+    const what = state.selectedPart === ALL_COLOURS ? 'The selected parts have' : 'This part has';
+    box.replaceChildren(el('p', { className: 'muted', textContent: `${what} no recolourable areas.` }));
     return;
   }
   const gradients = allGradients();
@@ -249,7 +278,7 @@ function renderSlots() {
     const preferred = preferredCategory(slot.id);
     const groups = new Map();
     for (const g of gradients) {
-      const key = g.source === 'custom' ? 'Your colours' : g.category === preferred ? 'Suggested' : 'Other';
+      const key = g.source === 'custom' ? 'Your colours' : g.category === preferred || g.category === 'all' ? 'Suggested' : 'Other';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(g);
     }
@@ -262,8 +291,14 @@ function renderSlots() {
       ]),
     ]);
     for (const key of ordered) {
-      if (ordered.length > 1) wrap.append(el('div', { className: 'swatch-group', textContent: key }));
-      wrap.append(el('div', { className: 'swatches' }, groups.get(key).map((g) => swatchButton(slot, g))));
+      const swatches = el('div', { className: 'swatches' }, groups.get(key).map((g) => swatchButton(slot, g)));
+      if (key === 'Other') {
+        // Long lists (RPG Maker ships 100+ skin rows) stay folded away.
+        wrap.append(el('details', {}, [el('summary', { className: 'swatch-group', textContent: `Other colours (${groups.get(key).length})` }), swatches]));
+      } else {
+        if (ordered.length > 1) wrap.append(el('div', { className: 'swatch-group', textContent: key }));
+        wrap.append(swatches);
+      }
     }
     const add = el('button', { className: 'swatch add', textContent: '+ New', title: 'Make your own gradient' });
     add.addEventListener('click', () => openGradientDialog(slot));
@@ -275,7 +310,7 @@ function renderSlots() {
 function swatchButton(slot, gradient) {
   const selected = state.character.colors[slot.id] === gradient.id;
   const img = el('img', { src: swatchImage(gradient), alt: gradient.label, width: 54, height: 14 });
-  img.style.cssText = 'width:54px;height:14px;display:block;image-rendering:auto';
+  img.style.cssText = 'width:54px;height:14px;display:block';
   const button = el('button', { className: 'swatch' + (selected ? ' selected' : ''), title: gradient.label }, [img]);
   button.addEventListener('click', () => {
     state.character.colors[slot.id] = gradient.id;
@@ -286,18 +321,18 @@ function swatchButton(slot, gradient) {
 }
 
 async function renderPreview() {
-  const body = currentBody();
   const token = ++state.previewToken;
-  const errors = await ensureVariants(selectedVariants(state.character, body));
+  const errors = await ensureVariants(selectedVariants(state.character, state.library));
   if (token !== state.previewToken) return;
   const byId = gradientsById();
   const problems = [...errors];
   for (const sheet of SHEET_KEYS) {
-    const { image, problems: p } = composeSheet(sheet, state.character, body, byId, state.settings);
+    const { image, problems: p } = composeSheet(sheet, state.character, state.library, byId, state.settings);
     problems.push(...p);
     state.composites[sheet] = image ? { image, canvas: toCanvas(image) } : null;
   }
   state.renderProblems = problems;
+
   const face = state.composites.FG;
   const faceCanvas = $('face-canvas');
   const ctx = faceCanvas.getContext('2d');
@@ -308,10 +343,9 @@ async function renderPreview() {
   } else {
     ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
   }
-  const damage = state.composites.TVD;
   const dmgCtx = $('damage-canvas').getContext('2d');
   dmgCtx.clearRect(0, 0, 144, 48);
-  if (damage) dmgCtx.drawImage(damage.canvas, 0, 0);
+  if (state.composites.TVD) dmgCtx.drawImage(state.composites.TVD.canvas, 0, 0);
   renderProblems();
 }
 
@@ -321,11 +355,11 @@ function renderProblems() {
     ...lib.unrecognized.map((u) => `Skipped ${u.path} (${u.reason})`),
     ...lib.warnings,
     ...state.problems,
-    ...(state.renderProblems || []),
+    ...state.renderProblems,
   ];
   $('problems').hidden = !lines.length;
   $('problem-list').replaceChildren(
-    el('p', { className: 'muted small', textContent: `${lines.length} note(s). Parts that were skipped don't stop the rest from loading.` }),
+    el('p', { className: 'muted small', textContent: `${lines.length} note(s). Skipped files don't stop the rest from loading.` }),
     el('ul', {}, lines.slice(0, 500).map((l) => el('li', { textContent: l }))),
   );
 }
@@ -338,14 +372,14 @@ function animate() {
   tick = (tick + 1) % PATTERN.length;
   const frame = PATTERN[tick];
 
-  const walk = state.composites.TV;
   const wctx = $('walk-canvas').getContext('2d');
   wctx.clearRect(0, 0, 48, 48);
+  const walk = state.composites.TV;
   if (walk) wctx.drawImage(walk.canvas, frame * 48, state.walkDir * 48, 48, 48, 0, 0, 48, 48);
 
-  const sv = state.composites.SV;
   const sctx = $('sv-canvas').getContext('2d');
   sctx.clearRect(0, 0, 64, 64);
+  const sv = state.composites.SV;
   if (sv) {
     const m = state.svMotion;
     sctx.drawImage(sv.canvas, (Math.floor(m / 6) * 3 + frame) * 64, (m % 6) * 64, 64, 64, 0, 0, 64, 64);
@@ -356,15 +390,17 @@ setInterval(animate, 180);
 // ---------- custom gradients ----------
 
 let dialogSlot = null;
+/** Stops in RPG Maker's orientation: highlight at column 0, shadow at column 255. */
+function dialogStops() {
+  const stops = [{ pos: 0, color: $('stop-2').value }, { pos: 0.4, color: $('stop-1').value }, { pos: 1, color: $('stop-0').value }];
+  return state.settings.flipGradient ? stops.map((s) => ({ ...s, pos: 1 - s.pos })) : stops;
+}
 function drawGradientPreview() {
   const g = createCustomGradient('preview', '', dialogStops());
-  $('gradient-preview').getContext('2d').putImageData(new ImageData(g.colors.slice(), 256, 1), 0, 0);
-  const ctx = $('gradient-preview').getContext('2d');
-  for (let y = 1; y < 16; y++) ctx.drawImage($('gradient-preview'), 0, 0, 256, 1, 0, y, 256, 1);
-}
-function dialogStops() {
-  const stops = [{ pos: 0, color: $('stop-0').value }, { pos: 0.6, color: $('stop-1').value }, { pos: 1, color: $('stop-2').value }];
-  return state.settings.invertGradient ? stops.map((s) => ({ ...s, pos: 1 - s.pos })) : stops;
+  const canvas = $('gradient-preview');
+  const ctx = canvas.getContext('2d');
+  ctx.putImageData(new ImageData(g.colors.slice(), 256, 1), 0, 0);
+  for (let y = 1; y < canvas.height; y++) ctx.drawImage(canvas, 0, 0, 256, 1, 0, y, 256, 1);
 }
 function openGradientDialog(slot) {
   dialogSlot = slot;
@@ -376,14 +412,60 @@ for (const id of ['stop-0', 'stop-1', 'stop-2']) $(id).addEventListener('input',
 $('gradient-dialog').addEventListener('close', () => {
   if ($('gradient-dialog').returnValue !== 'ok' || !dialogSlot) return;
   const id = `custom/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const gradient = createCustomGradient(id, $('gradient-name').value || 'Custom', dialogStops());
-  state.customGradients.push(gradient);
+  state.customGradients.push(createCustomGradient(id, $('gradient-name').value || 'Custom', dialogStops()));
   state.character.colors[dialogSlot.id] = id;
   renderSlots();
   renderPreview();
 });
 
-// ---------- events ----------
+// ---------- folders ----------
+
+async function importHandle(handle) {
+  await importEntries(await entriesFromHandle(handle), handle.name);
+}
+
+async function renderRecentFolders() {
+  const box = $('recent-folders');
+  if (!canRememberFolders) return;
+  const handles = await rememberedFolders();
+  box.hidden = !handles.length;
+  if (!handles.length) return;
+  const openAll = el('button', { className: 'primary', textContent: handles.length > 1 ? 'Reopen all' : `Reopen ${handles[0].name}` });
+  openAll.addEventListener('click', async () => {
+    for (const h of handles) {
+      if (await ensureReadPermission(h)) await importHandle(h);
+    }
+  });
+  box.replaceChildren(el('span', { className: 'muted small', textContent: 'Last time:' }), openAll);
+  if (handles.length > 1) {
+    for (const h of handles) {
+      const b = el('button', { textContent: h.name });
+      b.addEventListener('click', async () => {
+        if (await ensureReadPermission(h)) await importHandle(h);
+      });
+      box.append(b);
+    }
+  }
+  const forget = el('button', { className: 'forget', textContent: 'Forget', title: 'Forget these folders' });
+  forget.addEventListener('click', async () => {
+    for (const h of handles) await forgetFolder(h.name);
+    renderRecentFolders();
+  });
+  box.append(forget);
+}
+
+// With the File System Access API the chosen folder is remembered for next time.
+$('folder-input').parentElement.addEventListener('click', async (e) => {
+  if (!canRememberFolders) return; // fall through to the plain <input webkitdirectory>
+  e.preventDefault();
+  try {
+    const handle = await pickFolder();
+    await rememberFolder(handle);
+    await importHandle(handle);
+  } catch (err) {
+    if (err.name !== 'AbortError') toast(`Could not open the folder: ${err.message}`);
+  }
+});
 
 $('folder-input').addEventListener('change', async (e) => {
   const entries = entriesFromFileList(e.target.files);
@@ -399,8 +481,21 @@ async function loadSampleKit() {
   }
 }
 $('sample-kit').addEventListener('click', loadSampleKit);
-// Demo link: index.html?sample loads the sample kit straight away.
-if (new URLSearchParams(location.search).has('sample')) loadSampleKit();
+// Demo link: ?sample loads the sample kit straight away.
+// Dev: ?pack=<folder> loads a folder that has a manifest.json (see tools/make-manifest.mjs).
+(async () => {
+  const params = new URLSearchParams(location.search);
+  if (params.has('sample')) await loadSampleKit();
+  for (const folder of params.getAll('pack')) {
+    try {
+      const base = folder.replace(/\/?$/, '/');
+      await importEntries(await sampleKitEntries(base), folder.split('/').filter(Boolean).pop());
+    } catch (err) {
+      toast(`Could not load ${folder}: ${err.message}`);
+    }
+  }
+})();
+renderRecentFolders();
 
 document.addEventListener('dragover', (e) => {
   e.preventDefault();
@@ -418,12 +513,22 @@ document.addEventListener('drop', async (e) => {
   else await importEntries(entries, packNameFromEntries(entries, 'Dropped files'));
 });
 
+// ---------- editor events ----------
+
 $('body-type').addEventListener('change', (e) => {
-  const body = state.library.bodyTypes.get(e.target.value);
+  const bodyType = e.target.value;
   const parts = {};
-  for (const [part, id] of Object.entries(state.character.parts)) parts[part] = id ? resolveVariant(body, part, id) : null;
-  state.character = applyDefaults({ ...state.character, bodyType: e.target.value, parts }, body);
-  if (state.selectedPart !== ALL_COLOURS && !body.parts.has(state.selectedPart)) state.selectedPart = ALL_COLOURS;
+  for (const [part, id] of Object.entries(state.character.parts)) {
+    const variant = state.library.variants.get(id);
+    // Parts from the old body type switch to the same part number in the new one, if it exists.
+    // Parts deliberately borrowed from a third body type stay as they are.
+    if (variant && variant.bodyType === state.character.bodyType) {
+      parts[part] = resolveVariant(state.library, part, `${variant.pack}/${bodyType}/${part}/${variant.pid}`, bodyType) || id;
+    } else {
+      parts[part] = id;
+    }
+  }
+  state.character = applyDefaults({ ...state.character, bodyType, parts }, state.library);
   renderAll();
 });
 
@@ -437,8 +542,15 @@ $('lock-part').addEventListener('change', (e) => {
   renderSidebar();
 });
 
+for (const id of ['off-face-x', 'off-face-y', 'off-sprite-x', 'off-sprite-y']) $(id).addEventListener('input', updateOffset);
+$('off-reset').addEventListener('click', () => {
+  delete state.character.offsets?.[state.selectedPart];
+  renderOffsets();
+  renderPreview();
+});
+
 $('randomize').addEventListener('click', () => {
-  state.character = randomize(state.character, currentBody(), allGradients(), { locked: state.locked });
+  state.character = randomize(state.character, state.library, allGradients(), { locked: state.locked });
   renderAll();
 });
 
@@ -453,12 +565,14 @@ $('dir-buttons').children[0].classList.add('active');
 $('sv-motion').replaceChildren(...SV_MOTIONS.map((m, i) => el('option', { value: i, textContent: m })));
 $('sv-motion').addEventListener('change', (e) => (state.svMotion = Number(e.target.value)));
 
-$('invert-gradient').checked = state.settings.invertGradient;
-$('invert-gradient').addEventListener('change', (e) => {
-  state.settings.invertGradient = e.target.checked;
+$('flip-gradient').checked = state.settings.flipGradient;
+$('flip-gradient').addEventListener('change', (e) => {
+  state.settings.flipGradient = e.target.checked;
   saveSettings();
   if (state.character) renderPreview();
 });
+
+// ---------- export / save / load ----------
 
 function safeFileName(name) {
   return (name || 'character').replace(/[\\/:*?"<>|]+/g, '').trim() || 'character';
@@ -479,7 +593,7 @@ document.querySelector('.export').addEventListener('click', async (e) => {
   if (sheet === 'all' && state.customGradients.length) {
     await downloadImage(gradientsToImage(state.customGradients), `${name}_custom_gradients.png`);
   }
-  toast(count ? `Exported ${count} image(s).` : 'Nothing to export for this sheet: no parts have layers for it.');
+  toast(count ? `Exported ${count} image(s).` : 'Nothing to export for this sheet: no selected part has layers for it.');
 });
 
 $('save-character').addEventListener('click', () => {
@@ -493,7 +607,7 @@ async function loadCharacterFile(file) {
     for (const g of customGradients) {
       if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(g);
     }
-    state.character = applyDefaults(character, state.library.bodyTypes.get(character.bodyType));
+    state.character = applyDefaults(character, state.library);
     renderAll();
     toast(missing.length ? `Loaded, but missing: ${missing.join(', ')}` : `Loaded ${character.name}.`);
   } catch (err) {

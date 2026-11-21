@@ -49,7 +49,7 @@ test('two packs with the same part numbers never overwrite each other', () => {
   addPack(lib, 'Base', [{ path: 'TV/Male/TV_FrontHair1_p01.png', src: 'b' }]);
   const variants = lib.bodyTypes.get('Male').parts.get('FrontHair');
   assert.equal(variants.size, 2);
-  assert.deepEqual([...variants.keys()], ['Base/p01', 'Base (2)/p01']);
+  assert.deepEqual([...variants.keys()], ['Base/Male/FrontHair/p01', 'Base (2)/Male/FrontHair/p01']);
 });
 
 test('mask and base end up on the same layer; orphan masks are reported', () => {
@@ -60,11 +60,29 @@ test('mask and base end up on the same layer; orphan masks are reported', () => 
     { path: 'TV/Male/TV_Tail1_p01_c.png', src: 'orphan' },
     { path: 'TV/Male/readme.png', src: 'x' },
   ]);
-  const body = lib.bodyTypes.get('Male').parts.get('Body').get('P/p01');
+  const body = lib.variants.get('P/Male/Body/p01');
+  assert.equal(body.part, 'Body');
   assert.equal(body.layers.length, 1);
   assert.equal(body.layers[0].base.src, 'base');
   assert.equal(body.layers[0].mask.src, 'mask');
-  assert.equal(lib.bodyTypes.get('Male').parts.get('Tail').get('P/p01').layers.length, 0);
+  assert.equal(lib.bodyTypes.get('Male').parts.get('Tail').get('P/Male/Tail/p01').layers.length, 0);
   assert.ok(lib.warnings.some((w) => w.includes('TV_Tail1_p01_c.png')));
   assert.equal(lib.unrecognized.length, 1);
+});
+
+test('variants from different body types are separate and all indexed', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', [
+    { path: 'TV/Male/TV_AccA_p835.png', src: 'm' },
+    { path: 'TV/Female/TV_AccA_p835.png', src: 'f' },
+  ]);
+  assert.equal(lib.variants.get('P/Male/AccA/p835').bodyType, 'Male');
+  assert.equal(lib.variants.get('P/Female/AccA/p835').layers[0].base.src, 'f');
+});
+
+test('face cells without a colour number are kept as uncoloured layers', () => {
+  const p = parsePartPath('Face/Female/FG_Eyes_p2002_c2.png');
+  assert.equal(p.cell, 'c2');
+  assert.equal(p.slotId, null);
+  assert.deepEqual(p.unknownSuffixes, []);
 });

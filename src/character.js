@@ -1,29 +1,34 @@
-// Character model: which variant per part, which gradient per colour slot.
+// Character model: which variant per part (from any body type), which gradient per colour slot,
+// and per-part pixel offsets.
 
 import { PART_ORDER, REQUIRED_PARTS, SLOTS } from './format.js';
 import { preferredCategory, createCustomGradient } from './gradients.js';
 
-export const CHARACTER_FILE_VERSION = 1;
+// v1: variant ids were "pack/pNN" (one body type per character).
+// v2: variant ids are "pack/bodyType/part/pNN" and characters may carry offsets.
+export const CHARACTER_FILE_VERSION = 2;
 
 export function createCharacter(bodyType) {
-  return { name: 'New character', bodyType, parts: {}, colors: {} };
+  return { name: 'New character', bodyType, parts: {}, colors: {}, offsets: {} };
 }
 
-/** Parts available for a body type, known parts first, then any custom part names found in packs. */
-export function partNames(body) {
-  if (!body) return [];
-  const found = [...body.parts.keys()];
-  const known = PART_ORDER.filter((p) => found.includes(p));
-  const extra = found.filter((p) => !PART_ORDER.includes(p)).sort();
+/** Part names for the editor: known parts first, then custom part names found in any pack. */
+export function partNames(library, bodyType) {
+  const found = new Set();
+  const body = library.bodyTypes.get(bodyType);
+  if (body) body.parts.forEach((_, p) => found.add(p));
+  // Parts that only exist for other body types are still offered (mixing is allowed).
+  for (const b of library.bodyTypes.values()) b.parts.forEach((_, p) => found.add(p));
+  const known = PART_ORDER.filter((p) => found.has(p));
+  const extra = [...found].filter((p) => !PART_ORDER.includes(p)).sort();
   return [...known, ...extra];
 }
 
 /** Colour slots that the currently selected variants actually use. */
-export function usedSlots(character, body) {
+export function usedSlots(character, library) {
   const ids = new Set();
-  if (!body) return [];
-  for (const [part, variantId] of Object.entries(character.parts)) {
-    const variant = variantId && body.parts.get(part)?.get(variantId);
+  for (const variantId of Object.values(character.parts)) {
+    const variant = variantId && library.variants.get(variantId);
     if (!variant) continue;
     for (const layer of variant.layers) {
       if (layer.slotId) ids.add(layer.slotId);
@@ -34,7 +39,8 @@ export function usedSlots(character, body) {
 }
 
 /** Picks a default variant for required parts so a fresh character is never invisible. */
-export function applyDefaults(character, body) {
+export function applyDefaults(character, library) {
+  const body = library.bodyTypes.get(character.bodyType);
   if (!body) return character;
   for (const part of REQUIRED_PARTS) {
     const variants = body.parts.get(part);
@@ -48,17 +54,20 @@ function pick(list, rng) {
 }
 
 /**
- * Randomises parts and colours.
+ * Randomises parts (from the character's own body type) and colours.
  * @param {object} options.locked set of part names / slot ids that must not change
  * @param {number} options.optionalChance chance an optional part is worn
  */
-export function randomize(character, body, gradients, { rng = Math.random, locked = new Set(), optionalChance = 0.5 } = {}) {
+export function randomize(character, library, gradients, { rng = Math.random, locked = new Set(), optionalChance = 0.5 } = {}) {
   const next = { ...character, parts: { ...character.parts }, colors: { ...character.colors } };
-  for (const part of partNames(body)) {
-    if (locked.has(part)) continue;
-    const ids = [...body.parts.get(part).keys()];
-    if (!REQUIRED_PARTS.has(part) && rng() > optionalChance) next.parts[part] = null;
-    else next.parts[part] = pick(ids, rng);
+  const body = library.bodyTypes.get(character.bodyType);
+  if (body) {
+    for (const [part, variants] of body.parts) {
+      if (locked.has(part)) continue;
+      const ids = [...variants.keys()];
+      if (!REQUIRED_PARTS.has(part) && rng() > optionalChance) next.parts[part] = null;
+      else next.parts[part] = pick(ids, rng);
+    }
   }
   if (gradients.length) {
     for (const slot of SLOTS) {
@@ -71,15 +80,28 @@ export function randomize(character, body, gradients, { rng = Math.random, locke
 }
 
 /**
- * Finds a variant for a saved reference. Exact id first; otherwise the same part number from any
- * pack, so a character still loads when a pack folder was renamed.
+ * Finds a variant for a saved reference. Exact id first; otherwise the same body type and part
+ * number from any pack (so a renamed pack folder still loads), then the same part number from any
+ * body type. Understands v1 ids ("pack/pNN") via `fallbackBodyType`.
  */
-export function resolveVariant(body, part, variantId) {
-  const variants = body?.parts.get(part);
-  if (!variants || !variantId) return null;
-  if (variants.has(variantId)) return variantId;
-  const pid = variantId.split('/').pop();
-  for (const [id, v] of variants) if (v.pid === pid) return id;
+export function resolveVariant(library, part, savedId, fallbackBodyType) {
+  if (!savedId) return null;
+  const exact = library.variants.get(savedId);
+  if (exact && exact.part === part) return savedId;
+
+  const segments = savedId.split('/');
+  const pid = segments[segments.length - 1];
+  const bodyType = segments.length >= 4 ? segments[segments.length - 3] : fallbackBodyType;
+  const inBody = (name) => {
+    for (const [id, v] of library.bodyTypes.get(name)?.parts.get(part) || []) if (v.pid === pid) return id;
+    return null;
+  };
+  const sameBody = inBody(bodyType);
+  if (sameBody) return sameBody;
+  for (const name of library.bodyTypes.keys()) {
+    const found = inBody(name);
+    if (found) return found;
+  }
   return null;
 }
 
@@ -111,15 +133,20 @@ export function deserializeCharacter(json, library) {
   const missing = [];
   const bodyType = library.bodyTypes.has(saved.bodyType) ? saved.bodyType : [...library.bodyTypes.keys()][0];
   if (bodyType !== saved.bodyType) missing.push(`body type ${saved.bodyType}`);
-  const body = library.bodyTypes.get(bodyType);
 
-  const character = { name: saved.name || 'Character', bodyType, parts: {}, colors: { ...saved.colors } };
+  const character = {
+    name: saved.name || 'Character',
+    bodyType,
+    parts: {},
+    colors: { ...saved.colors },
+    offsets: structuredClone(saved.offsets || {}),
+  };
   for (const [part, id] of Object.entries(saved.parts || {})) {
     if (!id) {
       character.parts[part] = null;
       continue;
     }
-    const resolved = resolveVariant(body, part, id);
+    const resolved = resolveVariant(library, part, id, saved.bodyType);
     if (!resolved) missing.push(`${part} ${id}`);
     character.parts[part] = resolved;
   }

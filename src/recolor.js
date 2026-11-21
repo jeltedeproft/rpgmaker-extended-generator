@@ -46,7 +46,7 @@ export function matchSlot(rgb) {
  * @param {object|null} mask image of the same size
  * @param {string|null} slotId
  * @param {(slotId:string)=>Uint8ClampedArray|null} gradientFor
- * @param {{invertGradient:boolean}} settings
+ * @param {{flipGradient:boolean}} settings
  */
 export function recolorLayer(base, mask, slotId, gradientFor, settings) {
   const out = { width: base.width, height: base.height, data: new Uint8ClampedArray(base.data) };
@@ -54,7 +54,7 @@ export function recolorLayer(base, mask, slotId, gradientFor, settings) {
 
   const src = base.data;
   const dst = out.data;
-  const invert = settings.invertGradient;
+  const flip = settings.flipGradient;
   const wholeLayerGradient = slotId ? gradientFor(slotId) : null;
   if (!mask && !wholeLayerGradient) return out;
 
@@ -73,8 +73,9 @@ export function recolorLayer(base, mask, slotId, gradientFor, settings) {
       gradient = perSlot.get(id);
     }
     if (!gradient) continue;
-    let index = luminance(src[i], src[i + 1], src[i + 2]);
-    if (invert) index = 255 - index;
+    // Gradients run highlight (column 0) -> shadow (column 255).
+    let index = 255 - luminance(src[i], src[i + 1], src[i + 2]);
+    if (flip) index = 255 - index;
     dst[i] = gradient[index * 4];
     dst[i + 1] = gradient[index * 4 + 1];
     dst[i + 2] = gradient[index * 4 + 2];
@@ -82,16 +83,22 @@ export function recolorLayer(base, mask, slotId, gradientFor, settings) {
   return out;
 }
 
-/** Source-over blends `top` onto `target` in place, with top offset by (ox, oy). */
-export function blendOver(target, top, ox = 0, oy = 0) {
+/**
+ * Source-over blends `top` onto `target` in place, with top offset by (ox, oy).
+ * With `frame` ({w, h}), pixels never move into a neighbouring animation frame: anything shifted
+ * past its frame's edge is clipped.
+ */
+export function blendOver(target, top, ox = 0, oy = 0, frame = null) {
   const t = target.data;
   const s = top.data;
   for (let y = 0; y < top.height; y++) {
     const ty = y + oy;
     if (ty < 0 || ty >= target.height) continue;
+    if (frame && Math.floor(y / frame.h) !== Math.floor(ty / frame.h)) continue;
     for (let x = 0; x < top.width; x++) {
       const tx = x + ox;
       if (tx < 0 || tx >= target.width) continue;
+      if (frame && Math.floor(x / frame.w) !== Math.floor(tx / frame.w)) continue;
       const si = (y * top.width + x) * 4;
       const sa = s[si + 3];
       if (sa === 0) continue;

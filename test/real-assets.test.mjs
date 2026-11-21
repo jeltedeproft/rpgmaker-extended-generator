@@ -1,0 +1,90 @@
+// Runs against real generator packs in test-assets/ (git-ignored, not redistributable).
+// Skipped when the folder is missing, e.g. on a fresh clone.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { decodePng } from '../tools/png.mjs';
+import { createLibrary, addPack } from '../src/parse.js';
+import { splitGradientImage } from '../src/gradients.js';
+import { composeSheet } from '../src/compose.js';
+import { matchSlot } from '../src/recolor.js';
+
+const ASSETS = join(dirname(fileURLToPath(import.meta.url)), '..', 'test-assets');
+const packs = existsSync(ASSETS) ? readdirSync(ASSETS).filter((n) => statSync(join(ASSETS, n)).isDirectory()) : [];
+const skip = packs.length ? false : 'no packs in test-assets/';
+
+function walk(dir) {
+  return readdirSync(dir).flatMap((n) => {
+    const p = join(dir, n);
+    return statSync(p).isDirectory() ? walk(p) : [p];
+  });
+}
+
+function loadPack(name) {
+  const root = join(ASSETS, name);
+  const entries = walk(root).map((p) => ({ path: relative(root, p).replaceAll('\\', '/'), src: p }));
+  const lib = createLibrary();
+  addPack(lib, name, entries);
+  const decode = (ref) => ref && (ref.pixels ||= decodePng(readFileSync(ref.src)));
+  for (const v of lib.variants.values()) {
+    for (const l of v.layers) {
+      decode(l.base);
+      decode(l.mask);
+    }
+  }
+  const gradients = lib.gradientFiles.flatMap((g) =>
+    splitGradientImage(decodePng(readFileSync(g.src)), { pack: name, name: g.path, category: g.category }));
+  return { lib, gradients };
+}
+
+for (const name of packs.length ? packs : ['(none)']) {
+  test(`${name}: every part file is recognised and every mask colour is a known slot`, { skip }, () => {
+    const { lib } = loadPack(name);
+    const unrecognised = lib.unrecognized.map((u) => u.path).filter((p) => /(^|\/)(Face|TV|TVD|SV|Variation)\//i.test(p));
+    assert.deepEqual(unrecognised, []);
+    for (const v of lib.variants.values()) {
+      for (const l of v.layers) {
+        if (!l.mask) continue;
+        const d = l.mask.pixels.data;
+        for (let i = 0; i < d.length; i += 4) {
+          if (!d[i + 3]) continue;
+          const rgb = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+          if (rgb !== 0xffffff) assert.ok(matchSlot(rgb), `${l.mask.path}: unknown mask colour #${rgb.toString(16)}`);
+        }
+      }
+    }
+  });
+
+  test(`${name}: gradients run light to dark`, { skip }, () => {
+    const { gradients } = loadPack(name);
+    if (!gradients.length) return;
+    const lum = (c, x) => 0.299 * c[x * 4] + 0.587 * c[x * 4 + 1] + 0.114 * c[x * 4 + 2];
+    const lightLeft = gradients.filter((g) => lum(g.colors, 0) > lum(g.colors, 255)).length;
+    assert.ok(lightLeft / gradients.length > 0.9, `${lightLeft}/${gradients.length} gradients are light on the left`);
+  });
+
+  test(`${name}: renders a character mixing parts from two body types`, { skip }, () => {
+    const { lib, gradients } = loadPack(name);
+    const bodyTypes = [...lib.bodyTypes.keys()];
+    const character = { bodyType: bodyTypes[0], parts: {}, colors: {}, offsets: {} };
+    // One variant per part, alternating body types, preferring variants with sprite layers.
+    let i = 0;
+    for (const v of lib.variants.values()) {
+      if (character.parts[v.part] || v.bodyType !== bodyTypes[i++ % bodyTypes.length]) continue;
+      if (v.layers.some((l) => l.sheet === 'TV')) character.parts[v.part] = v.id;
+    }
+    for (const g of gradients.slice(0, 1)) for (const id of ['skin', 'hair', 'eyes', 'accA', 'beastEars', 'clothing', 'mark']) character.colors[id] = g.id;
+    const byId = new Map(gradients.map((g) => [g.id, g]));
+    for (const sheet of ['FG', 'TV', 'TVD', 'SV']) {
+      const { image, problems } = composeSheet(sheet, character, lib, byId, { flipGradient: false });
+      assert.deepEqual(problems, [], sheet);
+      if (!image) continue;
+      if (sheet === 'FG') assert.deepEqual([image.width, image.height], [144, 144]);
+      let opaque = 0;
+      for (let k = 3; k < image.data.length; k += 4) if (image.data[k]) opaque++;
+      assert.ok(opaque > 0, `${sheet} rendered nothing`);
+    }
+  });
+}
