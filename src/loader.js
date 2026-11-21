@@ -1,0 +1,156 @@
+// Browser-only: reading folders, decoding PNGs to pixels, exporting.
+
+import { splitGradientImage } from './gradients.js';
+import { matchSlot } from './recolor.js';
+
+/** Entries from <input type=file webkitdirectory>. */
+export function entriesFromFileList(fileList) {
+  return [...fileList].map((file) => ({ path: file.webkitRelativePath || file.name, src: file }));
+}
+
+/** Entries from a drag-and-drop of folders and/or files. */
+export async function entriesFromDrop(dataTransfer) {
+  const roots = [...dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
+  const entries = [];
+  async function walk(entry, prefix) {
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      entries.push({ path: prefix + entry.name, src: file });
+      return;
+    }
+    const reader = entry.createReader();
+    // readEntries returns results in batches; keep reading until empty.
+    for (;;) {
+      const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+      if (!batch.length) break;
+      for (const child of batch) await walk(child, `${prefix}${entry.name}/`);
+    }
+  }
+  for (const root of roots) await walk(root, '');
+  return entries;
+}
+
+/** A pack name from the top folder of the entries. */
+export function packNameFromEntries(entries, fallback = 'Pack') {
+  const first = entries[0]?.path.split('/')[0];
+  return first && entries.every((e) => e.path.startsWith(first + '/')) ? first : fallback;
+}
+
+/** Entries for the bundled sample kit (src = URL). */
+export async function sampleKitEntries(baseUrl = 'sample-kit/') {
+  const manifest = await (await fetch(baseUrl + 'manifest.json')).json();
+  return manifest.files.map((path) => ({ path, src: baseUrl + path }));
+}
+
+async function toBlob(src) {
+  if (typeof src === 'string') {
+    const res = await fetch(src);
+    if (!res.ok) throw new Error(`${src}: HTTP ${res.status}`);
+    return res.blob();
+  }
+  return src;
+}
+
+/** Decodes a PNG (File, Blob or URL) to {width, height, data}. Colours are not premultiplied/converted. */
+export async function decodeImage(src) {
+  const bitmap = await createImageBitmap(await toBlob(src), {
+    premultiplyAlpha: 'none',
+    colorSpaceConversion: 'none',
+  });
+  const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(bitmap, 0, 0);
+  bitmap.close();
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+/** Slot ids present in a mask, so the editor only offers colours a part really uses. */
+function scanMaskSlots(mask) {
+  const slots = new Set();
+  const seen = new Set();
+  const d = mask.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const rgb = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+    if (seen.has(rgb)) continue;
+    seen.add(rgb);
+    const id = matchSlot(rgb);
+    if (id) slots.add(id);
+  }
+  return slots;
+}
+
+const pending = new WeakMap();
+
+/** Decodes an image ref ({src, pixels}) once; concurrent calls share the work. */
+export function ensureImage(ref, isMask = false) {
+  if (!ref || ref.pixels) return Promise.resolve(ref?.pixels);
+  if (!pending.has(ref)) {
+    pending.set(
+      ref,
+      decodeImage(ref.src).then((pixels) => {
+        ref.pixels = pixels;
+        if (isMask) ref.slots = scanMaskSlots(pixels);
+        return pixels;
+      }),
+    );
+  }
+  return pending.get(ref);
+}
+
+/** Decodes every layer of the given variants. Returns error messages instead of throwing. */
+export async function ensureVariants(variants) {
+  const errors = [];
+  const jobs = [];
+  for (const v of variants) {
+    for (const layer of v.layers) {
+      jobs.push(ensureImage(layer.base).catch((e) => errors.push(`${layer.base.path}: ${e.message}`)));
+      if (layer.mask) jobs.push(ensureImage(layer.mask, true).catch((e) => errors.push(`${layer.mask.path}: ${e.message}`)));
+    }
+  }
+  await Promise.all(jobs);
+  return errors;
+}
+
+/** Decodes all gradient files found in the library. */
+export async function loadGradients(library) {
+  const gradients = [];
+  const errors = [];
+  for (const g of library.gradientFiles) {
+    try {
+      const pixels = await decodeImage(g.src);
+      const name = g.path.split('/').pop().replace(/\.png$/i, '');
+      gradients.push(...splitGradientImage(pixels, { pack: g.pack, name, category: g.category }));
+    } catch (e) {
+      errors.push(`${g.path}: ${e.message}`);
+    }
+  }
+  return { gradients, errors };
+}
+
+/** Image -> canvas element. */
+export function toCanvas(image) {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(image.data), image.width, image.height), 0, 0);
+  return canvas;
+}
+
+export function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function downloadImage(image, fileName) {
+  return new Promise((resolve) => toCanvas(image).toBlob((blob) => {
+    downloadBlob(blob, fileName);
+    resolve();
+  }, 'image/png'));
+}

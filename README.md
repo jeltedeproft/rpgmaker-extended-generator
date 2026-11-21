@@ -1,0 +1,33 @@
+# Extended Character Generator (RPG Maker MV/MZ)
+
+A browser-based character generator for RPG Maker MV/MZ generator parts. It aims to be what the
+existing extended generator is, minus the bugs:
+
+- **No install, any OS:** a static web page; files never leave your machine.
+- **Drop in any folder:** RPG Maker's `Generator` folder, asset packs, or both. Each folder is its
+  own pack, so same-numbered parts **never overwrite each other**.
+- **Forgiving import:** files that don't match the naming convention are listed in an import
+  report instead of breaking the load. Any variation id works (`p01`, `p5001`, `pMV01`).
+- **Unlimited colours:** every gradient sheet found is loaded, any gradient fits any slot, and you
+  can make your own (exportable as a gradient sheet).
+- **Live preview** of face, animated walk (4 directions), animated battler (18 motions), damage.
+- **Export** face / walk (`$Name.png`) / damage / battler PNGs; **save/load** characters as JSON
+  (still loads if a pack folder was renamed).
+- **Randomize** with per-part locks.
+
+## Develop
+No dependencies. Needs Node 20+.
+```
+npm run serve        # http://localhost:5173  (add ?sample to auto-load the sample kit)
+npm test             # unit tests (parser, recolouring, compositing, save/load)
+node tools/smoke.mjs # headless-Chrome UI smoke test (needs the server running)
+npm run sample-kit   # regenerate the placeholder kit in sample-kit/
+```
+`sample-kit/` is generated placeholder art in the generator's file format, so we can develop
+without shipping RPG Maker's licensed assets.
+
+## Layout
+- `src/format.js`: everything about the RPG Maker format (slots, draw order, sizes). See `docs/FORMAT.md`.
+- `src/parse.js`: filenames → part library. `src/recolor.js`, `src/compose.js`: pixel work.
+- `src/character.js`: character model, randomize, save/load. `src/gradients.js`: gradient sheets.
+- `src/loader.js`, `src/app.js`: browser-only (file reading, decoding, UI).

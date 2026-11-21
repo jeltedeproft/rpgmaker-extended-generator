@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Extended Character Generator</title>
+  <meta name="description" content="Browser-based character generator for RPG Maker MV/MZ generator parts: any number of parts and colours, no renaming, no install.">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Extended Character Generator <span class="tag">MV / MZ</span></h1>
+    <div class="actions">
+      <label class="button primary">Open generator folder
+        <input id="folder-input" type="file" webkitdirectory multiple hidden>
+      </label>
+      <button id="sample-kit">Load sample kit</button>
+      <span class="divider"></span>
+      <button id="randomize" disabled>Randomize</button>
+      <button id="save-character" disabled>Save character</button>
+      <label class="button" id="load-character-label">Load character
+        <input id="load-character" type="file" accept=".json,application/json" hidden disabled>
+      </label>
+    </div>
+  </header>
+
+  <main id="app" class="empty">
+    <section id="welcome" class="welcome">
+      <div class="drop-hint">
+        <h2>Drop a generator folder here</h2>
+        <p>Point it at RPG Maker's <code>Generator</code> folder, an asset pack, or both. Every folder you add becomes its own pack, so nothing gets overwritten.</p>
+        <p class="muted">Everything runs in your browser and no files are uploaded.</p>
+      </div>
+    </section>
+
+    <aside id="sidebar" class="panel" hidden>
+      <label class="field">Body type
+        <select id="body-type"></select>
+      </label>
+      <label class="field">Name
+        <input id="character-name" type="text" maxlength="40">
+      </label>
+      <nav id="part-list" class="part-list"></nav>
+      <div id="packs" class="packs"></div>
+    </aside>
+
+    <section id="editor" class="panel" hidden>
+      <div class="editor-head">
+        <h2 id="editor-title"></h2>
+        <label class="lock"><input type="checkbox" id="lock-part"> Lock when randomizing</label>
+      </div>
+      <div id="variants" class="variants"></div>
+      <div id="slots" class="slots"></div>
+    </section>
+
+    <section id="preview" class="panel" hidden>
+      <div class="preview-grid">
+        <figure>
+          <canvas id="face-canvas" width="144" height="144"></canvas>
+          <figcaption>Face</figcaption>
+        </figure>
+        <figure>
+          <canvas id="walk-canvas" width="48" height="48"></canvas>
+          <figcaption>Walk
+            <span class="dir-buttons" id="dir-buttons">
+              <button data-dir="0" title="Down">↓</button><button data-dir="1" title="Left">←</button><button data-dir="2" title="Right">→</button><button data-dir="3" title="Up">↑</button>
+            </span>
+          </figcaption>
+        </figure>
+        <figure>
+          <canvas id="sv-canvas" width="64" height="64"></canvas>
+          <figcaption>Battler <select id="sv-motion"></select></figcaption>
+        </figure>
+        <figure>
+          <canvas id="damage-canvas" width="144" height="48"></canvas>
+          <figcaption>Damage</figcaption>
+        </figure>
+      </div>
+      <h3>Export</h3>
+      <div class="export">
+        <button data-export="FG">Face</button>
+        <button data-export="TV">Walk</button>
+        <button data-export="TVD">Damage</button>
+        <button data-export="SV">Battler</button>
+        <button data-export="all" class="primary">All</button>
+      </div>
+      <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>. Battlers go in <code>img/sv_actors</code> and faces in <code>img/faces</code>.</p>
+      <details class="settings">
+        <summary>Settings</summary>
+        <label><input type="checkbox" id="invert-gradient"> Invert gradient direction</label>
+        <p class="muted small">Turn this on if colours come out with light and dark swapped.</p>
+      </details>
+      <details id="problems" class="problems" hidden>
+        <summary>Import report</summary>
+        <div id="problem-list"></div>
+      </details>
+    </section>
+  </main>
+
+  <dialog id="gradient-dialog">
+    <form method="dialog" class="gradient-form">
+      <h3>New gradient</h3>
+      <label class="field">Name <input id="gradient-name" type="text" value="My colour" maxlength="30"></label>
+      <div class="stops">
+        <label>Shadow <input type="color" id="stop-0" value="#2b1d14"></label>
+        <label>Base <input type="color" id="stop-1" value="#b5651d"></label>
+        <label>Highlight <input type="color" id="stop-2" value="#ffe0b0"></label>
+      </div>
+      <canvas id="gradient-preview" width="256" height="16"></canvas>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button value="ok" class="primary">Use this colour</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>

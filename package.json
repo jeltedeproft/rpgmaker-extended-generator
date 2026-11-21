@@ -1,0 +1,15 @@
+{
+  "name": "rpgmaker-extended-generator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser-based extended character generator for RPG Maker MV/MZ generator assets.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "serve": "node tools/serve.mjs",
+    "sample-kit": "node tools/make-sample-kit.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
