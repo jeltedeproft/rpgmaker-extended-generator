@@ -94,6 +94,12 @@ try {
   await sleep(800);
   check('recolour changes pixels', (await evaluate(hairPixel)) !== hairBefore, `${hairBefore} -> ${await evaluate(hairPixel)}`);
 
+  // Every part tile has a picture (its Variation icon, or a render of the part itself).
+  await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
+  await sleep(1200);
+  check('body tiles have a preview', await evaluate(`[...document.querySelectorAll('#variants .variant')].filter(b => b.title !== 'None').every(b => b.querySelector('canvas'))`));
+  await shot('2b-body.png');
+
   // Randomize a few times.
   for (let i = 0; i < 5; i++) {
     await click('#randomize');
@@ -145,7 +151,9 @@ try {
     check('other colours stay open after a pick', picked === 'ok' && await evaluate(`document.querySelector('.slot details').open`), picked);
     // Body can be set to None.
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
-    await sleep(500);
+    await sleep(1500);
+    check('parts without icons get a preview', await evaluate(`[...document.querySelectorAll('#variants .variant')].filter(b => b.title !== 'None').every(b => b.querySelector('canvas'))`));
+    await shot('5-body-thumbnails.png');
     await evaluate(`[...document.querySelectorAll('#variants .variant')].find(b => b.title === 'None').click()`);
     await sleep(900);
     check('body can be set to None', await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).querySelector('.value').textContent`) === 'none');

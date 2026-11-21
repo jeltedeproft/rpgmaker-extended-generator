@@ -14,9 +14,12 @@
 - ✅ Sprite offsets: disabled (with a note) for parts that only exist on the face, e.g. Eyes. That
   was probably why they "did nothing". Confirm with the tester.
 - ✅ A folder with no recognisable parts now says so instead of "Added ...".
-- [ ] Eyes come out as "two colours / alien" with official parts. Can't reproduce with the
-      SomeNewWork pack (eyes look right). Need: screenshot, which eye part + colour, and ideally the
-      official `FG_Eyes_*` files and `grad_eyes.png`. Likely the brightness measure (FORMAT.md Q1).
+- [ ] Eyes come out as "two colours / alien" with official parts. Screenshot (`docs/imageEyes.png`,
+      a sprite) shows green irises with a row of untouched blue (#1380f8) pixels: most likely the
+      official sprite masks mark them with a colour missing from our slot table. The import report
+      now lists such colours; ask the tester to copy the lines that mention a `_c.png`.
+- ✅ Battler motion names capitalised.
+- ✅ Parts without a Variation icon get a rendered thumbnail (face, else walk, else battler frame).
 - [ ] VX Ace generator folders: different format. Need a file listing to support it.
 - [ ] Odd-eyed bodies from "Basic Resources": need the folder layout/filenames. If they reuse the
       official names, opening them as a second folder may already work (packs never overwrite).

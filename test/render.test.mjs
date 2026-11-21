@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { recolorLayer, blendOver, createImage, matchSlot } from '../src/recolor.js';
+import { recolorLayer, blendOver, createImage, matchSlot, scanMask } from '../src/recolor.js';
 import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
 import { composeSheet, layersForSheet, orderIndex } from '../src/compose.js';
 import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter } from '../src/character.js';
@@ -171,4 +171,12 @@ test('a body or face set to None stays empty; new characters still get one', () 
   assert.ok(fresh.parts.Body);
   const cleared = applyDefaults({ ...fresh, parts: { ...fresh.parts, Body: null } }, lib);
   assert.equal(cleared.parts.Body, null);
+});
+
+test('scanMask lists slots and reports colours that match no slot', () => {
+  const mask = createImage(4, 1);
+  mask.data.set([0x2c, 0x80, 0xcb, 255, 0x13, 0x80, 0xf8, 255, 255, 255, 255, 255, 0x13, 0x80, 0xf8, 255]);
+  const { slots, unknown } = scanMask(mask);
+  assert.deepEqual([...slots], ['eyes']);
+  assert.deepEqual([...unknown], [[0x1380f8, 2]]);
 });

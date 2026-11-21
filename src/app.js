@@ -4,6 +4,7 @@ import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS } from './format.js';
 import { createLibrary, addPack, variantLabel, variantsForPart } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import { composeSheet, selectedVariants } from './compose.js';
+import { createImage } from './recolor.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter,
@@ -16,8 +17,8 @@ import {
 } from './loader.js';
 
 const ALL_COLOURS = '__colours';
-const SV_MOTIONS = ['walk', 'wait', 'chant', 'guard', 'damage', 'evade', 'thrust', 'swing', 'missile',
-  'skill', 'spell', 'item', 'escape', 'victory', 'dying', 'abnormal', 'sleep', 'dead'];
+const SV_MOTIONS = ['Walk', 'Wait', 'Chant', 'Guard', 'Damage', 'Evade', 'Thrust', 'Swing', 'Missile',
+  'Skill', 'Spell', 'Item', 'Escape', 'Victory', 'Dying', 'Abnormal', 'Sleep', 'Dead'];
 const SHEET_FILE_NAMES = {
   FG: (n) => `${n}_face.png`,
   TV: (n) => `$${n}.png`,
@@ -226,8 +227,9 @@ function variantTile(part, variant) {
   const tile = el('button', { className: 'variant' + (selected ? ' selected' : ''), title: variant ? variant.id : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
   tile.append(thumb, el('span', { textContent: variant ? variantLabel(state.library, variant, state.character.bodyType) : 'None' }));
-  if (variant?.icon) {
-    ensureImage(variant.icon).then((pixels) => thumb.replaceWith(toCanvas(pixels))).catch(() => {});
+  if (variant) {
+    const thumbnail = variant.icon ? ensureImage(variant.icon) : partThumbnail(part, variant);
+    thumbnail.then((pixels) => pixels && thumb.replaceWith(toCanvas(pixels))).catch(() => {});
   }
   tile.addEventListener('click', () => {
     state.character.parts[part] = variant?.id || null;
@@ -236,6 +238,27 @@ function variantTile(part, variant) {
     renderPreview();
   });
   return tile;
+}
+
+/**
+ * Preview for parts without a Variation icon: the part alone, in the current colours. Uses the
+ * face if it has one, else the first walk frame (facing down), else the first battler frame.
+ */
+async function partThumbnail(part, variant) {
+  await ensureVariants([variant]);
+  const alone = { ...state.character, parts: { [part]: variant.id }, offsets: {} };
+  for (const [sheet, frame] of [['FG', null], ['TV', { x: 48, y: 0, w: 48, h: 48 }], ['SV', { x: 0, y: 0, w: 64, h: 64 }]]) {
+    const { image } = composeSheet(sheet, alone, state.library, gradientsById(), state.settings);
+    if (!image) continue;
+    if (!frame) return image;
+    const out = createImage(frame.w, frame.h);
+    for (let y = 0; y < frame.h; y++) {
+      const start = ((frame.y + y) * image.width + frame.x) * 4;
+      out.data.set(image.data.subarray(start, start + frame.w * 4), y * frame.w * 4);
+    }
+    return out;
+  }
+  return null;
 }
 
 function renderOffsets() {
@@ -356,7 +379,7 @@ async function renderPreview() {
   const errors = await ensureVariants(selectedVariants(state.character, state.library));
   if (token !== state.previewToken) return;
   const byId = gradientsById();
-  const problems = [...errors];
+  const problems = [...errors, ...unknownMaskColours()];
   for (const sheet of SHEET_KEYS) {
     const { image, problems: p } = composeSheet(sheet, state.character, state.library, byId, state.settings);
     problems.push(...p);
@@ -378,6 +401,21 @@ async function renderPreview() {
   dmgCtx.clearRect(0, 0, 144, 48);
   if (state.composites.TVD) dmgCtx.drawImage(state.composites.TVD.canvas, 0, 0);
   renderProblems();
+}
+
+/** Mask colours in the selected parts that match no colour slot: those pixels can't be recoloured. */
+function unknownMaskColours() {
+  const lines = [];
+  for (const variant of selectedVariants(state.character, state.library)) {
+    for (const layer of variant.layers) {
+      const unknown = layer.mask?.unknownColors;
+      if (!unknown?.size) continue;
+      const colours = [...unknown].sort((a, b) => b[1] - a[1])
+        .map(([rgb, n]) => `#${rgb.toString(16).padStart(6, '0')} (${n} px)`).join(', ');
+      lines.push(`${layer.mask.path}: mask colour(s) not tied to any colour slot, left unrecoloured: ${colours}`);
+    }
+  }
+  return lines;
 }
 
 function renderProblems() {

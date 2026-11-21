@@ -1,7 +1,7 @@
 // Browser-only: reading folders, decoding PNGs to pixels, exporting.
 
 import { splitGradientImage } from './gradients.js';
-import { matchSlot } from './recolor.js';
+import { scanMask } from './recolor.js';
 
 /** Entries from <input type=file webkitdirectory>. */
 export function entriesFromFileList(fileList) {
@@ -64,22 +64,6 @@ export async function decodeImage(src) {
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-/** Slot ids present in a mask, so the editor only offers colours a part really uses. */
-function scanMaskSlots(mask) {
-  const slots = new Set();
-  const seen = new Set();
-  const d = mask.data;
-  for (let i = 0; i < d.length; i += 4) {
-    if (d[i + 3] === 0) continue;
-    const rgb = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
-    if (seen.has(rgb)) continue;
-    seen.add(rgb);
-    const id = matchSlot(rgb);
-    if (id) slots.add(id);
-  }
-  return slots;
-}
-
 const pending = new WeakMap();
 
 /** Decodes an image ref ({src, pixels}) once; concurrent calls share the work. */
@@ -90,7 +74,12 @@ export function ensureImage(ref, isMask = false) {
       ref,
       decodeImage(ref.src).then((pixels) => {
         ref.pixels = pixels;
-        if (isMask) ref.slots = scanMaskSlots(pixels);
+        if (isMask) {
+          // slots: colours the editor offers. unknownColors: mask colours that match no slot.
+          const { slots, unknown } = scanMask(pixels);
+          ref.slots = slots;
+          ref.unknownColors = unknown;
+        }
         return pixels;
       }),
     );

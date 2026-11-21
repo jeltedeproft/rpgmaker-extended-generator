@@ -38,6 +38,27 @@ export function matchSlot(rgb) {
 }
 
 /**
+ * Which slots a mask uses, plus colours that match no slot (those pixels keep their original
+ * colour, which shows up as e.g. stray blue in recoloured eyes).
+ * @returns {{slots:Set<string>, unknown:Map<number,number>}} unknown: rgb -> pixel count
+ */
+export function scanMask(mask) {
+  const slots = new Set();
+  const unknown = new Map();
+  const ids = new Map();
+  const d = mask.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const rgb = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+    if (!ids.has(rgb)) ids.set(rgb, matchSlot(rgb));
+    const id = ids.get(rgb);
+    if (id) slots.add(id);
+    else if (rgb !== MASK_IGNORE_RGB) unknown.set(rgb, (unknown.get(rgb) || 0) + 1);
+  }
+  return { slots, unknown };
+}
+
+/**
  * Recolours one layer.
  * - With `mask`: each pixel uses the slot its mask colour marks (TV/TVD/SV `_c` files).
  * - With `slotId`: the whole layer uses that slot (FG `_mNNN` files).
