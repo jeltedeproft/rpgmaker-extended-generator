@@ -106,7 +106,7 @@ try {
 
   // Save/load round trip through the real (de)serializer.
   const roundTrip = await evaluate(`(async () => {
-    const m = await import('/src/character.js');
+    const m = await import(new URL('src/character.js', location.href).href);
     return typeof m.serializeCharacter === 'function';
   })()`);
   check('modules importable', roundTrip);
