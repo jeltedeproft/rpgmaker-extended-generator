@@ -172,6 +172,7 @@ export function deserializeCharacter(json, library) {
     colors: { ...saved.colors },
     offsets: structuredClone(saved.offsets || {}),
     itemColors: structuredClone(saved.itemColors || {}),
+    drawOrder: structuredClone(saved.drawOrder || {}),
   };
   for (const [part, id] of Object.entries(saved.parts || {})) {
     if (!id) {

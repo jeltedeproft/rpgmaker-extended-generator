@@ -115,6 +115,17 @@ try {
   await sleep(600);
   check('second item removed', await evaluate(`![...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('FrontHair 2'))`));
 
+  // Draw order: move the top face layer down one step.
+  await evaluate(`document.getElementById('layers').open = true`);
+  const topBefore = await evaluate(`document.querySelector('#layer-list li span').textContent`);
+  await evaluate(`document.querySelector('#layer-list li .layer-buttons button:last-child').click()`);
+  await sleep(800);
+  const topAfter = await evaluate(`document.querySelector('#layer-list li span').textContent`);
+  check('draw order can be changed', topBefore !== topAfter && !(await evaluate(`document.getElementById('layer-reset').disabled`)), `${topBefore} -> ${topAfter}`);
+  await click('#layer-reset');
+  await sleep(800);
+  check('draw order resets', (await evaluate(`document.querySelector('#layer-list li span').textContent`)) === topBefore);
+
   // Randomize a few times.
   for (let i = 0; i < 5; i++) {
     await click('#randomize');

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { recolorLayer, blendOver, createImage, matchSlot, scanMask } from '../src/recolor.js';
 import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
-import { composeSheet, layersForSheet, orderIndex } from '../src/compose.js';
+import { composeSheet, layersForSheet, orderIndex, moveLayer } from '../src/compose.js';
 import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter } from '../src/character.js';
 import { createLibrary, addPack } from '../src/parse.js';
 
@@ -237,4 +237,17 @@ test('extra items survive save/load', () => {
   assert.equal(loaded.character.parts['AccA 2'], 'P/Female/AccA/p07');
   assert.deepEqual(loaded.character.itemColors, { 'AccA 2': { accA: 'x' } });
   assert.deepEqual(loaded.missing, []);
+});
+
+test('custom draw order: moving a layer swaps it with its neighbour; new layers keep their place', () => {
+  const lib = sampleLibrary();
+  const character = { bodyType: 'Male', parts: { Body: 'P/Male/Body/p01', FrontHair: 'P/Male/FrontHair/p01' }, colors: {} };
+  const keys = () => layersForSheet('TV', character, lib).map((d) => d.layer.key);
+  assert.deepEqual(keys(), ['FrontHair2', 'Body', 'FrontHair1']);
+  character.drawOrder = { TV: moveLayer('TV', character, lib, 'Body|Body', 1) };
+  assert.deepEqual(keys(), ['FrontHair2', 'FrontHair1', 'Body']); // body now on top
+  // AccA isn't in the custom list: it keeps its default spot (third from the bottom).
+  character.parts.AccA = 'P/Female/AccA/p07';
+  assert.deepEqual(keys(), ['FrontHair2', 'FrontHair1', 'AccA', 'Body']);
+  assert.deepEqual(layersForSheet('FG', character, lib), []);
 });

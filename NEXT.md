@@ -48,7 +48,7 @@ mixing Male/Female/Kid · pixel offsets.
 - [ ] More categories/parts (Accessory C, body types beyond Male/Female/Kid). Body types already
       come from folder names; new part names already load, but get default draw order.
 - [ ] Templates for non-standard sizes.
-- [ ] Editable draw order (default = MV/MZ order).
+- ✅ Editable draw order (default = MV/MZ order), per sheet, per character.
 - ✅ Several items of the same part (two AccA), each with its own position and optional own colours.
 - [ ] Rotate elements per tile/frame.
 - [ ] Character sets / partial characters (save a group of parts + colours, apply on top).

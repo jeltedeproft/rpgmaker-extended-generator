@@ -100,6 +100,20 @@
           <figcaption>Damage</figcaption>
         </figure>
       </div>
+      <details id="layers" class="settings">
+        <summary>Draw order</summary>
+        <div class="layer-head">
+          <select id="layer-sheet">
+            <option value="FG">Face</option>
+            <option value="TV">Walk</option>
+            <option value="TVD">Damage</option>
+            <option value="SV">Battler</option>
+          </select>
+          <button id="layer-reset" class="small-button" disabled>Reset to RPG Maker's order</button>
+        </div>
+        <ol id="layer-list" class="layer-list"></ol>
+        <p class="muted small">Top of the list is drawn on top. Parts you add later go to their usual place.</p>
+      </details>
       <h3>Export</h3>
       <div class="export">
         <button data-export="FG">Face</button>

@@ -20,6 +20,7 @@ existing extended generator is, minus the bugs:
   (still loads if a pack folder was renamed).
 - **Several items of one part** (two accessories, two hairs), each with its own position and,
   if you want, its own colours.
+- **Editable draw order** per sheet (starts as RPG Maker's order).
 - **Randomize** with per-part locks.
 
 ## Develop

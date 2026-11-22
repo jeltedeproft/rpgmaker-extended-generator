@@ -166,3 +166,9 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .head-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .head-actions .small-button { margin-top: 0; }
 .own-colours { margin: 4px 0 2px; }
+.layer-head { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+.layer-head .small-button { margin-top: 0; }
+.layer-list { margin: 0; padding-left: 22px; max-height: 260px; overflow: auto; font-size: 12px; }
+.layer-list li { padding: 1px 0; }
+.layer-list li > span:first-child { display: inline-block; min-width: 150px; }
+.layer-buttons button { padding: 0 6px; font-size: 11px; margin-left: 2px; }

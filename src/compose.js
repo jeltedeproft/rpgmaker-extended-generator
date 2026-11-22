@@ -83,9 +83,36 @@ export function itemColor(character, key, slotId) {
   return character.itemColors?.[key]?.[slotId] || character.colors[slotId];
 }
 
+/** Identifies one drawn layer in a custom draw order. */
+export function drawId(draw) {
+  return `${draw.item}|${draw.layer.key}`;
+}
+
+/**
+ * Applies a custom draw order (ids top-most first, see drawId). Layers it names swap places among
+ * themselves; layers it doesn't name (parts added later) keep their default position.
+ */
+function applyCustomOrder(draws, order) {
+  if (!order?.length) return draws;
+  const rank = new Map(order.map((id, i) => [id, i]));
+  const slots = [];
+  const named = [];
+  draws.forEach((d, i) => {
+    if (rank.has(drawId(d))) {
+      slots.push(i);
+      named.push(d);
+    }
+  });
+  named.sort((a, b) => rank.get(drawId(b)) - rank.get(drawId(a)));
+  const result = [...draws];
+  slots.forEach((slot, i) => (result[slot] = named[i]));
+  return result;
+}
+
 /**
  * What to draw for one sheet, bottom-most first: [{layer, item}] where item is the item key.
- * Extra items of a part sit just above the first one.
+ * Default is RPG Maker's order (extra items sit just above the first one); character.drawOrder
+ * can override it per sheet.
  */
 export function layersForSheet(sheet, character, library) {
   const draws = [];
@@ -95,11 +122,22 @@ export function layersForSheet(sheet, character, library) {
       if (layer.sheet === sheet) draws.push({ layer, item: key });
     }
   }
-  return draws
+  const sorted = draws
     .map((draw, i) => ({ draw, i, order: orderIndex(sheet, draw.layer.key, draw.layer.part) }))
     // Same position: the recoloured layer goes above a fixed one (see FG_Beard_p07_c1 vs _c1_m003).
     .sort((a, b) => b.order - a.order || !!a.draw.layer.slotId - !!b.draw.layer.slotId || a.i - b.i)
     .map((entry) => entry.draw);
+  return applyCustomOrder(sorted, character.drawOrder?.[sheet]);
+}
+
+/** Moves one layer up (+1, towards the top) or down (-1) and returns the new order for the sheet. */
+export function moveLayer(sheet, character, library, id, step) {
+  const topFirst = layersForSheet(sheet, character, library).map(drawId).reverse();
+  const i = topFirst.indexOf(id);
+  const j = i - step;
+  if (i === -1 || j < 0 || j >= topFirst.length) return topFirst;
+  [topFirst[i], topFirst[j]] = [topFirst[j], topFirst[i]];
+  return topFirst;
 }
 
 function sheetSize(sheet, draws) {

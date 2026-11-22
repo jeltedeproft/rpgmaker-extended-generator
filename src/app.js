@@ -3,7 +3,10 @@
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS } from './format.js';
 import { createLibrary, addPack, variantLabel, variantsForPart } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
-import { composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor } from './compose.js';
+import {
+  composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
+  layersForSheet, drawId, moveLayer,
+} from './compose.js';
 import { createImage } from './recolor.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -436,7 +439,34 @@ async function renderPreview() {
   const dmgCtx = $('damage-canvas').getContext('2d');
   dmgCtx.clearRect(0, 0, 144, 48);
   if (state.composites.TVD) dmgCtx.drawImage(state.composites.TVD.canvas, 0, 0);
+  renderLayers();
   renderProblems();
+}
+
+/** The draw order list: every layer of the chosen sheet, top-most first, with up/down buttons. */
+function renderLayers() {
+  const sheet = $('layer-sheet').value;
+  const topFirst = layersForSheet(sheet, state.character, state.library).reverse();
+  const custom = !!state.character.drawOrder?.[sheet];
+  $('layer-reset').disabled = !custom;
+  if (!topFirst.length) {
+    $('layer-list').replaceChildren(el('li', { className: 'muted', textContent: 'No layers on this sheet.' }));
+    return;
+  }
+  $('layer-list').replaceChildren(...topFirst.map((draw, i) => {
+    const id = drawId(draw);
+    const move = (step) => {
+      (state.character.drawOrder ||= {})[sheet] = moveLayer(sheet, state.character, state.library, id, step);
+      renderPreview();
+    };
+    const up = el('button', { textContent: '↑', title: 'Draw above the layer over it', disabled: i === 0 });
+    const down = el('button', { textContent: '↓', title: 'Draw below the layer under it', disabled: i === topFirst.length - 1 });
+    up.addEventListener('click', () => move(1));
+    down.addEventListener('click', () => move(-1));
+    const name = draw.layer.key.replace(/:c\d+$/, '');
+    const label = name === draw.item ? draw.item : `${draw.item} · ${draw.layer.key}`;
+    return el('li', {}, [el('span', { textContent: label }), el('span', { className: 'layer-buttons' }, [up, down])]);
+  }));
 }
 
 /** Mask colours in the selected parts that match no colour slot: those pixels can't be recoloured. */
@@ -668,6 +698,12 @@ $('off-reset').addEventListener('click', () => {
 $('randomize').addEventListener('click', () => {
   state.character = randomize(state.character, state.library, allGradients(), { locked: state.locked });
   renderAll();
+});
+
+$('layer-sheet').addEventListener('change', renderLayers);
+$('layer-reset').addEventListener('click', () => {
+  delete state.character.drawOrder?.[$('layer-sheet').value];
+  renderPreview();
 });
 
 $('dir-buttons').addEventListener('click', (e) => {
