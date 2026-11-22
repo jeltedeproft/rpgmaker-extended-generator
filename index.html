@@ -85,6 +85,25 @@
           <label>y <input type="number" id="off-sprite-y" step="1" value="0"></label>
           <label>turn <input type="number" id="off-sprite-rot" step="5" value="0" title="Degrees, clockwise"></label>
         </div>
+        <div id="cell-box" class="cell-box">
+          <div class="layer-head">
+            <span class="small">Only for</span>
+            <select id="cell-sheet">
+              <option value="TV">Walk</option>
+              <option value="SV">Battler</option>
+              <option value="TVD">Damage</option>
+            </select>
+            <select id="cell-group"></select>
+            <select id="cell-frame"></select>
+          </div>
+          <div class="offset-grid">
+            <span>Extra</span>
+            <label>x <input type="number" id="cell-x" step="1" value="0"></label>
+            <label>y <input type="number" id="cell-y" step="1" value="0"></label>
+            <label>turn <input type="number" id="cell-rot" step="5" value="0" title="Degrees, clockwise"></label>
+          </div>
+          <p id="cell-note" class="muted small"></p>
+        </div>
         <button id="off-reset" class="small-button">Reset position</button>
         <p id="offsets-note" class="note small"></p>
         <p class="muted small">Moves this part in pixels, and turns it (degrees, clockwise). On sprites every walk, damage and battler frame is moved and turned on its own, around its own centre.</p>

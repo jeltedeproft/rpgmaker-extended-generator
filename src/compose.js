@@ -1,7 +1,7 @@
 // Composites a character's selected parts into one sheet image.
 
 import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
-import { createImage, recolorLayer, blendOver, rotateFrames, frameCentres } from './recolor.js';
+import { createImage, recolorLayer, blendOver, blendFrames, rotateFrames, frameCentres } from './recolor.js';
 import { islandLabels, keepIsland } from './islands.js';
 import { solidOf, insideOutline, applyClip } from './clip.js';
 
@@ -93,6 +93,21 @@ export function partOffset(character, key, sheet) {
   // A piece moves with its item, plus its own offset.
   const item = partOffset(character, itemOfKey(key), sheet);
   return { x: item.x + own.x, y: item.y + own.y, rot: item.rot + own.rot };
+}
+
+/**
+ * Per-frame offsets of an item on a sprite sheet, on top of its sprite offset: Map "col,row" ->
+ * {x, y, rot}. Stored as offsets[key].cells[sheet]["col,row"]; a piece adds its item's.
+ */
+export function cellOffsets(character, key, sheet) {
+  const result = new Map();
+  for (const k of itemOfKey(key) === key ? [key] : [itemOfKey(key), key]) {
+    for (const [cell, o] of Object.entries(character.offsets?.[k]?.cells?.[sheet] || {})) {
+      const prev = result.get(cell) || { x: 0, y: 0, rot: 0 };
+      result.set(cell, { x: prev.x + (o.x || 0), y: prev.y + (o.y || 0), rot: prev.rot + (o.rot || 0) });
+    }
+  }
+  return result;
 }
 
 /**
@@ -370,20 +385,33 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
       if (labels) image = keepIsland(image, labels, piece.n);
     }
     // Sprite sheets are shifted inside each animation frame, so nothing bleeds into the next one.
-    placed.push({ item, image, offset: partOffset(character, item, sheet), frame: onSheet.tiled ? frame : null });
+    const tiled = onSheet.tiled ? frame : null;
+    const cells = tiled ? cellOffsets(character, item, sheet) : new Map();
+    placed.push({ item, image, offset: partOffset(character, item, sheet), frame: tiled, cells });
   }
 
   // 2. Rotate: all layers of an item turn around one shared centre per frame.
   const centres = new Map();
   for (const p of placed) {
-    if (!p.offset.rot) continue;
+    const cellTurns = [...p.cells.values()].some((c) => c.rot);
+    if (!p.offset.rot && !cellTurns) continue;
     const key = `${p.item}|${!!p.frame}`;
     if (!centres.has(key)) {
       const own = placed.filter((q) => q.item === p.item && q.frame === p.frame);
       centres.set(key, frameCentres(own.map((q) => q.image), p.frame));
     }
-    p.image = rotateFrames(p.image, p.offset.rot, p.frame, centres.get(key));
+    const angle = cellTurns
+      ? (fx, fy) => p.offset.rot + (p.cells.get(`${fx / p.frame.w},${fy / p.frame.h}`)?.rot || 0)
+      : p.offset.rot;
+    p.image = rotateFrames(p.image, angle, p.frame, centres.get(key));
   }
+  const draw = (target, p) => {
+    if (!p.cells.size) return blendOver(target, p.image, p.offset.x, p.offset.y, p.frame);
+    return blendFrames(target, p.image, p.frame, (col, row) => {
+      const c = p.cells.get(`${col},${row}`);
+      return { x: p.offset.x + (c?.x || 0), y: p.offset.y + (c?.y || 0) };
+    });
+  };
 
   // 3. Draw bottom to top. Clipped items only show inside (or outside) another item's shape.
   const regions = new Map();
@@ -394,7 +422,7 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
       if (!own.length) regions.set(key, null);
       else {
         const shape = createImage(size.w, size.h);
-        for (const q of own) blendOver(shape, q.image, q.offset.x, q.offset.y, q.frame);
+        for (const q of own) draw(shape, q);
         const solid = solidOf(shape);
         regions.set(key, mode === 'inside' ? insideOutline(solid, size.w, size.h, own[0].frame) : solid);
       }
@@ -405,10 +433,10 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     const clip = clipOf(character, p.item);
     const region = clip && regionOf(clip.by, clip.mode);
     if (!region) {
-      blendOver(out, p.image, p.offset.x, p.offset.y, p.frame);
+      draw(out, p);
       continue;
     }
-    const moved = blendOver(createImage(size.w, size.h), p.image, p.offset.x, p.offset.y, p.frame);
+    const moved = draw(createImage(size.w, size.h), p);
     blendOver(out, applyClip(moved, region, clip.mode));
   }
   return { image: out, problems, frame };

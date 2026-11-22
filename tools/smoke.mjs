@@ -269,6 +269,20 @@ try {
     check('face rotation turns the part', (await evaluate(faceSig)) !== beforeTurn);
     await shot('4-real-pack.png');
 
+    // Per-frame position: move the accessory only in the walk frames facing left.
+    await evaluate(`(() => { const s = document.getElementById('cell-sheet'); s.value = 'TV'; s.dispatchEvent(new Event('change')); const g = document.getElementById('cell-group'); g.value = 1; g.dispatchEvent(new Event('change')); })()`);
+    await sleep(300);
+    check('walk directions offered per frame', await evaluate(`[...document.querySelectorAll('#cell-group option')].map(o => o.textContent).join(',')`) === 'Down,Left,Right,Up');
+    await evaluate(`document.getElementById('sheet-view').open = true; document.getElementById('sheet-view-select').value = 'TV'; document.getElementById('sheet-view-select').dispatchEvent(new Event('change'))`);
+    await sleep(600);
+    const sheetRow = (row) => '(() => { const c = document.getElementById("sheet-canvas"); const h = c.height / 4; return [...c.getContext("2d").getImageData(0, ' + row + ' * h, c.width, h).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0); })()';
+    const down0 = await evaluate(sheetRow(0));
+    const left0 = await evaluate(sheetRow(1));
+    await evaluate(`(() => { const i = document.getElementById('cell-y'); i.value = -5; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(1200);
+    check('per-direction offset moves only that direction', (await evaluate(sheetRow(1))) !== left0 && (await evaluate(sheetRow(0))) === down0);
+    check('preview shows the edited direction', await evaluate(`document.querySelector('#dir-buttons .active')?.dataset.dir === '1'`));
+    await shot('4c-per-direction.png');
     // Take the accessory off again (it's a mask that hides the eyes).
     await click('#variants .variant:first-child');
     await sleep(600);

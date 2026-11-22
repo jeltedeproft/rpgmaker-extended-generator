@@ -419,3 +419,24 @@ test('a second image for the same layer becomes an alternate that borrows the re
   assert.deepEqual(draw('MZ/Male/FrontHair/p17'), ['hair', 'band']);
   assert.deepEqual(draw(alt.id), ['hair', 'band2']);
 });
+
+test('per-frame positions: one walk direction moves, the others stay', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', [{ path: 'TV/Male/TV_AccA_p01.png', src: 'hat' }]);
+  const hat = createImage(6, 8); // 3x4 frames of 2x2
+  for (let row = 0; row < 4; row++) for (let col = 0; col < 3; col++) hat.data.set([9, 9, 9, 255], ((row * 2) * 6 + col * 2) * 4);
+  lib.variants.get('P/Male/AccA/p01').layers[0].base.pixels = hat;
+  const character = {
+    bodyType: 'Male', parts: { AccA: 'P/Male/AccA/p01' }, colors: {},
+    // Row 1 (facing left): every frame 1px right. Frame (2,3): 1px down.
+    offsets: { AccA: { cells: { TV: { '0,1': { x: 1 }, '1,1': { x: 1 }, '2,1': { x: 1 }, '2,3': { y: 1 } } } } },
+  };
+  const { image } = composeSheet('TV', character, lib, new Map(), settings);
+  const alpha = (x, y) => image.data[(y * 6 + x) * 4 + 3];
+  assert.equal(alpha(0, 0), 255); // row 0 untouched
+  assert.equal(alpha(0, 2), 0); // row 1 moved right...
+  assert.equal(alpha(1, 2), 255);
+  assert.equal(alpha(4, 6), 0); // frame (2,3) moved down
+  assert.equal(alpha(4, 7), 255);
+  assert.equal(alpha(2, 6), 255); // frame (1,3) untouched
+});

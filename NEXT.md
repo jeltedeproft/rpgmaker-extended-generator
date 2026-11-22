@@ -25,6 +25,17 @@
       one; bodies show up as `p01 (left_green)` etc. No file swapping.
 - ✅ Eyes: MZ's walk-sprite body masks use a second blue for part of the eye; now matched.
 
+## Tester feedback, round 3 (2026-11-22)
+- ✅ Position per walk direction, per battler motion and per damage frame (or a single frame),
+  on top of the sprite position.
+- ✅ MZ `FG_RearHair2_p12_c1` (hair tie) drawn behind `_c2_m003` (the hair): unnamed face cells
+  now go below the named ones (c1 above c2). Same fix for `FG_FrontHair_p17`'s headband.
+- ✅ Pause, stand still (middle frame), all four walk directions, whole-sheet view.
+- ✅ `FG_FrontHair_p17_c1].png` (a slightly different headband) is kept as "p17 (alt)".
+- ✅ Face skin / hair "not changing colour in real time": the main preview did change (checked
+  with the official MZ folder); the part tiles showed RPG Maker's fixed-colour icons. Tiles are
+  now drawn in the current colours. Confirm with the tester that this is what they meant.
+
 ## Blocked on RPG Maker's own generator (trial: rpgmakerweb.com/free-trials, or the tester's files)
 - [ ] Settle the open questions in `docs/FORMAT.md` (brightness measure first).
 - [ ] Compare one character pixel-for-pixel with RPG Maker's own generator.

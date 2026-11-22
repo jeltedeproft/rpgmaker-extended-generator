@@ -223,6 +223,8 @@ export function frameCentres(images, frame = null) {
  * Rotates the content of every frame (tile) around its centre, by `degrees` clockwise.
  * Nearest-neighbour sampling keeps pixel art crisp. Nothing moves into a neighbouring frame.
  * @param {{w:number,h:number}|null} frame null = the whole image is one frame
+ * @param {number|((fx:number, fy:number)=>number)} degrees one angle, or one per frame (by the
+ *   frame's top-left pixel)
  * @param {Map} [centres] from frameCentres; defaults to this image's own pixels
  */
 export function rotateFrames(image, degrees, frame = null, centres = frameCentres([image], frame)) {
@@ -230,15 +232,24 @@ export function rotateFrames(image, degrees, frame = null, centres = frameCentre
   const fw = frame?.w || image.width;
   const fh = frame?.h || image.height;
   const out = createImage(image.width, image.height);
-  const rad = (degrees * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
   const s = image.data;
   for (let fy = 0; fy + fh <= image.height; fy += fh) {
     for (let fx = 0; fx + fw <= image.width; fx += fw) {
       const centre = centres.get(`${fx},${fy}`);
       if (!centre) continue;
+      const deg = typeof degrees === 'function' ? degrees(fx, fy) : degrees;
+      if (!deg) {
+        // This frame isn't turned: copy it as it is.
+        for (let y = fy; y < fy + fh; y++) {
+          const start = (y * image.width + fx) * 4;
+          out.data.set(s.subarray(start, start + fw * 4), start);
+        }
+        continue;
+      }
       const { cx, cy } = centre;
+      const rad = (deg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
       for (let y = fy; y < fy + fh; y++) {
         for (let x = fx; x < fx + fw; x++) {
           // Inverse mapping: which source pixel lands here.
@@ -259,4 +270,41 @@ export function rotateFrames(image, degrees, frame = null, centres = frameCentre
     }
   }
   return out;
+}
+
+/**
+ * Like blendOver on an animation sheet, but every frame gets its own offset, e.g. a hat moved
+ * only in the walk frames facing left. Nothing moves into a neighbouring frame.
+ * @param {(col:number, row:number)=>{x:number,y:number}} offsetAt
+ */
+export function blendFrames(target, top, frame, offsetAt) {
+  const t = target.data;
+  const s = top.data;
+  for (let row = 0; (row + 1) * frame.h <= top.height; row++) {
+    for (let col = 0; (col + 1) * frame.w <= top.width; col++) {
+      const { x: ox, y: oy } = offsetAt(col, row);
+      const fx = col * frame.w;
+      const fy = row * frame.h;
+      for (let y = fy; y < fy + frame.h; y++) {
+        const ty = y + oy;
+        if (ty < fy || ty >= fy + frame.h || ty >= target.height) continue;
+        for (let x = fx; x < fx + frame.w; x++) {
+          const tx = x + ox;
+          if (tx < fx || tx >= fx + frame.w || tx >= target.width) continue;
+          const si = (y * top.width + x) * 4;
+          const sa = s[si + 3];
+          if (sa === 0) continue;
+          const ti = (ty * target.width + tx) * 4;
+          const a = sa / 255;
+          const da = t[ti + 3] / 255;
+          const outA = a + da * (1 - a);
+          t[ti] = (s[si] * a + t[ti] * da * (1 - a)) / outA;
+          t[ti + 1] = (s[si + 1] * a + t[ti + 1] * da * (1 - a)) / outA;
+          t[ti + 2] = (s[si + 2] * a + t[ti + 2] * da * (1 - a)) / outA;
+          t[ti + 3] = outA * 255;
+        }
+      }
+    }
+  }
+  return target;
 }

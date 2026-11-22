@@ -1,6 +1,6 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
-import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, DEFAULT_SIZE } from './format.js';
+import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
 import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import {
@@ -420,6 +420,100 @@ function renderOffsets() {
   $('off-sprite-y').value = o.sprite?.y || 0;
   $('off-face-rot').value = o.face?.rot || 0;
   $('off-sprite-rot').value = o.sprite?.rot || 0;
+  $('cell-box').hidden = !hasSprite;
+  if (hasSprite) renderCellOptions();
+}
+
+// ---------- per-frame positions (one walk direction, battler motion or damage frame) ----------
+
+const DIRECTIONS = ['Down', 'Left', 'Right', 'Up'];
+
+/** The frame grid of a sprite sheet: from the current composite, else RPG Maker's. */
+function gridOf(sheet) {
+  const f = state.composites[sheet]?.frame;
+  if (f) return { cols: f.cols, rows: f.rows };
+  const d = SHEETS[sheet].frame;
+  return { cols: d.cols, rows: d.rows };
+}
+
+/**
+ * Groups a sheet's frames the way RPG Maker uses them: walk = one row per direction, battler =
+ * 18 motions of 3 frames (2 blocks of 9 columns), damage = one row. Each group is a list of
+ * "col,row" cells, in animation order.
+ */
+function cellGroups(sheet) {
+  const { cols, rows } = gridOf(sheet);
+  if (sheet === 'SV' && cols === 9 && rows === 6) {
+    return SV_MOTIONS.map((name, m) => ({ name, cells: [0, 1, 2].map((k) => `${Math.floor(m / 6) * 3 + k},${m % 6}`) }));
+  }
+  return Array.from({ length: rows }, (_, row) => ({
+    name: sheet === 'TV' && rows === 4 ? DIRECTIONS[row] : sheet === 'TVD' && rows === 1 ? 'All damage frames' : `Row ${row + 1}`,
+    cells: Array.from({ length: cols }, (_, col) => `${col},${row}`),
+  }));
+}
+
+function selectedCells() {
+  const group = cellGroups($('cell-sheet').value)[Number($('cell-group').value)] || { cells: [] };
+  const frame = $('cell-frame').value;
+  return frame === 'all' ? group.cells : [group.cells[Number(frame)]].filter(Boolean);
+}
+
+function renderCellOptions() {
+  const sheet = $('cell-sheet').value;
+  const groups = cellGroups(sheet);
+  const keepGroup = Math.min(Number($('cell-group').value) || 0, groups.length - 1);
+  $('cell-group').replaceChildren(...groups.map((g, i) => el('option', { value: i, textContent: g.name })));
+  $('cell-group').value = keepGroup;
+  const count = groups[keepGroup]?.cells.length || 0;
+  const keepFrame = $('cell-frame').value || 'all';
+  $('cell-frame').replaceChildren(
+    el('option', { value: 'all', textContent: count > 1 ? `all ${count} frames` : 'the frame' }),
+    ...(count > 1 ? Array.from({ length: count }, (_, i) => el('option', { value: i, textContent: `frame ${i + 1} only` })) : []),
+  );
+  $('cell-frame').value = keepFrame === 'all' || Number(keepFrame) < count ? keepFrame : 'all';
+  renderCellValues();
+}
+
+function renderCellValues() {
+  const sheet = $('cell-sheet').value;
+  const cells = state.character.offsets?.[state.selectedPart]?.cells?.[sheet] || {};
+  const first = cells[selectedCells()[0]] || {};
+  $('cell-x').value = first.x || 0;
+  $('cell-y').value = first.y || 0;
+  $('cell-rot').value = first.rot || 0;
+  const moved = Object.keys(cells).length;
+  $('cell-note').textContent = `Added on top of the Sprites position. ${moved ? `${moved} frame(s) of this sheet have their own position.` : ''}`;
+}
+
+/** Shows the chosen direction / motion in the preview, standing still on the chosen frame. */
+function showCellInPreview() {
+  const sheet = $('cell-sheet').value;
+  const group = Number($('cell-group').value) || 0;
+  if (sheet === 'TV') {
+    state.walkDir = Math.min(group, 3);
+    for (const b of $('dir-buttons').children) b.classList.toggle('active', Number(b.dataset.dir) === state.walkDir);
+  }
+  if (sheet === 'SV') {
+    state.svMotion = group;
+    $('sv-motion').value = group;
+  }
+}
+
+function updateCellOffset() {
+  const sheet = $('cell-sheet').value;
+  const read = (id) => Math.max(-64, Math.min(64, Math.round(Number($(id).value) || 0)));
+  const value = { x: read('cell-x'), y: read('cell-y'), rot: Math.max(-180, Math.min(180, Math.round(Number($('cell-rot').value) || 0))) };
+  const offsets = (state.character.offsets ||= {});
+  const item = (offsets[state.selectedPart] ||= {});
+  const cells = ((item.cells ||= {})[sheet] ||= {});
+  for (const cell of selectedCells()) {
+    if (value.x || value.y || value.rot) cells[cell] = { ...value };
+    else delete cells[cell];
+  }
+  if (!Object.keys(cells).length) delete item.cells[sheet];
+  showCellInPreview();
+  renderCellValues();
+  renderPreview();
 }
 
 function updateOffset() {
@@ -427,6 +521,7 @@ function updateOffset() {
   const angle = (id) => Math.max(-180, Math.min(180, Math.round(Number($(id).value) || 0)));
   const offsets = (state.character.offsets ||= {});
   offsets[state.selectedPart] = {
+    ...offsets[state.selectedPart],
     face: { x: read('off-face-x'), y: read('off-face-y'), rot: angle('off-face-rot') },
     sprite: { x: read('off-sprite-x'), y: read('off-sprite-y'), rot: angle('off-sprite-rot') },
   };
@@ -1127,6 +1222,17 @@ $('lock-part').addEventListener('change', (e) => {
 });
 
 for (const id of ['off-face-x', 'off-face-y', 'off-face-rot', 'off-sprite-x', 'off-sprite-y', 'off-sprite-rot']) $(id).addEventListener('input', updateOffset);
+for (const id of ['cell-x', 'cell-y', 'cell-rot']) $(id).addEventListener('input', updateCellOffset);
+$('cell-sheet').addEventListener('change', () => {
+  $('cell-group').value = 0;
+  renderCellOptions();
+  showCellInPreview();
+});
+$('cell-group').addEventListener('change', () => {
+  renderCellOptions();
+  showCellInPreview();
+});
+$('cell-frame').addEventListener('change', renderCellValues);
 $('off-reset').addEventListener('click', () => {
   delete state.character.offsets?.[state.selectedPart];
   renderOffsets();

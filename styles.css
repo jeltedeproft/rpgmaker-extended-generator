@@ -207,3 +207,5 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .small-button.active { background: var(--hover); font-weight: 600; }
 .sheet-box { margin-top: 8px; overflow: auto; max-height: 420px; }
 #sheet-canvas { image-rendering: pixelated; max-width: 100%; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
+.cell-box { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--line); }
+.cell-box select { padding: 2px 6px; font-size: 12px; }
