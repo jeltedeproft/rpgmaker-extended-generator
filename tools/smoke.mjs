@@ -100,6 +100,21 @@ try {
   check('body tiles have a preview', await evaluate(`[...document.querySelectorAll('#variants .variant')].filter(b => b.title !== 'None').every(b => b.querySelector('canvas'))`));
   await shot('2b-body.png');
 
+  // A second item of the same part, with its own colours.
+  await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
+  await sleep(300);
+  await click('#add-item');
+  await sleep(900);
+  check('second item added', await evaluate(`document.getElementById('editor-title').textContent === 'FrontHair 2' && [...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('FrontHair 2'))`));
+  await click('#own-colours');
+  await sleep(300);
+  await click('.slot .swatches .swatch:nth-child(1)');
+  await sleep(800);
+  check('own colours stored per item', await evaluate(`(async () => { const s = document.querySelector('.slot .swatch.selected'); return !!s && document.getElementById('own-colours').checked; })()`));
+  await click('#remove-item');
+  await sleep(600);
+  check('second item removed', await evaluate(`![...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('FrontHair 2'))`));
+
   // Randomize a few times.
   for (let i = 0; i < 5; i++) {
     await click('#randomize');

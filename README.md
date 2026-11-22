@@ -18,6 +18,8 @@ existing extended generator is, minus the bugs:
 - **Live preview** of face, animated walk (4 directions), animated battler (18 motions), damage.
 - **Export** face / walk (`$Name.png`) / damage / battler PNGs; **save/load** characters as JSON
   (still loads if a pack folder was renamed).
+- **Several items of one part** (two accessories, two hairs), each with its own position and,
+  if you want, its own colours.
 - **Randomize** with per-part locks.
 
 ## Develop

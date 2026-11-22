@@ -19,14 +19,27 @@ export function orderIndex(sheet, key, part) {
   return 0;
 }
 
-/** The variants a character currently uses (from any body type), in a stable order. */
-export function selectedVariants(character, library) {
+/**
+ * An item is one worn part. The first item of a part is keyed by the part name ("AccA"), extra
+ * items get a number ("AccA 2"). Offsets, own colours and draw order are stored per item key.
+ */
+export function partOfKey(key) {
+  return key.replace(/ \d+$/, '');
+}
+
+/** The items a character currently wears: [{key, part, variant}], in a stable order. */
+export function selectedItems(character, library) {
   const result = [];
-  for (const variantId of Object.values(character.parts)) {
+  for (const [key, variantId] of Object.entries(character.parts)) {
     const variant = variantId && library.variants.get(variantId);
-    if (variant) result.push(variant);
+    if (variant) result.push({ key, part: partOfKey(key), variant });
   }
   return result;
+}
+
+/** The variants a character currently uses (from any body type), in a stable order. */
+export function selectedVariants(character, library) {
+  return selectedItems(character, library).map((item) => item.variant);
 }
 
 /** Selected variants plus the fallbacks they borrow sheets from: everything that needs decoding. */
@@ -42,9 +55,9 @@ export function variantsToDecode(character, library) {
   return [...result];
 }
 
-/** Offset of a part on a sheet: "face" for FG, "sprite" for walk/damage/battler. */
-export function partOffset(character, part, sheet) {
-  const o = character.offsets?.[part]?.[sheet === 'FG' ? 'face' : 'sprite'];
+/** Offset of an item on a sheet: "face" for FG, "sprite" for walk/damage/battler. */
+export function partOffset(character, key, sheet) {
+  const o = character.offsets?.[key]?.[sheet === 'FG' ? 'face' : 'sprite'];
   return { x: o?.x || 0, y: o?.y || 0 };
 }
 
@@ -65,23 +78,32 @@ export function variantForSheet(variant, sheet, library) {
   return sheetFallback(variant, sheet, library);
 }
 
-/** Layers to draw for one sheet, bottom-most first. */
-export function layersForSheet(sheet, character, library) {
-  const layers = [];
-  for (const selected of selectedVariants(character, library)) {
-    const variant = variantForSheet(selected, sheet, library);
-    for (const layer of variant?.layers || []) {
-      if (layer.sheet === sheet) layers.push(layer);
-    }
-  }
-  return layers
-    .map((layer, i) => ({ layer, i, order: orderIndex(sheet, layer.key, layer.part) }))
-    // Same position: the recoloured layer goes above a fixed one (see FG_Beard_p07_c1 vs _c1_m003).
-    .sort((a, b) => b.order - a.order || !!a.layer.slotId - !!b.layer.slotId || a.i - b.i)
-    .map((entry) => entry.layer);
+/** The colour a slot gets for one item: the item's own choice, else the character's. */
+export function itemColor(character, key, slotId) {
+  return character.itemColors?.[key]?.[slotId] || character.colors[slotId];
 }
 
-function sheetSize(sheet, layers) {
+/**
+ * What to draw for one sheet, bottom-most first: [{layer, item}] where item is the item key.
+ * Extra items of a part sit just above the first one.
+ */
+export function layersForSheet(sheet, character, library) {
+  const draws = [];
+  for (const { key, variant: selected } of selectedItems(character, library)) {
+    const variant = variantForSheet(selected, sheet, library);
+    for (const layer of variant?.layers || []) {
+      if (layer.sheet === sheet) draws.push({ layer, item: key });
+    }
+  }
+  return draws
+    .map((draw, i) => ({ draw, i, order: orderIndex(sheet, draw.layer.key, draw.layer.part) }))
+    // Same position: the recoloured layer goes above a fixed one (see FG_Beard_p07_c1 vs _c1_m003).
+    .sort((a, b) => b.order - a.order || !!a.draw.layer.slotId - !!b.draw.layer.slotId || a.i - b.i)
+    .map((entry) => entry.draw);
+}
+
+function sheetSize(sheet, draws) {
+  const layers = draws.map((d) => d.layer);
   const body = layers.find((l) => l.part === 'Body' && l.base.pixels);
   if (body) return { w: body.base.pixels.width, h: body.base.pixels.height };
   // Faces are 144px; MZ ships some 160px parts (ears, accessories) that are centred and cropped.
@@ -109,12 +131,11 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
   const size = sheetSize(sheet, layers);
   const out = createImage(size.w, size.h);
   const frame = SHEETS[sheet].frame;
-  const gradientFor = (slotId) => {
-    const id = character.colors[slotId];
-    return id ? gradientsById.get(id)?.colors ?? null : null;
-  };
-
-  for (const layer of layers) {
+  for (const { layer, item } of layers) {
+    const gradientFor = (slotId) => {
+      const id = itemColor(character, item, slotId);
+      return id ? gradientsById.get(id)?.colors ?? null : null;
+    };
     const base = layer.base.pixels;
     if (!base) {
       problems.push(`${layer.base.path}: not decoded`);
@@ -125,7 +146,7 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
       problems.push(`${layer.mask.path}: mask is ${mask.width}x${mask.height}, image is ${base.width}x${base.height}`);
     }
     const colored = recolorLayer(base, mask, layer.slotId, gradientFor, settings);
-    const offset = partOffset(character, layer.part, sheet);
+    const offset = partOffset(character, item, sheet);
     if (frame && base.width === size.w && base.height === size.h) {
       // Sprite sheets: shift inside each animation frame.
       blendOver(out, colored, offset.x, offset.y, frame);

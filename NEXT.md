@@ -5,7 +5,7 @@
 - ✅ Mix male and female parts in one character.
 - ✅ More control over placement (per-part offsets).
 - ✅ "Imports official parts automatically" → remembered folders (Chrome/Edge).
-- [ ] More control over colour use: e.g. a different gradient per item of the same slot, colour
+- [~] More control over colour use: ✅ own colours per item. Still open: colour
       linking (eyebrows follow hair).
 
 ## Tester feedback, round 2 (2026-11-21)
@@ -33,7 +33,7 @@
 ## Features
 - [ ] Insert into an existing 4x2 sheet (faces 576x288, characters 576x384) at slot N.
 - [ ] Manually assign unrecognised files (part / layer / sheet) from the import report.
-- [ ] Multiple items of the same part (e.g. two accessories).
+- ✅ Multiple items of the same part (e.g. two accessories).
 - [ ] Busts (requested on the forum thread).
 - [ ] Undo/redo.
 
@@ -49,7 +49,7 @@ mixing Male/Female/Kid · pixel offsets.
       come from folder names; new part names already load, but get default draw order.
 - [ ] Templates for non-standard sizes.
 - [ ] Editable draw order (default = MV/MZ order).
-- [ ] Several items of the same part (two AccA).
+- ✅ Several items of the same part (two AccA), each with its own position and optional own colours.
 - [ ] Rotate elements per tile/frame.
 - [ ] Character sets / partial characters (save a group of parts + colours, apply on top).
 - [ ] Randomize with rules.

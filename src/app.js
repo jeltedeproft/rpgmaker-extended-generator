@@ -3,11 +3,11 @@
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS } from './format.js';
 import { createLibrary, addPack, variantLabel, variantsForPart } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
-import { composeSheet, selectedVariants, variantsToDecode, variantForSheet } from './compose.js';
+import { composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor } from './compose.js';
 import { createImage } from './recolor.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
-  serializeCharacter, deserializeCharacter,
+  serializeCharacter, deserializeCharacter, itemKeys, addItem, removeItem,
 } from './character.js';
 import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage,
@@ -170,8 +170,10 @@ function renderSidebar() {
 
   const items = [[ALL_COLOURS, 'All colours', '']];
   for (const part of partNames(lib, state.character.bodyType)) {
-    const variant = lib.variants.get(state.character.parts[part]);
-    items.push([part, part, variant ? variantLabel(lib, variant, state.character.bodyType) : 'none']);
+    for (const key of [part, ...itemKeys(state.character, part)]) {
+      const variant = lib.variants.get(state.character.parts[key]);
+      items.push([key, key, variant ? variantLabel(lib, variant, state.character.bodyType) : 'none']);
+    }
   }
   $('part-list').replaceChildren(...items.map(([key, label, value]) => {
     const button = el('button', { className: key === state.selectedPart ? 'active' : '' }, [
@@ -193,24 +195,29 @@ function renderSidebar() {
 }
 
 async function renderEditor() {
-  const part = state.selectedPart;
-  const isColours = part === ALL_COLOURS;
-  $('editor-title').textContent = isColours ? 'All colours' : part;
-  $('lock-part').checked = state.locked.has(part);
+  const key = state.selectedPart;
+  const isColours = key === ALL_COLOURS;
+  const part = isColours ? null : partOfKey(key);
+  const isExtra = !isColours && key !== part;
+  $('editor-title').textContent = isColours ? 'All colours' : key;
+  $('lock-part').checked = state.locked.has(key);
   $('lock-part').parentElement.hidden = isColours;
-  $('offsets').hidden = isColours || !state.character.parts[part];
+  $('offsets').hidden = isColours || !state.character.parts[key];
+  $('add-item').hidden = isColours || isExtra || !state.character.parts[key];
+  $('add-item').textContent = `+ Another ${part}`;
+  $('remove-item').hidden = !isExtra;
 
   $('variants').replaceChildren();
   $('other-variants').replaceChildren();
   $('other-bodies').hidden = true;
   if (!isColours) {
     const { own, others } = variantsForPart(state.library, part, state.character.bodyType);
-    for (const variant of [null, ...own]) $('variants').append(variantTile(part, variant));
+    for (const variant of [null, ...own]) $('variants').append(variantTile(key, variant));
     if (others.length) {
       $('other-bodies').hidden = false;
       // Keep it open when the current choice comes from another body type.
-      if (others.some((v) => v.id === state.character.parts[part])) $('other-bodies').open = true;
-      for (const variant of others) $('other-variants').append(variantTile(part, variant));
+      if (others.some((v) => v.id === state.character.parts[key])) $('other-bodies').open = true;
+      for (const variant of others) $('other-variants').append(variantTile(key, variant));
     }
     renderOffsets();
   }
@@ -222,8 +229,9 @@ async function renderEditor() {
   renderSlots();
 }
 
-function variantTile(part, variant) {
-  const selected = (state.character.parts[part] || null) === (variant?.id || null);
+function variantTile(key, variant) {
+  const part = partOfKey(key);
+  const selected = (state.character.parts[key] || null) === (variant?.id || null);
   const tile = el('button', { className: 'variant' + (selected ? ' selected' : ''), title: variant ? variant.id : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
   tile.append(thumb, el('span', { textContent: variant ? variantLabel(state.library, variant, state.character.bodyType) : 'None' }));
@@ -232,7 +240,7 @@ function variantTile(part, variant) {
     thumbnail.then((pixels) => pixels && thumb.replaceWith(toCanvas(pixels))).catch(() => {});
   }
   tile.addEventListener('click', () => {
-    state.character.parts[part] = variant?.id || null;
+    state.character.parts[key] = variant?.id || null;
     renderSidebar();
     renderEditor();
     renderPreview();
@@ -290,6 +298,21 @@ function updateOffset() {
   renderPreview();
 }
 
+/** The item whose own colours the swatches edit, or null for the character's shared colours. */
+function ownColourItem() {
+  const key = state.selectedPart;
+  return key !== ALL_COLOURS && state.character.itemColors?.[key] ? key : null;
+}
+function slotColour(slotId) {
+  const key = ownColourItem();
+  return key ? itemColor(state.character, key, slotId) : state.character.colors[slotId];
+}
+function setSlotColour(slotId, gradientId) {
+  const key = ownColourItem();
+  if (key) state.character.itemColors[key][slotId] = gradientId;
+  else state.character.colors[slotId] = gradientId;
+}
+
 function slotsForEditor() {
   if (state.selectedPart === ALL_COLOURS) return usedSlots(state.character, state.library);
   const variant = state.library.variants.get(state.character.parts[state.selectedPart]);
@@ -323,7 +346,20 @@ function renderSlots() {
     return;
   }
   const gradients = allGradients();
-  box.replaceChildren(...slots.map((slot) => {
+  const head = [];
+  if (state.selectedPart !== ALL_COLOURS) {
+    // Own colours: this item ignores the shared colours (e.g. two accessories in different colours).
+    const own = el('input', { type: 'checkbox', id: 'own-colours', checked: !!ownColourItem() });
+    own.addEventListener('change', () => {
+      const itemColors = (state.character.itemColors ||= {});
+      if (own.checked) itemColors[state.selectedPart] = Object.fromEntries(slots.map((sl) => [sl.id, state.character.colors[sl.id]]));
+      else delete itemColors[state.selectedPart];
+      renderSlots();
+      renderPreview();
+    });
+    head.push(el('label', { className: 'lock own-colours' }, [own, ' Own colours for this item (other parts keep the shared colours)']));
+  }
+  box.replaceChildren(...head, ...slots.map((slot) => {
     const preferred = preferredCategory(slot.id);
     const groups = new Map();
     for (const g of gradients) {
@@ -362,12 +398,12 @@ function renderSlots() {
 }
 
 function swatchButton(slot, gradient) {
-  const selected = state.character.colors[slot.id] === gradient.id;
+  const selected = slotColour(slot.id) === gradient.id;
   const img = el('img', { src: swatchImage(gradient), alt: gradient.label, width: 54, height: 14 });
   img.style.cssText = 'width:54px;height:14px;display:block';
   const button = el('button', { className: 'swatch' + (selected ? ' selected' : ''), title: gradient.label }, [img]);
   button.addEventListener('click', () => {
-    state.character.colors[slot.id] = gradient.id;
+    setSlotColour(slot.id, gradient.id);
     renderSlots();
     renderPreview();
   });
@@ -482,7 +518,7 @@ $('gradient-dialog').addEventListener('close', () => {
   if ($('gradient-dialog').returnValue !== 'ok' || !dialogSlot) return;
   const id = `custom/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   state.customGradients.push(createCustomGradient(id, $('gradient-name').value || 'Custom', dialogStops()));
-  state.character.colors[dialogSlot.id] = id;
+  setSlotColour(dialogSlot.id, id);
   renderSlots();
   renderPreview();
 });
@@ -592,7 +628,7 @@ $('body-type').addEventListener('change', (e) => {
     // Parts from the old body type switch to the same part number in the new one, if it exists.
     // Parts deliberately borrowed from a third body type stay as they are.
     if (variant && variant.bodyType === state.character.bodyType) {
-      parts[part] = resolveVariant(state.library, part, `${variant.pack}/${bodyType}/${part}/${variant.pid}`, bodyType) || id;
+      parts[part] = resolveVariant(state.library, variant.part, `${variant.pack}/${bodyType}/${variant.part}/${variant.pid}`, bodyType) || id;
     } else {
       parts[part] = id;
     }
@@ -603,6 +639,17 @@ $('body-type').addEventListener('change', (e) => {
 
 $('character-name').addEventListener('input', (e) => {
   state.character.name = e.target.value;
+});
+
+$('add-item').addEventListener('click', () => {
+  state.selectedPart = addItem(state.character, partOfKey(state.selectedPart));
+  renderAll();
+});
+$('remove-item').addEventListener('click', () => {
+  removeItem(state.character, state.selectedPart);
+  state.locked.delete(state.selectedPart);
+  state.selectedPart = partOfKey(state.selectedPart);
+  renderAll();
 });
 
 $('lock-part').addEventListener('change', (e) => {

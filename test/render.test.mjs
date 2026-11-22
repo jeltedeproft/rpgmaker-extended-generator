@@ -105,7 +105,7 @@ function sampleLibrary() {
 test('composeSheet layers front hair over body over back hair, recoloured', () => {
   const lib = sampleLibrary();
   const character = { bodyType: 'Male', parts: { Body: 'P/Male/Body/p01', FrontHair: 'P/Male/FrontHair/p01' }, colors: { skin: 'g' } };
-  assert.deepEqual(layersForSheet('TV', character, lib).map((l) => l.key), ['FrontHair2', 'Body', 'FrontHair1']);
+  assert.deepEqual(layersForSheet('TV', character, lib).map((d) => d.layer.key), ['FrontHair2', 'Body', 'FrontHair1']);
 
   const { image } = composeSheet('TV', character, lib, new Map([['g', { colors: lightToDark }]]), settings);
   assert.deepEqual(px(image, 0, 0), [10, 20, 30, 255]); // front hair on top
@@ -197,7 +197,7 @@ test('a face cell used both fixed and recoloured gives two layers, recoloured on
   assert.deepEqual(lib.warnings, []);
   const v = [...lib.variants.values()][0];
   const character = { bodyType: 'Male', parts: { Beard: v.id }, colors: {}, offsets: {} };
-  assert.deepEqual(layersForSheet('FG', character, lib).map((l) => l.base.src), ['fixed', 'coloured']);
+  assert.deepEqual(layersForSheet('FG', character, lib).map((d) => d.layer.base.src), ['fixed', 'coloured']);
 });
 
 test('a set variant (odd-eye body) borrows the sheets it lacks from the plain variant', () => {
@@ -209,6 +209,32 @@ test('a set variant (odd-eye body) borrows the sheets it lacks from the plain va
   addPack(lib, 'DLC', [{ path: 'g/odd-eye_bodies/left_red/Male/SV_body_p01.png', src: 'odd' }]);
   const odd = [...lib.variants.values()].find((v) => v.pid === 'p01 (left_red)');
   const character = { bodyType: 'Male', parts: { Body: odd.id }, colors: {}, offsets: {} };
-  assert.deepEqual(layersForSheet('SV', character, lib).map((l) => l.base.src), ['odd']);
-  assert.deepEqual(layersForSheet('FG', character, lib).map((l) => l.base.src), ['face']);
+  assert.deepEqual(layersForSheet('SV', character, lib).map((d) => d.layer.base.src), ['odd']);
+  assert.deepEqual(layersForSheet('FG', character, lib).map((d) => d.layer.base.src), ['face']);
+});
+
+test('two items of the same part: each has its own offset and can have its own colours', () => {
+  const lib = sampleLibrary();
+  const character = {
+    bodyType: 'Male',
+    parts: { Body: 'P/Male/Body/p01', 'Body 2': 'P/Male/Body/p01' },
+    colors: { skin: 'red' },
+    itemColors: { 'Body 2': { skin: 'blue' } },
+    offsets: { 'Body 2': { sprite: { x: 1, y: 0 } } },
+  };
+  const solidGradient = (hex) => ({ colors: gradientFromStops([{ pos: 0, color: hex }, { pos: 1, color: hex }]) });
+  const byId = new Map([['red', solidGradient('#ff0000')], ['blue', solidGradient('#0000ff')]]);
+  assert.deepEqual(layersForSheet('TV', character, lib).map((d) => d.item), ['Body', 'Body 2']);
+  const { image } = composeSheet('TV', character, lib, byId, settings);
+  assert.deepEqual(px(image, 0, 0), [255, 0, 0, 255]); // first item, shared colour
+  assert.deepEqual(px(image, 1, 0), [0, 0, 255, 255]); // second item on top, shifted, own colour
+});
+
+test('extra items survive save/load', () => {
+  const lib = sampleLibrary();
+  const character = { name: 'A', bodyType: 'Male', parts: { AccA: 'P/Female/AccA/p07', 'AccA 2': 'P/Female/AccA/p07' }, colors: {}, itemColors: { 'AccA 2': { accA: 'x' } }, offsets: {} };
+  const loaded = deserializeCharacter(serializeCharacter(character, []), lib);
+  assert.equal(loaded.character.parts['AccA 2'], 'P/Female/AccA/p07');
+  assert.deepEqual(loaded.character.itemColors, { 'AccA 2': { accA: 'x' } });
+  assert.deepEqual(loaded.missing, []);
 });

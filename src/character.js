@@ -3,13 +3,38 @@
 
 import { PART_ORDER, REQUIRED_PARTS, SLOTS } from './format.js';
 import { preferredCategory, createCustomGradient } from './gradients.js';
+import { partOfKey } from './compose.js';
 
 // v1: variant ids were "pack/pNN" (one body type per character).
 // v2: variant ids are "pack/bodyType/part/pNN" and characters may carry offsets.
-export const CHARACTER_FILE_VERSION = 2;
+// v3: several items per part ("AccA 2"), with optional own colours per item (itemColors).
+export const CHARACTER_FILE_VERSION = 3;
 
 export function createCharacter(bodyType) {
-  return { name: 'New character', bodyType, parts: {}, colors: {}, offsets: {} };
+  return { name: 'New character', bodyType, parts: {}, colors: {}, offsets: {}, itemColors: {} };
+}
+
+/** Item keys worn for a part, first item first: ["AccA", "AccA 2", ...]. */
+export function itemKeys(character, part) {
+  return Object.keys(character.parts)
+    .filter((k) => k !== part && partOfKey(k) === part)
+    .sort((a, b) => Number(a.split(' ').pop()) - Number(b.split(' ').pop()));
+}
+
+/** Adds another item of a part (a copy of the first one) and returns its key. */
+export function addItem(character, part) {
+  let n = 2;
+  while (`${part} ${n}` in character.parts) n++;
+  const key = `${part} ${n}`;
+  character.parts[key] = character.parts[part] || null;
+  return key;
+}
+
+/** Removes an extra item and everything stored for it. */
+export function removeItem(character, key) {
+  delete character.parts[key];
+  delete character.offsets?.[key];
+  delete character.itemColors?.[key];
 }
 
 /** Part names for the editor: known parts first, then custom part names found in any pack. */
@@ -109,7 +134,10 @@ export function resolveVariant(library, part, savedId, fallbackBodyType) {
 }
 
 export function serializeCharacter(character, customGradients) {
-  const used = new Set(Object.values(character.colors));
+  const used = new Set([
+    ...Object.values(character.colors),
+    ...Object.values(character.itemColors || {}).flatMap((c) => Object.values(c)),
+  ]);
   return JSON.stringify(
     {
       format: 'rpgmaker-xgen-character',
@@ -143,13 +171,14 @@ export function deserializeCharacter(json, library) {
     parts: {},
     colors: { ...saved.colors },
     offsets: structuredClone(saved.offsets || {}),
+    itemColors: structuredClone(saved.itemColors || {}),
   };
   for (const [part, id] of Object.entries(saved.parts || {})) {
     if (!id) {
       character.parts[part] = null;
       continue;
     }
-    const resolved = resolveVariant(library, part, id, saved.bodyType);
+    const resolved = resolveVariant(library, partOfKey(part), id, saved.bodyType);
     if (!resolved) missing.push(`${part} ${id}`);
     character.parts[part] = resolved;
   }
