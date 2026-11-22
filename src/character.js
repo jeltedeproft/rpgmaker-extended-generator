@@ -175,6 +175,51 @@ export function creditsText(credits, notes = {}) {
   }).join('\n');
 }
 
+/**
+ * A character set: a partial character (some items, with their colours, positions, pieces and
+ * visibility) that can be put on top of any character, e.g. "Knight armour" or "Red-haired".
+ * @param {string[]} keys item keys to include
+ */
+export function makeSet(character, library, name, keys, includeColours = true) {
+  const pick = (obj) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => keys.includes(k) || keys.some((key) => k.startsWith(`${key} #`))));
+  const set = {
+    name,
+    parts: Object.fromEntries(keys.map((k) => [k, character.parts[k] ?? null])),
+    offsets: structuredClone(pick(character.offsets)),
+    itemColors: structuredClone(pick(character.itemColors)),
+    split: structuredClone(pick(character.split)),
+    clip: structuredClone(pick(character.clip)),
+    colors: {},
+  };
+  if (includeColours) {
+    const slots = usedSlots({ parts: Object.fromEntries(keys.map((k) => [k, character.parts[k]])) }, library);
+    for (const s of slots) if (character.colors[s.id]) set.colors[s.id] = character.colors[s.id];
+  }
+  return set;
+}
+
+/** Puts a set on a character: its items replace the same items, everything else stays. */
+export function applySet(character, set, library) {
+  const next = structuredClone({ ...character, offsets: character.offsets || {}, itemColors: character.itemColors || {}, split: character.split || {}, clip: character.clip || {} });
+  const missing = [];
+  for (const [key, id] of Object.entries(set.parts || {})) {
+    if (!id) {
+      next.parts[key] = null;
+      continue;
+    }
+    const resolved = resolveVariant(library, partOfKey(key), id, character.bodyType);
+    if (!resolved) missing.push(`${key} ${id}`);
+    next.parts[key] = resolved;
+    // Start the item clean, then take the set's settings for it.
+    for (const field of ['offsets', 'itemColors', 'split', 'clip']) {
+      for (const k of Object.keys(next[field])) if (k === key || k.startsWith(`${key} #`)) delete next[field][k];
+    }
+  }
+  for (const field of ['offsets', 'itemColors', 'split', 'clip']) Object.assign(next[field], structuredClone(set[field] || {}));
+  Object.assign(next.colors, set.colors || {});
+  return { character: next, missing };
+}
+
 export function serializeCharacter(character, customGradients) {
   const used = new Set([
     ...Object.values(character.colors),

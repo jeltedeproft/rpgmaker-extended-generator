@@ -5,7 +5,7 @@ import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/
 import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces, sheetLayout, placeOnSheet } from '../src/compose.js';
 import { islandLabels } from '../src/islands.js';
 import { solidOf, insideOutline, applyClip } from '../src/clip.js';
-import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter, creditsFor, creditsText } from '../src/character.js';
+import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter, creditsFor, creditsText, makeSet, applySet } from '../src/character.js';
 import { createLibrary, addPack } from '../src/parse.js';
 
 function solid(w, h, [r, g, b, a]) {
@@ -357,4 +357,23 @@ test('sheet templates: 48px walk parts go frame by frame onto a 64px template, s
   // Frame (1,0) starts at x=64; the 48px frame is centred (+8) and bottom-aligned (+16).
   assert.deepEqual(px(image, 64 + 8, 63), [1, 2, 3, 255]);
   assert.equal(sheetLayout('TV', [], {}).size.w, 144); // no template: automatic
+});
+
+test('character sets: save some items with their colours, put them on another character', () => {
+  const lib = sampleLibrary();
+  const source = {
+    bodyType: 'Male', parts: { Body: 'P/Male/Body/p01', FrontHair: 'P/Male/FrontHair/p01' },
+    colors: { hair: 'red', skin: 'pale' }, offsets: { FrontHair: { face: { x: 1, y: 0 } } }, itemColors: {}, split: {}, clip: {},
+  };
+  const set = makeSet(source, lib, 'Red hair', ['FrontHair']);
+  assert.deepEqual(set.parts, { FrontHair: 'P/Male/FrontHair/p01' });
+  assert.deepEqual(set.offsets, { FrontHair: { face: { x: 1, y: 0 } } });
+  const target = { bodyType: 'Male', parts: { Body: 'P/Male/Body/p01', AccA: 'P/Female/AccA/p07' }, colors: { skin: 'dark' }, offsets: {} };
+  const { character, missing } = applySet(target, set, lib);
+  assert.deepEqual(missing, []);
+  assert.equal(character.parts.FrontHair, 'P/Male/FrontHair/p01');
+  assert.equal(character.parts.AccA, 'P/Female/AccA/p07'); // untouched
+  assert.equal(character.colors.skin, 'dark'); // skin isn't used by hair: kept
+  assert.deepEqual(character.offsets.FrontHair, { face: { x: 1, y: 0 } });
+  assert.equal(target.parts.FrontHair, undefined); // the original isn't changed
 });

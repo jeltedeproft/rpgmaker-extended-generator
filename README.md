@@ -31,6 +31,8 @@ existing extended generator is, minus the bugs:
 - **Credits:** lists every pack the character uses (parts and colours), shows readme/credit
   files found in the pack folder, lets you add an author line, and exports a `_credits.txt`.
 - **Editable draw order** per sheet (starts as RPG Maker's order).
+- **Character sets:** save some parts with their colours and positions ("Knight armour") and put
+  them on any character; export/import sets to share them.
 - **Randomize** with per-part locks.
 
 ## Develop

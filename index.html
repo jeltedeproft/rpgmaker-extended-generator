@@ -43,6 +43,17 @@
         <input id="character-name" type="text" maxlength="40">
       </label>
       <nav id="part-list" class="part-list"></nav>
+      <div class="sets">
+        <div class="sets-head">
+          <span>Sets</span>
+          <button id="save-set" class="small-button" title="Save some of the current parts, with their colours, to put on other characters">Save as set…</button>
+        </div>
+        <div id="set-list"></div>
+        <div class="sets-io">
+          <button id="export-sets" class="small-button">Export</button>
+          <label class="button small-button">Import<input type="file" id="import-sets" accept=".json,application/json" hidden></label>
+        </div>
+      </div>
       <div id="packs" class="packs"></div>
     </aside>
 
@@ -170,6 +181,20 @@
       </details>
     </section>
   </main>
+
+  <dialog id="set-dialog">
+    <form method="dialog" class="assign-form">
+      <h3>Save as set</h3>
+      <label class="field">Name <input id="set-name" type="text" maxlength="40" placeholder="e.g. Knight armour"></label>
+      <p class="muted small">Parts in the set (they replace the same parts when you put the set on):</p>
+      <div id="set-items" class="set-items"></div>
+      <label class="lock"><input type="checkbox" id="set-colours" checked> Include their colours</label>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button value="ok" class="primary">Save set</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="assign-dialog">
     <form method="dialog" class="assign-form">

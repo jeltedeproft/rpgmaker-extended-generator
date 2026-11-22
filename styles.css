@@ -187,3 +187,11 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .template-grid { display: grid; grid-template-columns: auto repeat(4, 64px); gap: 4px 6px; align-items: center; font-size: 12px; }
 .template-grid input { width: 64px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 5px; }
 .template-grid input[hidden] { display: block !important; visibility: hidden; }
+.sets { margin-top: 16px; font-size: 12px; }
+.sets-head { display: flex; justify-content: space-between; align-items: center; color: var(--muted); margin-bottom: 4px; }
+.sets-head .small-button, .sets-io .small-button { margin-top: 0; }
+.set { display: flex; gap: 4px; margin: 3px 0; }
+.set-apply { flex: 1; text-align: left; padding: 3px 8px; font-size: 12px; }
+.set-remove { padding: 0 7px; font-size: 11px; color: var(--muted); }
+.sets-io { display: flex; gap: 6px; margin-top: 6px; }
+.set-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; margin-bottom: 10px; }

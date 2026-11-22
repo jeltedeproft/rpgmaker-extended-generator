@@ -11,6 +11,7 @@ import { createImage } from './recolor.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, itemKeys, addItem, removeItem, creditsFor, creditsText,
+  makeSet, applySet,
 } from './character.js';
 import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage,
@@ -207,6 +208,7 @@ function renderSidebar() {
     return button;
   }));
 
+  renderSets();
   $('packs').replaceChildren(
     el('div', { textContent: 'Packs' }),
     ...lib.packs.map((p) => el('div', { textContent: `• ${p.name} (${p.fileCount} files)` })),
@@ -651,6 +653,79 @@ function renderProblems() {
     el('ul', {}, [...skipped, ...lines.slice(0, 500).map((l) => el('li', { textContent: l }))]),
   );
 }
+
+// ---------- character sets ----------
+
+/** Saved sets live in the browser (settings) and can be exported/imported as a file. */
+function renderSets() {
+  const sets = state.settings.sets || [];
+  $('set-list').replaceChildren(...(sets.length ? sets.map((set, i) => {
+    const apply = el('button', { className: 'set-apply', textContent: set.name, title: `Put on: ${Object.keys(set.parts).join(', ')}` });
+    apply.addEventListener('click', () => {
+      for (const g of set.customGradients || []) {
+        if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(createCustomGradient(g.id, g.label, g.stops));
+      }
+      const { character, missing } = applySet(state.character, set, state.library);
+      state.character = character;
+      renderAll();
+      toast(missing.length ? `Put on "${set.name}", but missing: ${missing.join(', ')}` : `Put on "${set.name}".`);
+    });
+    const remove = el('button', { className: 'set-remove', textContent: '✕', title: 'Delete this set' });
+    remove.addEventListener('click', () => {
+      state.settings.sets.splice(i, 1);
+      saveSettings();
+      renderSets();
+    });
+    return el('div', { className: 'set' }, [apply, remove]);
+  }) : [el('div', { className: 'muted small', textContent: 'None yet. A set is a group of parts with their colours, to put on any character.' })]));
+  $('export-sets').disabled = !sets.length;
+}
+
+function openSetDialog() {
+  const keys = Object.keys(state.character.parts).filter((k) => state.character.parts[k]);
+  $('set-name').value = '';
+  $('set-items').replaceChildren(...keys.map((k) => el('label', { className: 'lock' }, [
+    el('input', { type: 'checkbox', value: k, checked: !['Body', 'Face'].includes(k) }), ` ${k}`,
+  ])));
+  $('set-dialog').showModal();
+}
+
+$('save-set').addEventListener('click', openSetDialog);
+$('set-dialog').addEventListener('close', () => {
+  if ($('set-dialog').returnValue !== 'ok') return;
+  const keys = [...$('set-items').querySelectorAll('input:checked')].map((i) => i.value);
+  if (!keys.length) {
+    toast('Not saved: tick at least one part.');
+    return;
+  }
+  const name = $('set-name').value.trim() || keys.join(' + ');
+  const set = makeSet(state.character, state.library, name, keys, $('set-colours').checked);
+  const used = new Set([...Object.values(set.colors), ...Object.values(set.itemColors).flatMap((c) => Object.values(c))]);
+  set.customGradients = state.customGradients.filter((g) => used.has(g.id)).map((g) => ({ id: g.id, label: g.label, stops: g.stops }));
+  (state.settings.sets ||= []).push(set);
+  saveSettings();
+  renderSets();
+  toast(`Saved set "${name}".`);
+});
+$('export-sets').addEventListener('click', () => {
+  const json = JSON.stringify({ format: 'rpgmaker-xgen-sets', version: 1, sets: state.settings.sets || [] }, null, 2);
+  downloadBlob(new Blob([json], { type: 'application/json' }), 'character-sets.json');
+});
+$('import-sets').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.format !== 'rpgmaker-xgen-sets') throw new Error('not a sets file');
+    (state.settings.sets ||= []).push(...data.sets);
+    saveSettings();
+    renderSets();
+    toast(`Imported ${data.sets.length} set(s).`);
+  } catch (err) {
+    toast(`Could not import sets: ${err.message}`);
+  }
+});
 
 // ---------- assigning unrecognised files by hand ----------
 

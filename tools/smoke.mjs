@@ -148,6 +148,24 @@ try {
   await sleep(400);
   await shot('3-random.png');
 
+  // Character sets: save the hair as a set, change it, put the set back on.
+  await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
+  await sleep(300);
+  await click('#variants .variant:nth-child(2)');
+  await sleep(600);
+  const hairValue = () => evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).querySelector('.value').textContent`);
+  const savedHair = await hairValue();
+  await click('#save-set');
+  await sleep(300);
+  await evaluate(`(() => { document.getElementById('set-name').value = 'Smoke hair'; for (const i of document.querySelectorAll('#set-items input')) i.checked = i.value === 'FrontHair'; document.querySelector('#set-dialog button[value="ok"]').click(); })()`);
+  await sleep(500);
+  check('set saved', await evaluate(`[...document.querySelectorAll('.set-apply')].some(b => b.textContent === 'Smoke hair')`));
+  await click('#variants .variant:nth-child(1)');
+  await sleep(500);
+  await evaluate(`[...document.querySelectorAll('.set-apply')].find(b => b.textContent === 'Smoke hair').click()`);
+  await sleep(800);
+  check('set puts the hair back on', (await hairValue()) === savedHair, savedHair);
+
   // Credits: the pack in use, with its credits file.
   await evaluate(`document.getElementById('credits').open = true`);
   check('credits list the pack and its credits file', await evaluate(`(() => { const t = document.getElementById('credit-list').textContent; return t.includes('Sample kit') && t.includes('credits.txt'); })()`));
