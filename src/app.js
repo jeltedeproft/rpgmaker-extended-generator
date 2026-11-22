@@ -374,39 +374,109 @@ function renderSheetParts() {
     $('sheet-parts').replaceChildren();
     return;
   }
-  const { own, others } = variantsForPart(lib, variant.part, state.character.bodyType);
-  const candidates = [...own, ...others];
   const rows = [];
   for (const sheet of ['FG', 'TV', 'TVD', 'SV']) {
-    const choice = state.character.sheetParts?.[key]?.[sheet] || '';
+    const { usable, choice } = sheetCandidates(key, sheet);
     const ownHas = sheetLayers(variant, sheet, lib).length > 0;
-    const select = el('select', { title: `What this part shows on the ${SHEET_NAMES[sheet].toLowerCase()} image` });
-    select.append(
-      el('option', { value: '', textContent: `As chosen (${variant.pid}${ownHas ? '' : ': nothing here'})` }),
-      el('option', { value: HIDDEN, textContent: 'Hidden' }),
-    );
-    const usable = candidates.filter((v) => v.id !== variant.id && sheetLayers(v, sheet, lib).length);
-    if (choice && choice !== HIDDEN && !usable.some((v) => v.id === choice) && lib.variants.get(choice)) usable.unshift(lib.variants.get(choice));
-    for (const v of usable) select.append(el('option', { value: v.id, textContent: `Use ${variantLabel(lib, v, state.character.bodyType)}` }));
-    select.value = choice;
-    select.addEventListener('change', async () => {
-      const choices = ((state.character.sheetParts ||= {})[key] ||= {});
-      if (select.value) choices[sheet] = select.value;
-      else delete choices[sheet];
-      if (!Object.keys(choices).length) delete state.character.sheetParts[key];
-      await ensureVariants(variantsToDecode(state.character, lib));
-      renderSheetParts();
-      renderPreview();
-    });
+    const chosen = choice && choice !== HIDDEN && lib.variants.get(choice);
+    const label = choice === HIDDEN ? 'Hidden'
+      : chosen ? `Use ${variantLabel(lib, chosen, state.character.bodyType)}`
+        : `As chosen (${variant.pid}${ownHas ? '' : ': nothing here'})`;
     const shown = itemOnSheet(state.character, key, variant, sheet, lib);
-    const blank = !state.character.hidden?.[key] && choice !== HIDDEN && !(shown && sheetLayers(shown, sheet, lib).length);
+    const drawable = shown && sheetLayers(shown, sheet, lib).length;
+    const thumb = el('div', { className: 'placeholder', textContent: drawable ? '…' : '∅' });
+    const button = el('button', { type: 'button', className: 'sheet-pick', title: `What this part shows on the ${SHEET_NAMES[sheet].toLowerCase()} image: click to see the choices` }, [
+      thumb, el('span', { textContent: `${label} ▾` }),
+    ]);
+    if (drawable) {
+      partThumbnail(key, shown, [sheet]).then((pixels) => {
+        if (pixels) thumb.replaceWith(toCanvas(pixels));
+        else thumb.textContent = '∅';
+      }).catch(() => (thumb.textContent = '?'));
+    }
+    button.addEventListener('click', () => openPickDialog(key, sheet));
+    const blank = !state.character.hidden?.[key] && choice !== HIDDEN && !drawable;
     const note = blank
       ? el('span', { className: 'blank', textContent: usable.length ? '⚠ blank: pick a stand-in' : '⚠ blank, no other picture' })
       : el('span', { className: 'muted small', textContent: choice === HIDDEN ? 'hidden' : '' });
-    rows.push(el('span', { textContent: SHEET_NAMES[sheet] }), select, note);
+    rows.push(el('span', { textContent: SHEET_NAMES[sheet] }), button, note);
   }
   $('sheet-parts').replaceChildren(...rows);
 }
+
+/** The variants that can stand in for an item on one image, and the current choice there. */
+function sheetCandidates(key, sheet) {
+  const lib = state.library;
+  const variant = lib.variants.get(state.character.parts[key]);
+  const { own, others } = variantsForPart(lib, variant.part, state.character.bodyType);
+  const choice = state.character.sheetParts?.[key]?.[sheet] || '';
+  const usable = [...own, ...others].filter((v) => v.id !== variant.id && sheetLayers(v, sheet, lib).length);
+  if (choice && choice !== HIDDEN && !usable.some((v) => v.id === choice) && lib.variants.get(choice)) usable.unshift(lib.variants.get(choice));
+  return { variant, usable, choice };
+}
+
+async function setSheetChoice(key, sheet, value) {
+  const choices = ((state.character.sheetParts ||= {})[key] ||= {});
+  if (value) choices[sheet] = value;
+  else delete choices[sheet];
+  if (!Object.keys(choices).length) delete state.character.sheetParts[key];
+  await ensureVariants(variantsToDecode(state.character, state.library));
+  renderSheetParts();
+  renderPreview();
+}
+
+/** The per-image choices as pictures: what the part would look like on that image. */
+let picking = null;
+function openPickDialog(key, sheet) {
+  picking = { key, sheet };
+  $('pick-title').textContent = `${key} on the ${SHEET_NAMES[sheet].toLowerCase()} image`;
+  $('pick-search').value = '';
+  renderPickList();
+  if (!$('pick-dialog').open) $('pick-dialog').showModal();
+}
+
+function pickTile(label, title, selected, draw, value) {
+  const thumb = el('div', { className: 'placeholder', textContent: '…' });
+  const tile = el('button', { type: 'button', className: 'variant' + (selected ? ' selected' : ''), title }, [thumb, el('span', { textContent: label })]);
+  tile.draw = () => draw().then((pixels) => {
+    if (pixels) thumb.replaceWith(toCanvas(pixels));
+    else thumb.textContent = '∅';
+  }).catch(() => (thumb.textContent = '?'));
+  tile.addEventListener('click', () => {
+    const { key, sheet } = picking;
+    $('pick-dialog').close();
+    setSheetChoice(key, sheet, value);
+  });
+  return tile;
+}
+
+function renderPickList() {
+  if (!picking) return;
+  const { key, sheet } = picking;
+  const lib = state.library;
+  const { variant, usable, choice } = sheetCandidates(key, sheet);
+  const query = $('pick-search').value.trim().toLowerCase();
+  const ownHas = sheetLayers(variant, sheet, lib).length > 0;
+  const tiles = [
+    pickTile(`As chosen (${variant.pid})`, ownHas ? `${variant.id}: its own picture` : `${variant.id} has no picture here`, !choice,
+      () => (ownHas ? partThumbnail(key, variant, [sheet]) : Promise.resolve(null)), ''),
+    pickTile('Hidden', 'Not drawn on this image', choice === HIDDEN, () => Promise.resolve(null), HIDDEN),
+    ...usable
+      .filter((v) => !query || `${variantLabel(lib, v, state.character.bodyType)} ${v.id}`.toLowerCase().includes(query))
+      .map((v) => pickTile(variantLabel(lib, v, state.character.bodyType), v.id, choice === v.id, () => partThumbnail(key, v, [sheet]), v.id)),
+  ];
+  const observer = new IntersectionObserver((seen) => {
+    for (const e of seen) {
+      if (!e.isIntersecting) continue;
+      observer.unobserve(e.target);
+      e.target.draw();
+    }
+  }, { root: $('pick-list') });
+  for (const t of tiles) observer.observe(t);
+  $('pick-list').replaceChildren(...tiles);
+}
+$('pick-search').addEventListener('input', renderPickList);
+$('pick-dialog').addEventListener('close', () => (picking = null));
 
 $('hide-item').addEventListener('change', () => {
   const key = state.selectedPart;

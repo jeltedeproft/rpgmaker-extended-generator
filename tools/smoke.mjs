@@ -473,11 +473,19 @@ try {
     // Per image: hide the part on the face only, or everywhere.
     {
       const beforeHide = await evaluate(faceSig);
-      check('per image box shown', await evaluate(`!document.getElementById('sheet-parts-box').hidden && document.querySelectorAll('#sheet-parts select').length === 4`));
-      await evaluate(`(() => { const s = document.querySelector('#sheet-parts select'); s.value = 'hidden'; s.dispatchEvent(new Event('change')); })()`);
+      check('per image box shown', await evaluate(`!document.getElementById('sheet-parts-box').hidden && document.querySelectorAll('#sheet-parts .sheet-pick').length === 4`));
+      check('per image choices show a picture', await evaluate(`!!document.querySelector('#sheet-parts .sheet-pick canvas')`));
+      await click('#sheet-parts .sheet-pick');
+      await sleep(1500);
+      check('picture picker opens', await evaluate(`document.getElementById('pick-dialog').open && document.querySelectorAll('#pick-list .variant').length >= 2`));
+      check('picture picker shows pictures', await evaluate(`[...document.querySelectorAll('#pick-list .variant')].filter(b => b.querySelector('canvas')).length >= 1`));
+      await shot('4e-pick-picture.png');
+      await evaluate(`[...document.querySelectorAll('#pick-list .variant')].find(b => b.title === 'Not drawn on this image').click()`);
       await sleep(1000);
-      check('hidden on the face image', (await evaluate(faceSig)) !== beforeHide);
-      await evaluate(`(() => { const s = document.querySelector('#sheet-parts select'); s.value = ''; s.dispatchEvent(new Event('change')); })()`);
+      check('hidden on the face image', (await evaluate(faceSig)) !== beforeHide && !(await evaluate(`document.getElementById('pick-dialog').open`)));
+      await click('#sheet-parts .sheet-pick');
+      await sleep(800);
+      await evaluate(`document.querySelector('#pick-list .variant').click()`);
       await sleep(1000);
       check('shown again on the face', (await evaluate(faceSig)) === beforeHide);
       await evaluate(`(() => { const c = document.getElementById('hide-item'); c.checked = true; c.dispatchEvent(new Event('change')); })()`);
