@@ -36,6 +36,15 @@
   with the official MZ folder); the part tiles showed RPG Maker's fixed-colour icons. Tiles are
   now drawn in the current colours. Confirm with the tester that this is what they meant.
 
+## Tester feedback, round 4 (2026-11-22)
+- ✅ RPG Maker MZ generator presets (`CharacterGeneratorSettings` .json): Load character reads
+  them, and .json presets inside an opened folder are listed under "Presets". Colours map to rows
+  of grad_skin / grad_hair / grad_eyes / grad_common; offsets move face parts. Tested with the
+  tester's three presets (kept in git-ignored `test-assets/presets/`).
+- ✅ "Mask colour not tied to any colour slot" with the Another DLC generator: every such pixel
+  had the picture's own colour (copied outlines and buckles), meant to stay as drawn. No longer
+  reported.
+
 ## Blocked on RPG Maker's own generator (trial: rpgmakerweb.com/free-trials, or the tester's files)
 - [ ] Settle the open questions in `docs/FORMAT.md` (brightness measure first).
 - [ ] Compare one character pixel-for-pixel with RPG Maker's own generator.

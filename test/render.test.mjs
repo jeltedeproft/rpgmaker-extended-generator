@@ -450,3 +450,31 @@ test('mask pixels copied from the image are not reported as unknown colours', ()
   assert.deepEqual([...scanMask(mask).unknown.keys()].length, 2);
   assert.deepEqual([...scanMask(mask, base).unknown.keys()], [0xc800c8]);
 });
+
+test('reads RPG Maker MZ generator presets (CharacterGeneratorSettings)', () => {
+  const lib = createLibrary();
+  addPack(lib, 'MZ', [
+    { path: 'g/Face/Female/FG_Body_p01_c1_m001.png', src: 'b' },
+    { path: 'g/Face/Female/FG_Face_p04_c1_m001.png', src: 'f' },
+    { path: 'g/Face/Female/FG_FrontHair_p21_c1_m003.png', src: 'h' },
+    { path: 'g/Face/Female/FG_Nose_p02_c1_m001.png', src: 'n' },
+  ]);
+  const grad = (category, n) => Array.from({ length: n }, (_, i) => ({ id: `MZ/grad_${category}#${i}`, category, source: 'file' }));
+  const gradients = [...grad('skin', 4), ...grad('hair', 30), ...grad('common', 20)];
+  const json = JSON.stringify({
+    identity: 'CharacterGeneratorSettings', version: '2.0.0', gender: 'female',
+    patterns: { body: 'p01', face: 'p04', fronthair: 'p21', nose: 'p02', glasses: '', beard: 'p09' },
+    colors: { '#F9C19D': 2, '#FCCB0A': 23, '#AE8682': 15 },
+    offsets: { nose: { x: -3, y: -1 }, eyes: { x: 0, y: 0 } },
+  });
+  const { character, missing } = deserializeCharacter(json, lib, gradients, 'Soldier_female.json');
+  assert.equal(character.name, 'Soldier_female');
+  assert.equal(character.bodyType, 'Female');
+  assert.equal(character.parts.FrontHair, 'MZ/Female/FrontHair/p21');
+  assert.equal(character.parts.Glasses, null);
+  assert.equal(character.colors.skin, 'MZ/grad_skin#2');
+  assert.equal(character.colors.hair, 'MZ/grad_hair#23');
+  assert.equal(character.colors.clothing, 'MZ/grad_common#15');
+  assert.deepEqual(character.offsets.Nose.face, { x: -3, y: -1, rot: 0 });
+  assert.deepEqual(missing, ['Beard p09']);
+});

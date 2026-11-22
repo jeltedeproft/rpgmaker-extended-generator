@@ -173,7 +173,7 @@ export async function entriesFromHandle(handle, prefix = handle.name + '/') {
   const entries = [];
   for await (const [name, child] of handle.entries()) {
     if (child.kind === 'directory') entries.push(...(await entriesFromHandle(child, `${prefix}${name}/`)));
-    else if (/\.(png|txt|md)$/i.test(name)) entries.push({ path: prefix + name, src: await child.getFile() });
+    else if (/\.(png|txt|md|json)$/i.test(name)) entries.push({ path: prefix + name, src: await child.getFile() });
   }
   return entries;
 }

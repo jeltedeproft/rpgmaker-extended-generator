@@ -10,7 +10,7 @@ import {
 import { createImage, scanMask } from './recolor.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
-  serializeCharacter, deserializeCharacter, itemKeys, addItem, removeItem, creditsFor, creditsText,
+  serializeCharacter, deserializeCharacter, isGeneratorSettings, itemKeys, addItem, removeItem, creditsFor, creditsText,
   makeSet, applySet, DEFAULT_RULES, wearChance,
 } from './character.js';
 import {
@@ -98,6 +98,17 @@ async function importEntries(entries, packName) {
   const gradientFilesBefore = state.library.gradientFiles.length;
   const texts = entries.filter((e) => TEXT_FILE_RE.test(e.path));
   const pack = addPack(state.library, packName, [...pngs, ...texts]);
+  // Character presets shipped with the pack (RPG Maker MZ generator .json files, or ours).
+  pack.presets = [];
+  for (const e of entries.filter((x) => /\.json$/i.test(x.path)).slice(0, 200)) {
+    try {
+      const text = await readText(e.src);
+      const data = JSON.parse(text);
+      if (isGeneratorSettings(data) || data.format === 'rpgmaker-xgen-character') {
+        pack.presets.push({ name: e.path.split('/').pop().replace(/\.json$/i, ''), fileName: e.path.split('/').pop(), text });
+      }
+    } catch { /* not a preset */ }
+  }
   // Readme / credit files, shown in the credits list.
   pack.textContents = await Promise.all(pack.texts.slice(0, 8).map(async (t) => {
     try {
@@ -796,7 +807,18 @@ function renderProblems() {
 // ---------- character sets ----------
 
 /** Saved sets live in the browser (settings) and can be exported/imported as a file. */
+function renderPresets() {
+  const presets = [...state.library.packs.values()].flatMap((p) => p.presets || []);
+  $('preset-box').hidden = !presets.length;
+  $('preset-list').replaceChildren(...presets.map((preset) => {
+    const load = el('button', { className: 'set-apply', textContent: preset.name, title: 'Load this preset as the character' });
+    load.addEventListener('click', () => loadCharacterText(preset.text, preset.fileName));
+    return el('div', { className: 'set' }, [load]);
+  }));
+}
+
 function renderSets() {
+  renderPresets();
   const sets = state.settings.sets || [];
   $('set-list').replaceChildren(...(sets.length ? sets.map((set, i) => {
     const apply = el('button', { className: 'set-apply', textContent: set.name, title: `Put on: ${Object.keys(set.parts).join(', ')}` });
@@ -1418,8 +1440,12 @@ $('save-character').addEventListener('click', () => {
 });
 
 async function loadCharacterFile(file) {
+  await loadCharacterText(await readText(file), file.name || '');
+}
+
+async function loadCharacterText(text, fileName) {
   try {
-    const { character, customGradients, missing } = deserializeCharacter(await file.text(), state.library);
+    const { character, customGradients, missing } = deserializeCharacter(text, state.library, allGradients(), fileName);
     for (const g of customGradients) {
       if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(g);
     }

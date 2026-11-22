@@ -1,7 +1,7 @@
 // Character model: which variant per part (from any body type), which gradient per colour slot,
 // and per-part pixel offsets.
 
-import { PART_ORDER, REQUIRED_PARTS, SLOTS } from './format.js';
+import { PART_ORDER, REQUIRED_PARTS, SLOTS, SLOT_BY_RGB } from './format.js';
 import { preferredCategory, createCustomGradient } from './gradients.js';
 import { partOfKey, pieceKeys, selectedItems, variantForSheet } from './compose.js';
 import { SHEET_KEYS } from './format.js';
@@ -279,8 +279,84 @@ export function serializeCharacter(character, customGradients) {
 /**
  * @returns {{character:object, customGradients:object[], missing:string[]}}
  */
-export function deserializeCharacter(json, library) {
+/** True for RPG Maker MZ's own generator presets ("CharacterGeneratorSettings" .json files). */
+export function isGeneratorSettings(data) {
+  return data?.identity === 'CharacterGeneratorSettings' && typeof data.patterns === 'object';
+}
+
+/** The variant of a part with this number ("p04" also finds "p4" or "p004"), own body type first. */
+function variantByNumber(library, part, pid, bodyType) {
+  const exact = resolveVariant(library, part, pid, bodyType);
+  if (exact) return exact;
+  const n = Number(pid.replace(/\D/g, ''));
+  const order = [bodyType, ...[...library.bodyTypes.keys()].filter((b) => b !== bodyType)];
+  for (const name of order) {
+    for (const [id, v] of library.bodyTypes.get(name)?.parts.get(part) || []) {
+      if (v.basePid === v.pid && Number(v.pid.replace(/\D/g, '')) === n) return id;
+    }
+  }
+  return null;
+}
+
+/**
+ * Reads a preset saved by RPG Maker MZ's own character generator:
+ * {gender, patterns: {fronthair: "p21", ...}, colors: {"#FCCB0A": 23, ...}, offsets: {nose: {x, y}}}.
+ * Colours are keyed by mask colour and pick a row of that colour's gradient sheet (grad_skin,
+ * grad_hair, grad_eyes or grad_common). Offsets move face parts.
+ * @param {Array} gradients loaded gradients, to find the rows in
+ */
+export function fromGeneratorSettings(data, library, gradients = [], name = 'Character') {
+  const missing = [];
+  const wanted = String(data.gender || '').toLowerCase();
+  const bodyType = [...library.bodyTypes.keys()].find((b) => b.toLowerCase() === wanted)
+    || [...library.bodyTypes.keys()][0];
+  if (bodyType?.toLowerCase() !== wanted) missing.push(`body type ${data.gender}`);
+  const partByLower = new Map(PART_ORDER.map((p) => [p.toLowerCase(), p]));
+  for (const p of library.bodyTypes.get(bodyType)?.parts.keys() || []) partByLower.set(p.toLowerCase(), p);
+
+  const character = { ...createCharacter(bodyType), name };
+  for (const [key, pid] of Object.entries(data.patterns || {})) {
+    const part = partByLower.get(key.toLowerCase());
+    if (!part) {
+      if (pid) missing.push(`${key} ${pid}`);
+      continue;
+    }
+    if (!pid) {
+      character.parts[part] = null;
+      continue;
+    }
+    const id = variantByNumber(library, part, String(pid), bodyType);
+    if (!id) missing.push(`${part} ${pid}`);
+    character.parts[part] = id;
+  }
+
+  // Row n of the slot's gradient sheet. RPG Maker MZ sheets come first, then any pack's.
+  const rowsFor = (category) => {
+    const sheets = gradients.filter((g) => g.source === 'file' && g.category === category);
+    return sheets.length ? sheets : gradients.filter((g) => g.source === 'file' && g.category === 'all');
+  };
+  for (const [hex, row] of Object.entries(data.colors || {})) {
+    const slot = SLOT_BY_RGB.get(parseInt(String(hex).replace('#', ''), 16));
+    if (!slot || !Number.isInteger(row)) continue;
+    const rows = rowsFor(preferredCategory(slot.id));
+    const gradient = rows.find((g) => g.id.endsWith(`#${row}`));
+    if (gradient) character.colors[slot.id] = gradient.id;
+    else if (character.parts[slot.part]) missing.push(`${slot.label} colour ${row + 1}`);
+  }
+
+  for (const [key, o] of Object.entries(data.offsets || {})) {
+    const part = partByLower.get(key.toLowerCase());
+    if (!part || (!o?.x && !o?.y)) continue;
+    character.offsets[part] = { face: { x: o.x || 0, y: o.y || 0, rot: 0 } };
+  }
+  return { character, customGradients: [], missing };
+}
+
+export function deserializeCharacter(json, library, gradients = [], fileName = '') {
   const data = JSON.parse(json);
+  if (isGeneratorSettings(data)) {
+    return fromGeneratorSettings(data, library, gradients, fileName.replace(/\.json$/i, '') || 'Character');
+  }
   if (data.format !== 'rpgmaker-xgen-character') throw new Error('Not a character file');
   if (data.version > CHARACTER_FILE_VERSION) throw new Error('Character file is from a newer version');
 
