@@ -340,6 +340,10 @@ try {
     await sleep(900);
     check('assign dialog shows the image', await evaluate(`document.getElementById('assign-preview').width > 0`));
     check('one by one offers skip', await evaluate(`!document.getElementById('assign-skip').hidden`));
+    await sleep(2500);
+    check('assign dialog suggests an image', (await evaluate(`document.getElementById('assign-suggest').textContent`)).includes('Suggested image'));
+    check('assign dialog suggests parts by position', await evaluate(`document.querySelectorAll('#assign-suggest button').length > 0 && document.getElementById('assign-part').value.length > 0`), await evaluate(`document.getElementById('assign-suggest').textContent`));
+    await shot('4d-assign-suggest.png');
     await evaluate(`document.getElementById('assign-skip').click()`);
     await sleep(600);
     // Reassign a file that was read from its name.

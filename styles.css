@@ -136,6 +136,8 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .sheet-pick span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-list { overflow: auto; max-height: 64vh; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
 .link-box { margin-top: 8px; }
+.assign-suggest { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.assign-suggest .small-button { margin-top: 0; }
 .sheet-parts select { min-width: 0; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }
 .sheet-parts .blank { color: var(--warn, #d9822b); font-size: 12px; }
 .part-list button.hidden-item > span:first-child { text-decoration: line-through; opacity: 0.7; }

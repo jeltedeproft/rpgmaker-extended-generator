@@ -1,6 +1,6 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
-import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, DEFAULT_SIZE, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
+import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
 import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
 import {
@@ -8,6 +8,7 @@ import {
   layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask } from './recolor.js';
+import { guessSheet, shapeProfile, rankParts } from './suggest.js';
 import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -1190,8 +1191,6 @@ $('import-sets').addEventListener('change', async (e) => {
 
 // ---------- assigning unrecognised files by hand ----------
 
-const SHEET_BY_SIZE = Object.entries(DEFAULT_SIZE).map(([sheet, s]) => ({ sheet, ...s }));
-
 function assignFields() {
   return {
     sheet: $('assign-sheet').value,
@@ -1273,10 +1272,14 @@ async function openAssignDialog(entry, queue = null) {
     ...SLOTS.filter((s) => s.m).map((s) => el('option', { value: s.m, textContent: s.label })));
   // Start from what it's read as now (reassigning), else guess the sheet from the image size.
   const current = loaded && parsePartPath(`${loaded.variant.bodyType}/${nameOf(loaded)}`);
+  assigningPixels = null;
+  assigningGuess = null;
+  $('assign-suggest').replaceChildren();
   try {
     const pixels = await drawFile($('assign-preview'), entry);
-    const guess = SHEET_BY_SIZE.find((s) => s.w === pixels.width && s.h === pixels.height);
-    $('assign-sheet').value = guess ? guess.sheet : pixels.width <= 64 && pixels.height <= 64 ? 'icon' : 'TV';
+    assigningPixels = pixels;
+    assigningGuess = guessSheet(pixels.width, pixels.height);
+    $('assign-sheet').value = assigningGuess.sheet;
     $('assign-size').textContent = `${pixels.width}×${pixels.height}px`;
   } catch {
     $('assign-size').textContent = 'could not read the image';
@@ -1293,7 +1296,82 @@ async function openAssignDialog(entry, queue = null) {
   }
   updateAssignPreview();
   if (!$('assign-dialog').open) $('assign-dialog').showModal();
+  renderSuggestions(entry, !loaded);
 }
+
+let assigningPixels = null;
+let assigningGuess = null;
+const shapeRefs = new Map();
+
+/**
+ * Shapes of the loaded parts on one sheet, to compare a new file with: a few variants of every
+ * part and layer (only their images are decoded). Cached until the library changes.
+ */
+function shapeReferences(sheet) {
+  const cacheKey = `${sheet}|${state.library.variants.size}|${state.library.unrecognized.length}`;
+  if (!shapeRefs.has(cacheKey)) {
+    shapeRefs.set(cacheKey, (async () => {
+      const perLayer = new Map();
+      for (const v of state.library.variants.values()) {
+        for (const l of v.layers) {
+          if (l.sheet !== sheet || !l.base) continue;
+          const id = `${v.part}|${l.key}`;
+          const list = perLayer.get(id) || [];
+          if (list.length < 4) list.push({ v, l });
+          perLayer.set(id, list);
+        }
+      }
+      const picked = [...perLayer.values()].flat();
+      await Promise.all(picked.map(({ l }) => ensureImage(l.base).catch(() => null)));
+      return picked.filter(({ l }) => l.base.pixels).map(({ v, l }) => ({
+        part: v.part, layer: l.layer.slice(v.part.length), cell: l.key.split(':')[1], pack: v.pack, path: l.base.path,
+        profile: shapeProfile(l.base.pixels, sheet),
+      })).filter((r) => r.profile);
+    })());
+  }
+  return shapeRefs.get(cacheKey);
+}
+
+/**
+ * Suggestions for the file being assigned: the image (from its size and frame grid) and the
+ * parts that sit in the same place. fill: put the best one in the fields if they are empty.
+ */
+let suggestToken = 0;
+async function renderSuggestions(entry, fill = false) {
+  const token = ++suggestToken;
+  const box = $('assign-suggest');
+  const sheet = $('assign-sheet').value;
+  const pixels = assigningPixels;
+  box.replaceChildren();
+  if (assigningGuess) box.append(el('span', { className: 'muted', textContent: `Suggested image: ${SHEET_NAMES[assigningGuess.sheet] || 'Variation icon'} (${assigningGuess.why}).` }));
+  if (!pixels || sheet === 'icon') return;
+  const profile = shapeProfile(pixels, sheet);
+  if (!profile) return;
+  const waiting = el('span', { className: 'muted', textContent: 'Comparing with the loaded parts…' });
+  box.append(waiting);
+  const refs = (await shapeReferences(sheet)).filter((r) => !(r.pack === entry.pack && r.path === entry.path));
+  if (token !== suggestToken || assigning !== entry) return;
+  waiting.remove();
+  const ranked = rankParts(profile, refs).filter((r) => r.score >= 0.15);
+  if (!ranked.length) {
+    box.append(el('span', { className: 'muted', textContent: 'No loaded part sits in the same place.' }));
+    return;
+  }
+  box.append(el('span', { textContent: 'Sits where these parts sit:' }), ...ranked.map((r) => {
+    const b = el('button', { type: 'button', className: 'small-button', textContent: `${r.part}${r.layer}${sheet === 'FG' && r.cell ? ` ${r.cell}` : ''} · ${Math.round(r.score * 100)}%`, title: 'Use this part' });
+    b.addEventListener('click', () => applySuggestion(r));
+    return b;
+  }));
+  if (fill && !$('assign-part').value) applySuggestion(ranked[0]);
+}
+
+function applySuggestion(r) {
+  $('assign-part').value = r.part;
+  $('assign-layer').value = r.layer;
+  if (r.cell && [...$('assign-cell').options].some((o) => o.value === r.cell)) $('assign-cell').value = r.cell;
+  updateAssignPreview();
+}
+$('assign-sheet').addEventListener('change', () => assigning && renderSuggestions(assigning));
 
 /** Parts whose variant was taken away (reassigned) are taken off the character. */
 function dropMissingParts() {
