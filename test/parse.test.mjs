@@ -205,3 +205,31 @@ test('copies identical to another copy are found, near copies are measured', asy
   assert.equal(two.result.ratio, 1 / 16);
   assert.equal(two.result.sheet, 'TV');
 });
+
+test('a folder opened twice is recognised, also under another name', async () => {
+  const { folderKeys, sameFolder } = await import('../src/lookalike.js');
+  const files = (root, size = 10) => ['TV/Male/TV_Body_p01.png', 'Face/Male/FG_Body_p01_c1_m001.png', 'readme.txt']
+    .map((p) => ({ path: `${root}/${p}`, src: { size } }));
+  const open = [{ name: 'Generator', keys: folderKeys(files('Generator')) }];
+  assert.equal(open[0].keys.size, 2); // images only
+  const twin = sameFolder(open, folderKeys(files('Generator copy')));
+  assert.equal(twin.pack.name, 'Generator');
+  assert.equal(twin.same, 2);
+  assert.equal(sameFolder(open, folderKeys(files('Other', 99))), null); // same names, other files
+});
+
+test('identical parts in two folders are paired across folders', async () => {
+  const { findLookalikes } = await import('../src/lookalike.js');
+  const { createImage } = await import('../src/recolor.js');
+  const lib = createLibrary();
+  addPack(lib, 'A', [{ path: 'TV/Male/TV_AccA_p05.png', src: 'a' }]);
+  addPack(lib, 'B', [{ path: 'TV/Male/TV_AccA_p05.png', src: 'b' }]);
+  for (const v of lib.variants.values()) v.layers[0].base.pixels = createImage(4, 4);
+  for (const v of lib.variants.values()) v.layers[0].base.pixels.data.set([1, 2, 3, 255], 0);
+  const found = findLookalikes(lib, 'B');
+  assert.equal(found.length, 1);
+  assert.equal(found[0].variant.pack, 'B');
+  assert.equal(found[0].other.pack, 'A');
+  assert.equal(found[0].result.identical, true);
+  assert.equal(findLookalikes(lib, 'A').length, 0); // the first folder keeps its parts
+});

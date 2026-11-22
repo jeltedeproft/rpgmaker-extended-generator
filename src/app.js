@@ -8,7 +8,7 @@ import {
   layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask } from './recolor.js';
-import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO } from './lookalike.js';
+import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, isGeneratorSettings, itemKeys, addItem, removeItem, creditsFor, creditsText,
@@ -95,10 +95,18 @@ async function importEntries(entries, packName) {
     toast('No PNG files found in that folder.');
     return;
   }
+  // The same folder opened twice (or a copy of it) would add every part again.
+  const keys = folderKeys(pngs);
+  const twin = sameFolder(state.library.packs, keys);
+  if (twin && !(await askOpenAgain(packName, twin))) {
+    toast(`Skipped "${packName}": it has the same files as "${twin.pack.name}".`);
+    return;
+  }
   const partsBefore = state.library.variants.size;
   const gradientFilesBefore = state.library.gradientFiles.length;
   const texts = entries.filter((e) => TEXT_FILE_RE.test(e.path));
   const pack = addPack(state.library, packName, [...pngs, ...texts]);
+  pack.keys = keys;
   // Character presets shipped with the pack (RPG Maker MZ generator .json files, or ours).
   pack.presets = [];
   for (const e of entries.filter((x) => /\.json$/i.test(x.path)).slice(0, 200)) {
@@ -1207,6 +1215,18 @@ $('files-start').addEventListener('click', () => {
 
 // ---------- look-alikes ----------
 
+/** Asks whether to open a folder whose files match one already open. Resolves true to open it. */
+function askOpenAgain(packName, twin) {
+  const same = twin.same === twin.total ? `all ${twin.total}` : `${twin.same} of its ${twin.total}`;
+  $('same-text').textContent = `"${packName}" looks like "${twin.pack.name}", which is already open: ${same} images have the same name and size.`;
+  return new Promise((resolve) => {
+    const dialog = $('same-dialog');
+    dialog.returnValue = '';
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'open'), { once: true });
+    dialog.showModal();
+  });
+}
+
 state.lookalikes = []; // [{variant, other, result}], see lookalike.js
 
 /** Compares a pack's copies with their originals; hides exact duplicates unless you said not to. */
@@ -1255,7 +1275,8 @@ function alikeCard(f) {
     const canvas = el('canvas', { width: 0, height: 0 });
     return { canvas, figure: el('figure', {}, [canvas, el('figcaption', { textContent: label })]) };
   };
-  const a = pic(`${other.pid} (original)`);
+  const otherName = other.pack !== variant.pack ? `${other.pid} · ${other.pack}` : other.pid;
+  const a = pic(other.pack !== variant.pack ? otherName : `${other.pid} (original)`);
   const b = pic(variant.pid);
   const d = pic('differences');
   const sheets = result.sheet ? [result.sheet] : undefined;
@@ -1265,7 +1286,7 @@ function alikeCard(f) {
     if (pa && pb) putPixels(d.canvas, differenceImage(pa, pb));
   }).catch(() => {});
   const pct = Math.round(result.ratio * 1000) / 10;
-  const verdict = result.identical ? `the same pixels as ${other.pid}` : `${pct}% of its pixels differ from ${other.pid}`;
+  const verdict = result.identical ? `the same pixels as ${otherName}` : `${pct}% of its pixels differ from ${otherName}`;
   const toggle = el('button', { type: 'button', className: 'small-button', textContent: variant.hidden ? 'Show it again' : `Hide ${variant.pid}` });
   toggle.style.marginTop = '0';
   toggle.addEventListener('click', () => {

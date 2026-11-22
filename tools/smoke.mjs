@@ -223,6 +223,31 @@ try {
   await shot('3d-preview-controls.png');
   await click('#walk-all');
 
+  // Clear all: everything off except Body and Face, and one click brings it back.
+  {
+    await click('#randomize');
+    await sleep(900);
+    const worn = `[...document.querySelectorAll('#part-list button')].filter(b => !b.classList.contains('piece') && b.querySelector('.value').textContent && b.querySelector('.value').textContent !== 'none').map(b => b.firstChild.textContent.replace(' 🔒', ''))`;
+    const before = await evaluate(worn);
+    await click('#clear-all');
+    await sleep(900);
+    const after = await evaluate(worn);
+    check('clear all leaves only body and face', after.every(k => k === 'Body' || k === 'Face') && before.length > after.length, `${before.length} -> ${after.join(',')}`);
+    await click('#clear-all');
+    await sleep(900);
+    check('undo clear puts the parts back', (await evaluate(worn)).length === before.length);
+  }
+  // Opening the same folder again asks first.
+  {
+    const packsBefore = await evaluate(`document.querySelectorAll('#packs div').length`);
+    await click('#sample-kit');
+    await sleep(1500);
+    check('same folder twice asks first', await evaluate(`document.getElementById('same-dialog').open`));
+    await evaluate(`document.querySelector('#same-dialog button[value="skip"]').click()`);
+    await sleep(800);
+    check('skipped folder is not added', (await evaluate(`document.querySelectorAll('#packs div').length`)) === packsBefore);
+  }
+
   // Save/load round trip through the real (de)serializer.
   const roundTrip = await evaluate(`(async () => {
     const m = await import(new URL('src/character.js', location.href).href);

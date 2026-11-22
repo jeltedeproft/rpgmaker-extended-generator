@@ -12,26 +12,65 @@ export function copyBase(pid) {
 /** Below this share of differing pixels a copy counts as a look-alike. */
 export const LOOKALIKE_RATIO = 0.25;
 
+/** Pairs across folders are skipped above this many (a whole folder opened twice). */
+export const CROSS_PACK_LIMIT = 300;
+
 /**
  * Every copy paired with what it may duplicate: its original and the copies listed before it, in
- * the same pack, body type and part. [{variant, other}]
+ * the same pack, body type and part. With a pack name, that pack's parts are also paired with the
+ * same part number in folders opened before it (the same files in two folders).
+ * [{variant, other}]
  */
 export function lookalikePairs(library, packName = null) {
   const pairs = [];
+  const cross = [];
+  const packOrder = library.packs.map((p) => p.name);
   for (const body of library.bodyTypes.values()) {
     for (const variants of body.parts.values()) {
       const list = [...variants.values()];
       list.forEach((variant, i) => {
         if (packName && variant.pack !== packName) return;
         const base = copyBase(variant.pid);
-        if (!base) return;
-        const earlier = list.filter((v, j) => v.pack === variant.pack && v !== variant
-          && (v.pid === base || (copyBase(v.pid) === base && j < i)));
-        for (const other of earlier) pairs.push({ variant, other });
+        if (base) {
+          const earlier = list.filter((v, j) => v.pack === variant.pack && v !== variant
+            && (v.pid === base || (copyBase(v.pid) === base && j < i)));
+          for (const other of earlier) pairs.push({ variant, other });
+        }
+        if (packName) {
+          for (const other of list) {
+            if (other.pid === variant.pid && packOrder.indexOf(other.pack) < packOrder.indexOf(variant.pack)) cross.push({ variant, other });
+          }
+        }
       });
     }
   }
-  return pairs;
+  return cross.length <= CROSS_PACK_LIMIT ? [...pairs, ...cross] : pairs;
+}
+
+/**
+ * Which files a folder has, to spot one opened twice: the last three path parts
+ * ("tv/male/tv_body_p01.png") plus the file size when known.
+ */
+export function folderKeys(entries) {
+  return new Set(entries.filter((e) => /\.png$/i.test(e.path)).map((e) => {
+    const tail = e.path.split('/').slice(-3).join('/').toLowerCase();
+    return `${tail}|${typeof e.src?.size === 'number' ? e.src.size : ''}`;
+  }));
+}
+
+/**
+ * The open folder that has (nearly) the same files: {pack, same, total} when at least `share` of
+ * the new folder's images match, else null.
+ */
+export function sameFolder(packs, keys, share = 0.9) {
+  let best = null;
+  for (const pack of packs) {
+    if (!pack.keys || !keys.size) continue;
+    let same = 0;
+    for (const k of keys) if (pack.keys.has(k)) same++;
+    if (same / keys.size >= share && (!best || same > best.same)) best = { pack, same, total: keys.size };
+  }
+  return best;
 }
 
 /** The layers of a pair to decode before comparing. */
