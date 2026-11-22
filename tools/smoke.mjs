@@ -200,6 +200,29 @@ try {
   await sleep(1200);
   check('template can be cleared', await evaluate(`document.getElementById('walk-canvas').width === 48`));
 
+  // Preview controls: pause, stand still, all directions, whole sheet.
+  const walkSig = (id) => `[...document.getElementById('${id}').getContext('2d').getImageData(0,0,document.getElementById('${id}').width,document.getElementById('${id}').height).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`;
+  await click('#pause-anim');
+  await sleep(300);
+  const paused1 = await evaluate(walkSig('walk-canvas'));
+  await sleep(800);
+  check('pause stops the walk animation', paused1 === await evaluate(walkSig('walk-canvas')));
+  await click('#pause-anim');
+  await click('#stand-anim');
+  await sleep(300);
+  const stand1 = await evaluate(walkSig('walk-canvas'));
+  await sleep(800);
+  check('stand still shows one frame', stand1 === await evaluate(walkSig('walk-canvas')));
+  await click('#stand-anim');
+  await click('#walk-all');
+  await sleep(500);
+  check('all walk directions shown', await evaluate(`(() => { const c = document.getElementById('walk-all-canvas'); return !c.parentElement.hidden && c.width === 4 * document.getElementById('walk-canvas').width; })()`));
+  await evaluate(`document.getElementById('sheet-view').open = true`);
+  await sleep(500);
+  check('whole sheet shown', await evaluate(`document.getElementById('sheet-canvas').width === 144 && document.getElementById('sheet-canvas').height === 192`));
+  await shot('3d-preview-controls.png');
+  await click('#walk-all');
+
   // Save/load round trip through the real (de)serializer.
   const roundTrip = await evaluate(`(async () => {
     const m = await import(new URL('src/character.js', location.href).href);

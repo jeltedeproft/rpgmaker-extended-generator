@@ -587,6 +587,7 @@ async function renderPreview() {
     }
   }
   renderLayers();
+  renderSheetView();
   renderCredits();
   renderProblems();
 }
@@ -867,13 +868,17 @@ function frameOf(sheet, image, frame) {
   return frame || { w: image.width, h: image.height, cols: 1, rows: 1 };
 }
 
-/** Column to show: RPG Maker's 3-frame walk goes 0,1,2,1; other grids just loop. */
+/**
+ * Column to show. RPG Maker's 3-frame walk goes 0,1,2,1, other grids loop. "Stand" shows the
+ * middle frame, which is RPG Maker's standing pose.
+ */
 function animationColumn(cols) {
+  if (state.standing) return cols === 3 ? 1 : 0;
   return cols === 3 ? PATTERN[tick % PATTERN.length] : tick % cols;
 }
 
 function animate() {
-  tick = (tick + 1) % 12;
+  if (!state.paused) tick = (tick + 1) % 12;
 
   const wctx = $('walk-canvas').getContext('2d');
   const walk = state.composites.TV;
@@ -882,6 +887,20 @@ function animate() {
     const f = walk.frame;
     const row = Math.min(state.walkDir, f.rows - 1);
     wctx.drawImage(walk.canvas, animationColumn(f.cols) * f.w, row * f.h, f.w, f.h, 0, 0, f.w, f.h);
+  }
+  // All four directions side by side.
+  const all = $('walk-all-canvas');
+  if (!all.parentElement.hidden && walk) {
+    const f = walk.frame;
+    if (all.width !== f.w * f.rows || all.height !== f.h) {
+      all.width = f.w * f.rows;
+      all.height = f.h;
+    }
+    const actx = all.getContext('2d');
+    actx.clearRect(0, 0, all.width, all.height);
+    for (let row = 0; row < f.rows; row++) {
+      actx.drawImage(walk.canvas, animationColumn(f.cols) * f.w, row * f.h, f.w, f.h, row * f.w, 0, f.w, f.h);
+    }
   }
 
   const sctx = $('sv-canvas').getContext('2d');
@@ -892,7 +911,7 @@ function animate() {
     const m = state.svMotion;
     if (f.cols === 9 && f.rows === 6) {
       // RPG Maker's battler: 18 motions of 3 frames, in 2 blocks of 9 columns.
-      const col = Math.floor(m / 6) * 3 + PATTERN[tick % PATTERN.length];
+      const col = Math.floor(m / 6) * 3 + animationColumn(3);
       sctx.drawImage(sv.canvas, col * f.w, (m % 6) * f.h, f.w, f.h, 0, 0, f.w, f.h);
     } else {
       sctx.drawImage(sv.canvas, animationColumn(f.cols) * f.w, (m % f.rows) * f.h, f.w, f.h, 0, 0, f.w, f.h);
@@ -900,6 +919,37 @@ function animate() {
   }
 }
 setInterval(animate, 180);
+
+/** The whole composed sheet, as it will be exported. */
+function renderSheetView() {
+  const box = $('sheet-view');
+  if (!box.open) return;
+  const c = state.composites[$('sheet-view-select').value];
+  const canvas = $('sheet-canvas');
+  if (!c) {
+    canvas.width = canvas.height = 0;
+    return;
+  }
+  canvas.width = c.image.width;
+  canvas.height = c.image.height;
+  canvas.style.width = `${c.image.width * 2}px`; // 2x, shrunk to fit the panel by CSS
+  canvas.getContext('2d').drawImage(c.canvas, 0, 0);
+}
+$('sheet-view').addEventListener('toggle', renderSheetView);
+$('sheet-view-select').addEventListener('change', renderSheetView);
+
+$('pause-anim').addEventListener('click', () => {
+  state.paused = !state.paused;
+  $('pause-anim').textContent = state.paused ? '▶ Play' : '⏸ Pause';
+  $('pause-anim').classList.toggle('active', state.paused);
+});
+$('stand-anim').addEventListener('click', () => {
+  state.standing = !state.standing;
+  $('stand-anim').classList.toggle('active', state.standing);
+});
+$('walk-all').addEventListener('change', (e) => {
+  $('walk-all-canvas').parentElement.hidden = !e.target.checked;
+});
 
 // ---------- custom gradients ----------
 

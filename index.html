@@ -133,11 +133,30 @@
           <canvas id="sv-canvas" width="64" height="64"></canvas>
           <figcaption>Battler <select id="sv-motion"></select></figcaption>
         </figure>
-        <figure>
+        <figure class="wide">
           <canvas id="damage-canvas" width="144" height="48"></canvas>
           <figcaption>Damage</figcaption>
         </figure>
+        <figure class="wide" hidden>
+          <canvas id="walk-all-canvas" width="192" height="48"></canvas>
+          <figcaption>Walk: down, left, right, up</figcaption>
+        </figure>
       </div>
+      <div class="preview-controls">
+        <button id="pause-anim" class="small-button" title="Stop the walk and battler animations">⏸ Pause</button>
+        <button id="stand-anim" class="small-button" title="Show the standing pose (the middle frame) instead of animating">Stand still</button>
+        <label class="lock"><input type="checkbox" id="walk-all"> All walk directions</label>
+      </div>
+      <details id="sheet-view" class="settings">
+        <summary>Whole sheet</summary>
+        <select id="sheet-view-select">
+          <option value="TV">Walk</option>
+          <option value="SV">Battler</option>
+          <option value="TVD">Damage</option>
+          <option value="FG">Face</option>
+        </select>
+        <div class="sheet-box"><canvas id="sheet-canvas" width="0" height="0"></canvas></div>
+      </details>
       <details id="credits" class="settings">
         <summary>Credits</summary>
         <p class="muted small">Packs this character uses. Readme and credit files found in a pack folder are shown here; add an author or licence line per pack if it has none.</p>

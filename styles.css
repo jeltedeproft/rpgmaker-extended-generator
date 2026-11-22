@@ -131,7 +131,7 @@ figure canvas {
 #walk-canvas { width: 144px; height: auto; }
 #sv-canvas { width: 144px; height: auto; }
 #damage-canvas { width: 288px; height: auto; grid-column: 1 / -1; }
-figure:last-child { grid-column: 1 / -1; }
+.preview-grid figure.wide { grid-column: 1 / -1; }
 figcaption { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; }
 .dir-buttons button { padding: 0 6px; font-size: 12px; }
 .dir-buttons button.active { background: var(--hover); font-weight: 700; }
@@ -201,3 +201,9 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .rule-row { display: flex; gap: 6px; align-items: center; margin: 4px 0; font-size: 12px; }
 .rule-row select { padding: 2px 6px; font-size: 12px; }
 #rules-dialog .small-button { margin-top: 2px; }
+#walk-all-canvas { width: 100%; max-width: 384px; height: auto; }
+.preview-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.preview-controls .small-button { margin-top: 0; }
+.small-button.active { background: var(--hover); font-weight: 600; }
+.sheet-box { margin-top: 8px; overflow: auto; max-height: 420px; }
+#sheet-canvas { image-rendering: pixelated; max-width: 100%; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
