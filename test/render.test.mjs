@@ -537,3 +537,30 @@ test('an adjusted gradient survives saving and loading', () => {
   const stops = customGradientFromJson(customGradientToJson({ id: 'custom/s', label: 'S', stops: [{ pos: 0, color: '#000000' }, { pos: 1, color: '#ffffff' }] }));
   assert.equal(stops.colors.length, 256 * 4);
 });
+
+test('per image: another variant stands in, or the part is hidden there', async () => {
+  const { itemColor } = await import('../src/compose.js');
+  const lib = createLibrary();
+  addPack(lib, 'P', [
+    { path: 'Face/Male/FG_Body_p01_c1_m001.png', src: 'face1' },
+    { path: 'TV/Male/TV_Body_p01.png', src: 'walk1' },
+    { path: 'TV/Male/TV_Body_p01 (2).png', src: 'walk2' },
+  ]);
+  const character = { bodyType: 'Male', parts: { Body: 'P/Male/Body/p01 (2)' }, colors: {}, offsets: {}, itemColors: {} };
+  const paths = (sheet) => layersForSheet(sheet, character, lib).map((d) => d.layer.base.path);
+  assert.deepEqual(paths('FG'), []); // the copy has no face: blank
+  character.sheetParts = { Body: { FG: 'P/Male/Body/p01' } };
+  assert.deepEqual(paths('FG'), ['Face/Male/FG_Body_p01_c1_m001.png']); // stand-in
+  assert.deepEqual(paths('TV'), ['TV/Male/TV_Body_p01 (2).png']);
+  character.sheetParts.Body.TV = 'hidden';
+  assert.deepEqual(paths('TV'), []);
+  character.sheetParts = {};
+  character.hidden = { Body: true };
+  assert.deepEqual(paths('TV'), []);
+  // Source colours: no gradient anywhere, also when an item has its own colours.
+  assert.equal(itemColor(character, 'Body', 'skin'), null);
+  character.colors.skin = 'g1';
+  character.itemColors.Body = { skin: null };
+  assert.equal(itemColor(character, 'Body', 'skin'), null);
+  assert.equal(itemColor(character, 'Face', 'skin'), 'g1');
+});

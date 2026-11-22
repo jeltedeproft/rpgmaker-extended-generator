@@ -5,7 +5,7 @@ import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, as
 import { createCustomGradient, gradientsToImage, preferredCategory, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
-  layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
+  layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask } from './recolor.js';
 import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
@@ -201,7 +201,8 @@ function renderSidebar() {
     }
   }
   $('part-list').replaceChildren(...items.map(([key, label, value]) => {
-    const button = el('button', { className: (key === state.selectedPart ? 'active' : '') + (key.includes(' #') ? ' piece' : ''), title: value ? `${label}: ${value}` : label }, [
+    const hiddenItem = state.character.hidden?.[key];
+    const button = el('button', { className: (key === state.selectedPart ? 'active' : '') + (key.includes(' #') ? ' piece' : '') + (hiddenItem ? ' hidden-item' : ''), title: (value ? `${label}: ${value}` : label) + (hiddenItem ? ' (hidden)' : '') }, [
       el('span', { textContent: label + (state.locked.has(key) ? ' 🔒' : '') }),
       el('span', { className: 'value', textContent: value }),
     ]);
@@ -237,6 +238,8 @@ async function renderEditor() {
   $('pieces').hidden = !worn || isPiece;
   $('clip-box').hidden = !worn;
   if (worn) renderClip();
+  $('sheet-parts-box').hidden = !worn || isPiece;
+  if (worn && !isPiece) renderSheetParts();
   $('piece-note').hidden = !isPiece;
 
   $('variants').replaceChildren();
@@ -352,6 +355,66 @@ function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source 
   }
   return thumbCache.get(cacheKey);
 }
+
+const SHEET_NAMES = { FG: 'Face', TV: 'Walk', TVD: 'Damage', SV: 'Battler' };
+
+/**
+ * The "Per image" box: for each image (face, walk, damage, battler) the picture this part uses.
+ * "As chosen" follows the part's own variant; another variant can stand in (an image the part
+ * has no picture for, or a different linked face/body), or the part can be hidden there.
+ */
+function renderSheetParts() {
+  const key = state.selectedPart;
+  const lib = state.library;
+  const variant = lib.variants.get(state.character.parts[key]);
+  $('hide-item').checked = !!state.character.hidden?.[key];
+  if (!variant) {
+    $('sheet-parts').replaceChildren();
+    return;
+  }
+  const { own, others } = variantsForPart(lib, variant.part, state.character.bodyType);
+  const candidates = [...own, ...others];
+  const rows = [];
+  for (const sheet of ['FG', 'TV', 'TVD', 'SV']) {
+    const choice = state.character.sheetParts?.[key]?.[sheet] || '';
+    const ownHas = sheetLayers(variant, sheet, lib).length > 0;
+    const select = el('select', { title: `What this part shows on the ${SHEET_NAMES[sheet].toLowerCase()} image` });
+    select.append(
+      el('option', { value: '', textContent: `As chosen (${variant.pid}${ownHas ? '' : ': nothing here'})` }),
+      el('option', { value: HIDDEN, textContent: 'Hidden' }),
+    );
+    const usable = candidates.filter((v) => v.id !== variant.id && sheetLayers(v, sheet, lib).length);
+    if (choice && choice !== HIDDEN && !usable.some((v) => v.id === choice) && lib.variants.get(choice)) usable.unshift(lib.variants.get(choice));
+    for (const v of usable) select.append(el('option', { value: v.id, textContent: `Use ${variantLabel(lib, v, state.character.bodyType)}` }));
+    select.value = choice;
+    select.addEventListener('change', async () => {
+      const choices = ((state.character.sheetParts ||= {})[key] ||= {});
+      if (select.value) choices[sheet] = select.value;
+      else delete choices[sheet];
+      if (!Object.keys(choices).length) delete state.character.sheetParts[key];
+      await ensureVariants(variantsToDecode(state.character, lib));
+      renderSheetParts();
+      renderPreview();
+    });
+    const shown = itemOnSheet(state.character, key, variant, sheet, lib);
+    const blank = !state.character.hidden?.[key] && choice !== HIDDEN && !(shown && sheetLayers(shown, sheet, lib).length);
+    const note = blank
+      ? el('span', { className: 'blank', textContent: usable.length ? '⚠ blank: pick a stand-in' : '⚠ blank, no other picture' })
+      : el('span', { className: 'muted small', textContent: choice === HIDDEN ? 'hidden' : '' });
+    rows.push(el('span', { textContent: SHEET_NAMES[sheet] }), select, note);
+  }
+  $('sheet-parts').replaceChildren(...rows);
+}
+
+$('hide-item').addEventListener('change', () => {
+  const key = state.selectedPart;
+  if ($('hide-item').checked) (state.character.hidden ||= {})[key] = true;
+  else delete state.character.hidden?.[key];
+  renderSidebar();
+  renderSheetParts();
+  renderPreview();
+});
+
 
 /** The "Visibility" box: show this item only inside / over / outside another item. */
 function renderClip() {

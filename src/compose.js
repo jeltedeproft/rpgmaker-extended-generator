@@ -70,7 +70,9 @@ export function selectedVariants(character, library) {
 /** Selected variants plus the fallbacks they borrow sheets from: everything that needs decoding. */
 export function variantsToDecode(character, library) {
   const result = new Set();
-  for (const variant of selectedVariants(character, library)) {
+  const perImage = Object.values(character.sheetParts || {}).flatMap((c) => Object.values(c))
+    .map((id) => library.variants.get(id)).filter(Boolean);
+  for (const variant of [...selectedVariants(character, library), ...perImage]) {
     result.add(variant);
     for (const sheet of Object.keys(DRAW_ORDER)) {
       const source = variantForSheet(variant, sheet, library);
@@ -80,6 +82,21 @@ export function variantsToDecode(character, library) {
     if (plain) result.add(plain);
   }
   return [...result];
+}
+
+/** A per-image choice that hides an item on that image. */
+export const HIDDEN = 'hidden';
+
+/**
+ * The variant that draws an item on one sheet: the per-image choice (character.sheetParts, e.g.
+ * the face of p01 with the walk sprite of p01 (2), or a stand-in for an image the part lacks),
+ * else the item's own variant. null = hidden there (character.hidden hides it on every image).
+ */
+export function itemOnSheet(character, key, variant, sheet, library) {
+  if (character.hidden?.[key]) return null;
+  const choice = character.sheetParts?.[key]?.[sheet];
+  if (choice === HIDDEN) return null;
+  return (choice && library.variants.get(choice)) || variant;
 }
 
 /**
@@ -201,8 +218,10 @@ function applyCustomOrder(draws, order) {
 export function layersForSheet(sheet, character, library) {
   const draws = [];
   for (const { key, variant: selected } of selectedItems(character, library)) {
+    const source = itemOnSheet(character, key, selected, sheet, library);
+    if (!source) continue;
     const pieces = pieceKeys(character, key);
-    for (const layer of sheetLayers(selected, sheet, library)) {
+    for (const layer of sheetLayers(source, sheet, library)) {
       if (!layer.base) continue;
       if (!pieces.length) draws.push({ layer, item: key });
       // A split item draws each piece as its own layer (own position, colours and draw order).
@@ -330,7 +349,8 @@ export function piecesPerSheet(character, library, key, gap, settings = null) {
   const result = {};
   if (!variant) return result;
   for (const sheet of ['FG', 'TV', 'SV', 'TVD']) {
-    const own = sheetLayers(variant, sheet, library).filter((l) => l.base?.pixels);
+    const source = itemOnSheet(character, key, variant, sheet, library);
+    const own = source ? sheetLayers(source, sheet, library).filter((l) => l.base?.pixels) : [];
     if (!own.length) continue;
     const draws = layersForSheet(sheet, { ...character, parts: { [key]: character.parts[key] }, split: {} }, library);
     const layout = sheetLayout(sheet, draws, settings);

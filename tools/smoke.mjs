@@ -370,6 +370,36 @@ try {
       await sleep(900);
       check('pieces join again', (await evaluate(`document.querySelectorAll('#part-list button.piece').length`)) === 0);
     }
+    // Source colours: a fresh folder shows the parts as drawn; a gradient only once picked.
+    {
+      check('parts start in their source colours', await evaluate(`[...document.querySelectorAll('.slot .swatch.source')].length > 0 && [...document.querySelectorAll('.slot .swatch.source')].every(b => b.classList.contains('selected'))`));
+      const beforePick = await evaluate(faceSig);
+      await evaluate(`document.querySelector('.slot .swatch:not(.add)').click()`);
+      await sleep(900);
+      check('picking a gradient recolours', (await evaluate(faceSig)) !== beforePick);
+      await evaluate(`document.querySelector('.slot .swatch.source').click()`);
+      await sleep(900);
+      check('source colours come back', (await evaluate(faceSig)) === beforePick);
+      await evaluate(`document.querySelector('.slot .swatch:not(.add)').click()`);
+      await sleep(900);
+    }
+    // Per image: hide the part on the face only, or everywhere.
+    {
+      const beforeHide = await evaluate(faceSig);
+      check('per image box shown', await evaluate(`!document.getElementById('sheet-parts-box').hidden && document.querySelectorAll('#sheet-parts select').length === 4`));
+      await evaluate(`(() => { const s = document.querySelector('#sheet-parts select'); s.value = 'hidden'; s.dispatchEvent(new Event('change')); })()`);
+      await sleep(1000);
+      check('hidden on the face image', (await evaluate(faceSig)) !== beforeHide);
+      await evaluate(`(() => { const s = document.querySelector('#sheet-parts select'); s.value = ''; s.dispatchEvent(new Event('change')); })()`);
+      await sleep(1000);
+      check('shown again on the face', (await evaluate(faceSig)) === beforeHide);
+      await evaluate(`(() => { const c = document.getElementById('hide-item'); c.checked = true; c.dispatchEvent(new Event('change')); })()`);
+      await sleep(1000);
+      check('hide everywhere', (await evaluate(faceSig)) !== beforeHide && await evaluate(`!!document.querySelector('#part-list button.hidden-item')`));
+      await evaluate(`(() => { const c = document.getElementById('hide-item'); c.checked = false; c.dispatchEvent(new Event('change')); })()`);
+      await sleep(1000);
+      check('unhide', (await evaluate(faceSig)) === beforeHide);
+    }
     // Adjust: shift a chosen colour's hue, previewed live, kept under "Your colours".
     {
       const beforeAdjust = await evaluate(faceSig);

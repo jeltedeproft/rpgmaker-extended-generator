@@ -40,6 +40,8 @@ export function removeItem(character, key) {
     delete character.clip?.[k];
   }
   delete character.split?.[key];
+  delete character.sheetParts?.[key];
+  delete character.hidden?.[key];
 }
 
 /** Part names for the editor: known parts first, then custom part names found in any pack. */
@@ -375,7 +377,17 @@ export function deserializeCharacter(json, library, gradients = [], fileName = '
     drawOrder: structuredClone(saved.drawOrder || {}),
     split: structuredClone(saved.split || {}),
     clip: structuredClone(saved.clip || {}),
+    hidden: { ...saved.hidden },
+    sheetParts: {},
   };
+  // Per-image choices: "hidden", or a variant id resolved like the parts themselves.
+  for (const [key, choices] of Object.entries(saved.sheetParts || {})) {
+    for (const [sheet, id] of Object.entries(choices || {})) {
+      const resolved = id === 'hidden' ? id : resolveVariant(library, partOfKey(key), id, saved.bodyType);
+      if (resolved) (character.sheetParts[key] ||= {})[sheet] = resolved;
+      else missing.push(`${key} (${sheet}) ${id}`);
+    }
+  }
   for (const [part, id] of Object.entries(saved.parts || {})) {
     if (!id) {
       character.parts[part] = null;
