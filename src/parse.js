@@ -171,6 +171,8 @@ function getVariant(library, packName, parsed) {
   if (!variant) {
     variant = {
       id, pack: packName, bodyType: parsed.bodyType, pid: parsed.pid, basePid: parsed.basePid, part: parsed.part, icon: null, layers: [],
+      /** An alternate only replaces the layers it has; the rest come from the plain variant. */
+      alt: !!parsed.alt,
     };
     variants.set(id, variant);
     library.variants.set(id, variant);
@@ -195,6 +197,7 @@ export function addPack(library, packName, entries) {
   const pack = { name, fileCount: entries.length, texts: [] };
   library.packs.push(pack);
 
+  const lenient = [];
   for (const { path, src } of entries) {
     // Readme, credits and licence files: shown in the credits list.
     if (TEXT_FILE_RE.test(path)) {
@@ -209,18 +212,21 @@ export function addPack(library, packName, entries) {
       continue;
     }
 
-    let parsed = parsePartPath(path);
-    if (!parsed) {
-      // Forgiving fallback for names without a part number.
-      const fileName = path.split('/').pop();
-      const readAs = lenientName(fileName);
-      parsed = readAs && parsePartPath(path.slice(0, path.length - fileName.length) + readAs);
-      if (parsed) library.warnings.push(`${path}: read as ${readAs}`);
-    }
+    const parsed = parsePartPath(path);
+    if (parsed) addParsed(library, name, parsed, path, src);
+    else lenient.push({ path, src });
+  }
+  // Odd names go last, so a typo'd copy ("FG_FrontHair_p17_c1].png") becomes the alternate,
+  // not the original.
+  for (const { path, src } of lenient) {
+    const fileName = path.split('/').pop();
+    const readAs = lenientName(fileName);
+    const parsed = readAs && parsePartPath(path.slice(0, path.length - fileName.length) + readAs);
     if (!parsed) {
       library.unrecognized.push({ pack: name, path, src, reason: 'Name does not match TYPE_Part_pNN[_c].png' });
       continue;
     }
+    library.warnings.push(`${path}: read as ${readAs}`);
     addParsed(library, name, parsed, path, src);
   }
   finishPack(library, name);
@@ -245,9 +251,32 @@ export function assignFile(library, packName, path, src, readAs, bodyType) {
   return null;
 }
 
+/** "p17" -> "p17 (alt)"; "p17 (2)" -> "p17 (2, alt)". */
+function withTag(pid, tag) {
+  return pid.endsWith(')') ? `${pid.slice(0, -1)}, ${tag})` : `${pid} (${tag})`;
+}
+
+/** The layer a parsed file would fill, if that variant already has an image for it. */
+function filledLayer(library, name, parsed) {
+  const variant = library.variants.get(`${name}/${parsed.bodyType}/${parsed.part}/${parsed.pid}`);
+  const key = layerKey(parsed);
+  return variant?.layers.find((l) => l.sheet === parsed.sheet && l.key === key && l.base
+    && (parsed.sheet !== 'FG' || l.slotId === parsed.slotId));
+}
+
 function addParsed(library, name, parsed, path, src) {
   if (parsed.unknownSuffixes.length) {
     library.warnings.push(`${path}: ignored suffix ${parsed.unknownSuffixes.join(', ')}`);
+  }
+  // A second image for the same layer (e.g. "FG_FrontHair_p17_c1].png", a slightly different
+  // headband next to FG_FrontHair_p17_c1.png) becomes an alternate: "p17 (alt)". It replaces that
+  // layer and borrows the rest (the hair itself) from p17.
+  if (!parsed.isMask && !parsed.isIcon && filledLayer(library, name, parsed)) {
+    const original = parsed.pid;
+    for (let n = 1; filledLayer(library, name, parsed); n++) {
+      parsed = { ...parsed, pid: withTag(original, n > 1 ? `alt ${n}` : 'alt'), alt: true };
+    }
+    library.warnings.push(`${path}: a second image for ${original} ${parsed.layer}, added as ${parsed.pid}`);
   }
 
   const variant = getVariant(library, name, parsed);

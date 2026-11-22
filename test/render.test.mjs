@@ -405,3 +405,17 @@ test('face cells the draw order does not name: c1 above c2 (hair tie over the po
   assert.ok(orderIndex('FG', 'FrontHair:c1', 'FrontHair') < orderIndex('FG', 'FrontHair:c2', 'FrontHair'));
   assert.ok(orderIndex('FG', 'FrontHair:c2', 'FrontHair') < orderIndex('FG', 'Cloak1:c1', 'Cloak'));
 });
+
+test('a second image for the same layer becomes an alternate that borrows the rest', () => {
+  const lib = createLibrary();
+  addPack(lib, 'MZ', [
+    { path: 'g/Face/Male/FG_FrontHair_p17_c1].png', src: 'band2' },
+    { path: 'g/Face/Male/FG_FrontHair_p17_c1.png', src: 'band' },
+    { path: 'g/Face/Male/FG_FrontHair_p17_c2_m003.png', src: 'hair' },
+  ]);
+  const alt = lib.variants.get('MZ/Male/FrontHair/p17 (alt)');
+  assert.ok(alt, [...lib.variants.keys()].join());
+  const draw = (id) => layersForSheet('FG', { bodyType: 'Male', parts: { FrontHair: id }, colors: {} }, lib).map((d) => d.layer.base.src);
+  assert.deepEqual(draw('MZ/Male/FrontHair/p17'), ['hair', 'band']);
+  assert.deepEqual(draw(alt.id), ['hair', 'band2']);
+});

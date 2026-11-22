@@ -76,6 +76,8 @@ export function variantsToDecode(character, library) {
       const source = variantForSheet(variant, sheet, library);
       if (source) result.add(source);
     }
+    const plain = variant.alt && plainVariant(variant, library);
+    if (plain) result.add(plain);
   }
   return [...result];
 }
@@ -104,10 +106,30 @@ function sheetFallback(variant, sheet, library) {
   return candidates.find((v) => v.pack === variant.pack) || candidates[0] || null;
 }
 
+/** The plain variant a tagged one ("p17 (alt)") is based on: same pack first, then any pack. */
+function plainVariant(variant, library) {
+  if (variant.basePid === variant.pid) return null;
+  const candidates = [...(library.bodyTypes.get(variant.bodyType)?.parts.get(variant.part)?.values() || [])]
+    .filter((v) => v.pid === variant.basePid);
+  return candidates.find((v) => v.pack === variant.pack) || candidates[0] || null;
+}
+
 /** The variant that supplies a sheet for a selected variant (itself, or its fallback). */
 export function variantForSheet(variant, sheet, library) {
   if (variant.layers.some((l) => l.sheet === sheet)) return variant;
   return sheetFallback(variant, sheet, library);
+}
+
+/**
+ * The layers a selected variant draws on a sheet. An alternate ("p17 (alt)") draws its own
+ * layers plus the plain variant's layers it doesn't replace.
+ */
+export function sheetLayers(variant, sheet, library) {
+  const own = (variantForSheet(variant, sheet, library)?.layers || []).filter((l) => l.sheet === sheet);
+  const plain = variant.alt && plainVariant(variant, library);
+  if (!plain || plain === variant) return own;
+  const replaced = (l) => own.some((o) => o.key === l.key && !!o.slotId === !!l.slotId);
+  return [...own, ...plain.layers.filter((l) => l.sheet === sheet && !replaced(l))];
 }
 
 /**
@@ -161,10 +183,9 @@ function applyCustomOrder(draws, order) {
 export function layersForSheet(sheet, character, library) {
   const draws = [];
   for (const { key, variant: selected } of selectedItems(character, library)) {
-    const variant = variantForSheet(selected, sheet, library);
     const pieces = pieceKeys(character, key);
-    for (const layer of variant?.layers || []) {
-      if (layer.sheet !== sheet || !layer.base) continue;
+    for (const layer of sheetLayers(selected, sheet, library)) {
+      if (!layer.base) continue;
       if (!pieces.length) draws.push({ layer, item: key });
       // A split item draws each piece as its own layer (own position, colours and draw order).
       pieces.forEach((piece, i) => draws.push({ layer, item: piece, piece: { of: key, n: i + 1 } }));
@@ -290,8 +311,7 @@ export function countPieces(character, library, key, gap, settings = null) {
   const variant = library.variants.get(character.parts[key]);
   if (!variant) return 0;
   for (const sheet of ['FG', 'TV', 'SV', 'TVD']) {
-    const source = variantForSheet(variant, sheet, library);
-    const own = (source?.layers || []).filter((l) => l.sheet === sheet && l.base?.pixels);
+    const own = sheetLayers(variant, sheet, library).filter((l) => l.base?.pixels);
     if (!own.length) continue;
     const draws = layersForSheet(sheet, { ...character, parts: { [key]: character.parts[key] }, split: {} }, library);
     const layout = sheetLayout(sheet, draws, settings);
