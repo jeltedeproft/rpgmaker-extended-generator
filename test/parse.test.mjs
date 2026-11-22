@@ -233,3 +233,23 @@ test('identical parts in two folders are paired across folders', async () => {
   assert.equal(found[0].result.identical, true);
   assert.equal(findLookalikes(lib, 'A').length, 0); // the first folder keeps its parts
 });
+
+test('same picture with other colour areas is not a picture difference', async () => {
+  const { compareVariants } = await import('../src/lookalike.js');
+  const { createImage } = await import('../src/recolor.js');
+  const lib = createLibrary();
+  addPack(lib, 'P', [
+    { path: 'TV/Male/TV_Body_p01.png', src: 'a' }, { path: 'TV/Male/TV_Body_p01_c.png', src: 'am' },
+    { path: 'TV/Male/TV_Body_p01 (2).png', src: 'b' }, { path: 'TV/Male/TV_Body_p01_c (2).png', src: 'bm' },
+  ]);
+  const solid = (rgb) => { const i = createImage(2, 2); for (let p = 0; p < 4; p++) i.data.set([...rgb, 255], p * 4); return i; };
+  const [a, b] = ['P/Male/Body/p01', 'P/Male/Body/p01 (2)'].map((id) => lib.variants.get(id).layers[0]);
+  a.base.pixels = solid([90, 90, 90]);
+  b.base.pixels = solid([90, 90, 90]);
+  a.mask.pixels = solid([255, 0, 0]);
+  b.mask.pixels = solid([0, 255, 0]);
+  const r = compareVariants(lib.variants.get('P/Male/Body/p01 (2)'), lib.variants.get('P/Male/Body/p01'));
+  assert.equal(r.identical, false);
+  assert.equal(r.differ, 0);
+  assert.equal(r.maskDiffer, 4);
+});

@@ -336,11 +336,13 @@ function refreshTiles() {
  * middle walk frame facing down, else the first battler frame, else the first damage frame (some
  * packs only add a damage sprite). Only that sheet is decoded.
  */
-function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD']) {
+function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source = false) {
+  // source: the picture as drawn in the file, no gradients (to compare files, not colours).
   const alone = {
     ...state.character, parts: { [key]: variant.id }, offsets: {}, split: {}, clip: {}, drawOrder: {},
+    sheetParts: {}, hidden: {}, ...(source ? { colors: {}, itemColors: {} } : {}),
   };
-  const colours = JSON.stringify([state.character.colors, state.character.itemColors?.[key], state.settings.templates]);
+  const colours = source ? 'source' : JSON.stringify([state.character.colors, state.character.itemColors?.[key], state.settings.templates]);
   const cacheKey = `${key}|${variant.id}|${sheets}|${colours}`;
   if (!thumbCache.has(cacheKey)) {
     if (thumbCache.size > 600) thumbCache.clear();
@@ -349,7 +351,7 @@ function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD']) {
         const layers = sheetLayers(variant, sheet, state.library);
         if (!layers.length) continue;
         await ensureLayers(layers);
-        const { image, frame } = composeSheet(sheet, alone, state.library, gradientsById(), state.settings);
+        const { image, frame } = composeSheet(sheet, alone, state.library, source ? new Map() : gradientsById(), state.settings);
         if (!image) continue;
         if (sheet === 'FG') return image;
         // The middle walk frame facing down, or the first battler frame.
@@ -1280,13 +1282,17 @@ function alikeCard(f) {
   const b = pic(variant.pid);
   const d = pic('differences');
   const sheets = result.sheet ? [result.sheet] : undefined;
-  Promise.all([partThumbnail(variant.part, other, sheets), partThumbnail(variant.part, variant, sheets)]).then(([pa, pb]) => {
+  // The files as drawn, not recoloured: a different colour area (mask) would look like a
+  // completely different picture.
+  Promise.all([partThumbnail(variant.part, other, sheets, true), partThumbnail(variant.part, variant, sheets, true)]).then(([pa, pb]) => {
     putPixels(a.canvas, pa);
     putPixels(b.canvas, pb);
     if (pa && pb) putPixels(d.canvas, differenceImage(pa, pb));
   }).catch(() => {});
   const pct = Math.round(result.ratio * 1000) / 10;
-  const verdict = result.identical ? `the same pixels as ${otherName}` : `${pct}% of its pixels differ from ${otherName}`;
+  const verdict = result.identical ? `the same pixels as ${otherName}`
+    : !result.differ ? `the same picture as ${otherName}; only its colour areas (mask) differ, in ${result.maskDiffer} pixels, so it recolours differently`
+      : `${pct >= 1 ? `${pct}% of its pixels` : `${result.differ} pixel${result.differ > 1 ? 's' : ''}`} differ from ${otherName}${result.maskDiffer ? ', and its colour areas differ too' : ''}`;
   const toggle = el('button', { type: 'button', className: 'small-button', textContent: variant.hidden ? 'Show it again' : `Hide ${variant.pid}` });
   toggle.style.marginTop = '0';
   toggle.addEventListener('click', () => {

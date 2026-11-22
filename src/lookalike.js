@@ -104,24 +104,24 @@ function compareImages(a, b) {
  * Compares the images a copy has with the same images of the other variant (a copy that lacks a
  * sheet would borrow it or show nothing, so only its own images count). Masks count too: the
  * same picture with other colour areas is a real difference.
- * @returns {{identical:boolean, differ:number, visible:number, ratio:number, sheet:string|null}}
+ * @returns {{identical:boolean, differ:number, visible:number, ratio:number, maskDiffer:number, sheet:string|null}}
+ *   ratio and differ count the pictures only; maskDiffer counts pixels whose colour area differs.
  *   sheet = the first sheet both have, to show side by side
  */
 export function compareVariants(variant, other) {
   let differ = 0;
   let visible = 0;
-  let maskDiffers = false;
+  let maskDiffer = 0;
   for (const layer of variant.layers) {
     const match = other.layers.find(sameLayer(layer));
     const d = compareImages(layer.base?.pixels, match?.base?.pixels);
     differ += d.differ;
     visible += d.visible;
-    const m = compareImages(layer.mask?.pixels, match?.mask?.pixels);
-    if (m.differ) maskDiffers = true;
+    maskDiffer += compareImages(layer.mask?.pixels, match?.mask?.pixels).differ;
   }
   const sheet = SHEET_KEYS.find((s) => variant.layers.some((l) => l.sheet === s) && other.layers.some((l) => l.sheet === s)) || null;
   const ratio = visible ? differ / visible : 1;
-  return { identical: !!variant.layers.length && !differ && !maskDiffers, differ, visible, ratio, sheet };
+  return { identical: !!variant.layers.length && !differ && !maskDiffer, differ, visible, ratio, maskDiffer, sheet };
 }
 
 /**
