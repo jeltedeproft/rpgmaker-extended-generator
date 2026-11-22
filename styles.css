@@ -209,3 +209,24 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 #sheet-canvas { image-rendering: pixelated; max-width: 100%; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
 .cell-box { margin-top: 10px; padding-top: 6px; border-top: 1px dashed var(--line); }
 .cell-box select { padding: 2px 6px; font-size: 12px; }
+.files-dialog { width: min(980px, 96vw); max-height: 92vh; }
+.files-dialog form { display: flex; flex-direction: column; gap: 8px; }
+.files-head { display: flex; justify-content: space-between; align-items: center; }
+.files-head h3 { margin: 0; }
+.files-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.files-tabs button { padding: 4px 10px; font-size: 13px; }
+.files-tabs button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.files-tools { display: flex; gap: 8px; align-items: center; }
+.files-tools input { flex: 1; }
+.files-tools .small-button { margin-top: 0; }
+.files-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; overflow: auto; max-height: 62vh; }
+.file-card { border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; min-width: 0; }
+.file-card .file-thumb { height: 96px; display: flex; align-items: center; justify-content: center; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 12px 12px; border-radius: 4px; overflow: hidden; }
+.file-card canvas { max-width: 100%; max-height: 96px; image-rendering: pixelated; }
+.file-card .file-name { font-family: ui-monospace, monospace; word-break: break-all; }
+.file-card .file-reading { color: var(--muted); }
+.file-card .file-buttons { display: flex; gap: 4px; flex-wrap: wrap; margin-top: auto; }
+.file-card .file-buttons .small-button { margin-top: 0; }
+.assign-top { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
+.assign-preview { flex: 0 0 auto; max-width: 220px; max-height: 220px; overflow: hidden; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 12px 12px; border-radius: 6px; }
+#assign-preview { display: block; max-width: 220px; max-height: 220px; image-rendering: pixelated; }

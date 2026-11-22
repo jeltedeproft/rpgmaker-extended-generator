@@ -51,6 +51,13 @@
   a "b"/"mask" file next to its image is read as the mask. `TV_Clothing2_pXX.png.png` is a
   different image (grey-background preview) and stays "pXX (alt)".
 
+- ✅ "?" tiles: parts with only a damage sprite now show their damage frame.
+- ✅ Devil-horn helmet `TV_AccB_p07 (2)` got the jester hat's damage sprite: renamed copies
+  "(2)" no longer borrow sheets from the plain number (only sets and "(alt)" do).
+- ✅ Files dialog ("Files…" in the toolbar): To assign / Odd names / Assigned by you / All files,
+  every file with its picture and current reading; "Assign one by one" (with Skip); Reassign and
+  Unassign for any loaded file, remembered per pack.
+
 ## Blocked on RPG Maker's own generator (trial: rpgmakerweb.com/free-trials, or the tester's files)
 - [ ] Settle the open questions in `docs/FORMAT.md` (brightness measure first).
 - [ ] Compare one character pixel-for-pixel with RPG Maker's own generator.

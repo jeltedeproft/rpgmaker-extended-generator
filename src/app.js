@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
-import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
-import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName } from './parse.js';
+import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, DEFAULT_SIZE, SHEETS, SLOT_BY_ID } from './format.js';
+import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -118,6 +118,7 @@ async function importEntries(entries, packName) {
     }
   }));
   applyRememberedAssignments(pack.name);
+  $('open-files').disabled = false;
   const addedParts = state.library.variants.size - partsBefore;
   const addedGradientFiles = state.library.gradientFiles.length - gradientFilesBefore;
 
@@ -179,7 +180,7 @@ function showApp() {
   $('app').classList.remove('empty');
   $('welcome').hidden = true;
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = false;
-  for (const id of ['randomize', 'random-rules', 'save-character', 'load-character']) $(id).disabled = false;
+  for (const id of ['randomize', 'random-rules', 'save-character', 'load-character', 'open-files']) $(id).disabled = false;
 }
 
 // ---------- rendering ----------
@@ -787,20 +788,25 @@ function unknownMaskColours() {
 
 function renderProblems() {
   const lib = state.library;
-  const skipped = lib.unrecognized.slice(0, 300).map((u) => {
+  const skipped = lib.unrecognized.slice(0, 30).map((u) => {
     const assign = el('button', { className: 'small-button assign', textContent: 'Assign…', title: 'Tell the generator what this file is' });
     assign.addEventListener('click', () => openAssignDialog(u));
     return el('li', {}, [`Skipped ${u.path} (${u.reason}) `, assign]);
   });
+  if (lib.unrecognized.length > 30) skipped.push(el('li', { textContent: `… and ${lib.unrecognized.length - 30} more skipped files (see Files…).` }));
+  const queue = el('button', { className: 'small-button primary', textContent: `Assign skipped files (${lib.unrecognized.length})…` });
+  queue.addEventListener('click', () => openFilesDialog('queue'));
   const lines = [
     ...lib.warnings,
     ...state.problems,
     ...state.renderProblems,
   ];
   const total = lib.unrecognized.length + lines.length;
+  $('open-files').textContent = lib.unrecognized.length ? `Files… (${lib.unrecognized.length} to assign)` : 'Files…';
   $('problems').hidden = !total;
   $('problem-list').replaceChildren(
     el('p', { className: 'muted small', textContent: `${total} note(s). Skipped files don't stop the rest from loading; "Assign…" adds one by hand.` }),
+    ...(lib.unrecognized.length ? [queue] : []),
     el('ul', {}, [...skipped, ...lines.slice(0, 500).map((l) => el('li', { textContent: l }))]),
   );
 }
@@ -891,7 +897,6 @@ $('import-sets').addEventListener('change', async (e) => {
 
 // ---------- assigning unrecognised files by hand ----------
 
-let assigning = null;
 const SHEET_BY_SIZE = Object.entries(DEFAULT_SIZE).map(([sheet, s]) => ({ sheet, ...s }));
 
 function assignFields() {
@@ -914,13 +919,55 @@ function updateAssignPreview() {
   $('assign-result').textContent = f.part ? `${$('assign-body').value || 'Default'}/${buildPartName(f)}` : 'Pick a part name.';
 }
 
-async function openAssignDialog(entry) {
+const SHEET_WORDS = { FG: 'face', TV: 'walk', TVD: 'damage', SV: 'battler' };
+
+/** What a loaded file is read as, in words: "Male · Clothing pFur01 · walk mask". */
+function readingOf(file) {
+  const v = file.variant;
+  const what = file.role === 'icon' ? 'icon' : `${SHEET_WORDS[file.layer.sheet] || file.layer.sheet} ${file.role === 'mask' ? 'mask' : 'image'}`;
+  return `${v.bodyType} · ${v.part} ${v.pid} · ${what}`;
+}
+
+/** The generator name a loaded file is read as, to start the assign dialog from. */
+function nameOf(file) {
+  const v = file.variant;
+  const pid = v.pid.replace(/\s*\(.*\)$/, '');
+  if (file.role === 'icon') return buildPartName({ sheet: 'icon', part: v.part, pid });
+  const l = file.layer;
+  return buildPartName({
+    sheet: l.sheet, part: v.part, layer: l.layer.slice(v.part.length), pid,
+    mask: file.role === 'mask', cell: l.key.split(':')[1], slotM: SLOT_BY_ID.get(l.slotId)?.m,
+  });
+}
+
+/** Draws a file's image into a canvas (decoded once, shared with the preview). */
+async function drawFile(canvas, file) {
+  file.ref ||= { src: file.src, pixels: null };
+  const pixels = await ensureImage(file.ref, file.role === 'mask');
+  canvas.width = pixels.width;
+  canvas.height = pixels.height;
+  canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pixels.data), pixels.width, pixels.height), 0, 0);
+  return pixels;
+}
+
+let assigning = null;
+/** Assigning one by one: the files still to go, in order. */
+let assignQueue = null;
+
+async function openAssignDialog(entry, queue = null) {
   assigning = entry;
+  assignQueue = queue;
   const fileName = entry.path.split('/').pop();
   const stem = fileName.replace(/\.png$/i, '');
   const folders = entry.path.split('/').slice(0, -1);
   const bodies = [...state.library.bodyTypes.keys()];
   const folderBody = [...folders].reverse().find((f) => bodies.some((b) => b.toLowerCase() === f.toLowerCase()));
+  const loaded = entry.variant ? entry : null;
+  $('assign-title').textContent = loaded ? 'Reassign a file' : 'Assign a file';
+  $('assign-ok').textContent = loaded ? 'Reassign' : 'Add';
+  $('assign-current').textContent = loaded ? `Now read as: ${readingOf(loaded)}` : (entry.reason ? `Not read: ${entry.reason}` : '');
+  $('assign-queue').textContent = queue ? `${queue.length} more after this one.` : '';
+  $('assign-skip').hidden = !queue;
   $('assign-file').textContent = entry.path;
   $('assign-part').value = '';
   $('assign-layer').value = '';
@@ -931,53 +978,219 @@ async function openAssignDialog(entry) {
   $('assign-body-list').replaceChildren(...bodies.map((b) => el('option', { value: b })));
   $('assign-slot').replaceChildren(el('option', { value: '', textContent: 'none (not recolourable)' }),
     ...SLOTS.filter((s) => s.m).map((s) => el('option', { value: s.m, textContent: s.label })));
-  // Guess the sheet from the image size.
+  // Start from what it's read as now (reassigning), else guess the sheet from the image size.
+  const current = loaded && parsePartPath(`${loaded.variant.bodyType}/${nameOf(loaded)}`);
   try {
-    const pixels = await ensureImage({ src: entry.src, pixels: null });
+    const pixels = await drawFile($('assign-preview'), entry);
     const guess = SHEET_BY_SIZE.find((s) => s.w === pixels.width && s.h === pixels.height);
     $('assign-sheet').value = guess ? guess.sheet : pixels.width <= 64 && pixels.height <= 64 ? 'icon' : 'TV';
     $('assign-size').textContent = `${pixels.width}×${pixels.height}px`;
   } catch {
     $('assign-size').textContent = 'could not read the image';
   }
+  if (current) {
+    $('assign-sheet').value = current.isIcon ? 'icon' : current.sheet;
+    $('assign-part').value = current.part;
+    $('assign-layer').value = current.layer.slice(current.part.length);
+    $('assign-pid').value = current.basePid.replace(/^p/, '');
+    $('assign-mask').checked = current.isMask;
+    $('assign-body').value = current.bodyType;
+    if (current.cell) $('assign-cell').value = current.cell;
+    $('assign-slot').value = SLOT_BY_ID.get(current.slotId)?.m || '';
+  }
   updateAssignPreview();
-  $('assign-dialog').showModal();
+  if (!$('assign-dialog').open) $('assign-dialog').showModal();
 }
 
-/** Assignments the user asked to remember are applied again when the same pack is opened. */
+/** Parts whose variant was taken away (reassigned) are taken off the character. */
+function dropMissingParts() {
+  if (!state.character) return;
+  for (const [key, id] of Object.entries(state.character.parts)) {
+    if (id && !state.library.variants.has(id)) state.character.parts[key] = null;
+  }
+}
+
+function afterFilesChanged() {
+  dropMissingParts();
+  if (state.library.variants.size) {
+    ensureCharacter();
+    showApp();
+    renderAll();
+  } else {
+    renderProblems();
+  }
+  if ($('files-dialog').open) renderFiles();
+}
+
+/**
+ * Remembered per pack and file: {readAs, bodyType} to read it that way, or {readAs: null} to
+ * leave it unassigned. Applied again when the same pack is opened.
+ */
 function applyRememberedAssignments(packName) {
   const remembered = state.settings.assignments || {};
-  for (const u of [...state.library.unrecognized]) {
-    const a = u.pack === packName && remembered[`${packName}|${u.path}`];
-    if (a) assignFile(state.library, u.pack, u.path, u.src, a.readAs, a.bodyType);
+  for (const [key, a] of Object.entries(remembered)) {
+    if (!key.startsWith(`${packName}|`)) continue;
+    const path = key.slice(packName.length + 1);
+    const now = state.library.readAs.get(key);
+    if (a.readAs === null) {
+      unassignFile(state.library, packName, path, 'Unassigned by you');
+      continue;
+    }
+    if (now && now.readAs === a.readAs && now.bodyType === (a.bodyType || 'Default')) continue;
+    const file = unassignFile(state.library, packName, path);
+    if (file) assignFile(state.library, packName, path, file.src, a.readAs, a.bodyType);
   }
+}
+
+function remember(entry, value) {
+  (state.settings.assignments ||= {})[`${entry.pack}|${entry.path}`] = value;
+  saveSettings();
+}
+
+function unassignByUser(entry) {
+  unassignFile(state.library, entry.pack, entry.path, 'Unassigned by you');
+  remember(entry, { readAs: null });
+  toast(`${entry.path.split('/').pop()} is back in the "To assign" list.`);
+  afterFilesChanged();
 }
 
 for (const id of ['assign-sheet', 'assign-part', 'assign-layer', 'assign-pid', 'assign-mask', 'assign-cell', 'assign-slot', 'assign-body']) {
   $(id).addEventListener('input', updateAssignPreview);
 }
 $('assign-dialog').addEventListener('close', () => {
-  if ($('assign-dialog').returnValue !== 'ok' || !assigning) return;
-  const f = assignFields();
-  if (!f.part) {
-    toast('Not assigned: pick a part name.');
-    return;
+  const action = $('assign-dialog').returnValue;
+  const entry = assigning;
+  const queue = assignQueue;
+  assigning = null;
+  assignQueue = null;
+  if (!entry) return;
+  if (action === 'ok') {
+    const f = assignFields();
+    if (!f.part) {
+      toast('Not assigned: pick a part name.');
+      return;
+    }
+    const readAs = buildPartName(f);
+    const bodyType = $('assign-body').value.trim() || 'Default';
+    if (!parsePartPath(`${bodyType}/${readAs}`)) {
+      toast(`"${readAs}" is not a valid part name.`);
+      return;
+    }
+    const file = unassignFile(state.library, entry.pack, entry.path) || entry;
+    const error = assignFile(state.library, entry.pack, entry.path, file.src, readAs, bodyType);
+    if (error) {
+      toast(error);
+      return;
+    }
+    if ($('assign-remember').checked) remember(entry, { readAs, bodyType });
+    toast(`${entry.path.split('/').pop()}: ${bodyType} ${f.part}.`);
+    afterFilesChanged();
   }
-  const readAs = buildPartName(f);
-  const bodyType = $('assign-body').value.trim() || 'Default';
-  const error = assignFile(state.library, assigning.pack, assigning.path, assigning.src, readAs, bodyType);
-  if (error) {
-    toast(error);
-    return;
+  // One by one: on to the next file that still needs assigning.
+  if (queue && (action === 'ok' || action === 'skip')) {
+    const rest = queue.filter((u) => state.library.unrecognized.includes(u));
+    if (rest.length) openAssignDialog(rest[0], rest.slice(1));
+    else toast('That was the last file to assign.');
   }
-  if ($('assign-remember').checked) {
-    (state.settings.assignments ||= {})[`${assigning.pack}|${assigning.path}`] = { readAs, bodyType };
-    saveSettings();
+});
+
+// ---------- files dialog: everything that was read, and what wasn't ----------
+
+let filesTab = 'queue';
+let filesShown = 60;
+
+function filesFor(tab) {
+  const lib = state.library;
+  if (tab === 'queue') return lib.unrecognized;
+  const loaded = libraryFiles(lib);
+  if (tab === 'all') return [...lib.unrecognized, ...loaded];
+  return loaded.filter((f) => lib.readAs.get(`${f.pack}|${f.path}`)?.how === tab);
+}
+
+function fileCard(file, observer) {
+  const loaded = !!file.variant;
+  const canvas = el('canvas', { width: 0, height: 0 });
+  canvas.file = file;
+  observer.observe(canvas);
+  const buttons = [];
+  const assign = el('button', { type: 'button', className: 'small-button', textContent: loaded ? 'Reassign…' : 'Assign…' });
+  assign.addEventListener('click', () => openAssignDialog(file));
+  buttons.push(assign);
+  if (loaded) {
+    const unassign = el('button', { type: 'button', className: 'small-button', textContent: 'Unassign', title: 'Take it out of its part and put it in the "To assign" list' });
+    unassign.addEventListener('click', () => unassignByUser(file));
+    buttons.push(unassign);
   }
-  toast(`Added ${assigning.path.split('/').pop()} as ${bodyType} ${f.part}.`);
-  ensureCharacter();
-  showApp();
-  renderAll();
+  const how = state.library.readAs.get(`${file.pack}|${file.path}`)?.how;
+  const reading = loaded
+    ? `${readingOf(file)}${how === 'odd' ? ' (guessed from the name)' : how === 'hand' ? ' (assigned by you)' : ''}`
+    : file.reason;
+  return el('div', { className: 'file-card' }, [
+    el('div', { className: 'file-thumb' }, [canvas]),
+    el('div', { className: 'file-name', textContent: file.path.split('/').pop(), title: `${file.pack}: ${file.path}` }),
+    el('div', { className: 'file-reading', textContent: reading }),
+    el('div', { className: 'file-buttons' }, buttons),
+  ]);
+}
+
+const TAB_LABELS = { queue: 'To assign', odd: 'Odd names', hand: 'Assigned by you', all: 'All files' };
+const TAB_NOTES = {
+  queue: 'Files the generator could not read from their name. Assign them one by one, or pick one.',
+  odd: 'Files with unusual names, read by guessing. Reassign any that were guessed wrong.',
+  hand: 'Files you assigned. Reassign or unassign them if one went wrong.',
+  all: 'Every file of the opened folders. Reassign any of them, e.g. one that was read as the wrong part.',
+};
+
+function renderFiles() {
+  const counts = { queue: filesFor('queue').length, odd: filesFor('odd').length, hand: filesFor('hand').length };
+  for (const b of $('files-tabs').children) {
+    const tab = b.dataset.tab;
+    b.classList.toggle('active', tab === filesTab);
+    b.textContent = tab in counts ? `${TAB_LABELS[tab]} (${counts[tab]})` : TAB_LABELS[tab];
+  }
+  const query = $('files-search').value.trim().toLowerCase();
+  const files = filesFor(filesTab).filter((f) => !query
+    || `${f.path} ${f.variant ? readingOf(f) : ''}`.toLowerCase().includes(query));
+  $('files-start').hidden = filesTab !== 'queue' || !files.length;
+  $('files-note').textContent = filesTab === 'queue' && !files.length ? 'Nothing left to assign.' : TAB_NOTES[filesTab];
+  const observer = new IntersectionObserver((seen) => {
+    for (const e of seen) {
+      if (!e.isIntersecting) continue;
+      observer.unobserve(e.target);
+      drawFile(e.target, e.target.file).catch(() => {});
+    }
+  }, { root: $('files-list') });
+  $('files-list').replaceChildren(...files.slice(0, filesShown).map((f) => fileCard(f, observer)));
+  $('files-more').hidden = files.length <= filesShown;
+  $('files-more').textContent = `Show more (${files.length - filesShown} left)`;
+}
+
+function openFilesDialog(tab = state.library.unrecognized.length ? 'queue' : 'odd') {
+  filesTab = tab;
+  filesShown = 60;
+  renderFiles();
+  if (!$('files-dialog').open) $('files-dialog').showModal();
+}
+
+$('open-files').addEventListener('click', () => openFilesDialog());
+$('files-tabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('button')?.dataset.tab;
+  if (!tab) return;
+  filesTab = tab;
+  filesShown = 60;
+  renderFiles();
+});
+$('files-search').addEventListener('input', () => {
+  filesShown = 60;
+  renderFiles();
+});
+$('files-more').addEventListener('click', () => {
+  filesShown += 120;
+  renderFiles();
+});
+$('files-start').addEventListener('click', () => {
+  const queue = [...state.library.unrecognized];
+  if (queue.length) openAssignDialog(queue[0], queue.slice(1));
 });
 
 // ---------- animation ----------

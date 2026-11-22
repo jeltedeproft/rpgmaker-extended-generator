@@ -168,6 +168,11 @@ export function createLibrary() {
     gradientFiles: [],
     unrecognized: [],
     warnings: [],
+    /**
+     * Files not read from their own name: "pack|path" -> {readAs, bodyType, how}, how = 'odd'
+     * (guessed from an odd name) or 'hand' (assigned by the user).
+     */
+    readAs: new Map(),
   };
 }
 
@@ -253,6 +258,7 @@ export function addPack(library, packName, entries) {
       continue;
     }
     library.warnings.push(`${path}: read as ${readAs}`);
+    library.readAs.set(`${name}|${path}`, { readAs, bodyType: parsed.bodyType, how: 'odd' });
     addParsed(library, name, parsed, path, src);
   }
   finishPack(library, name);
@@ -272,9 +278,59 @@ export function assignFile(library, packName, path, src, readAs, bodyType) {
   const parsed = parsePartPath(`${bodyType || 'Default'}/${readAs}`);
   if (!parsed) return `"${readAs}" is not a valid part name.`;
   library.unrecognized = library.unrecognized.filter((u) => !(u.pack === packName && u.path === path));
+  library.readAs.set(`${packName}|${path}`, { readAs, bodyType: parsed.bodyType, how: 'hand' });
   // A mask assigned before its image waits for it (layers without an image aren't drawn).
   addParsed(library, packName, parsed, path, src);
   return null;
+}
+
+/**
+ * Every part file of the library: [{pack, path, src, variant, role}], role 'image', 'mask' or
+ * 'icon'. Used to find a file again, e.g. to reassign it.
+ */
+export function libraryFiles(library) {
+  const files = [];
+  for (const variant of library.variants.values()) {
+    if (variant.icon?.path) files.push({ pack: variant.pack, path: variant.icon.path, src: variant.icon.src, variant, role: 'icon' });
+    for (const l of variant.layers) {
+      if (l.base) files.push({ pack: variant.pack, path: l.base.path, src: l.base.src, variant, layer: l, role: 'image' });
+      if (l.mask) files.push({ pack: variant.pack, path: l.mask.path, src: l.mask.src, variant, layer: l, role: 'mask' });
+    }
+  }
+  return files;
+}
+
+/**
+ * Takes a file out of the parts it was read into and puts it in the "to assign" list. A mask
+ * whose image is taken out goes to the list too. Variants left empty are removed.
+ * @returns {{src:any}|null} the file, or null when it isn't in the library
+ */
+export function unassignFile(library, packName, path, reason = 'Unassigned') {
+  const found = libraryFiles(library).find((f) => f.pack === packName && f.path === path);
+  if (!found) return library.unrecognized.find((u) => u.pack === packName && u.path === path) || null;
+  const { variant, layer, role, src } = found;
+  if (role === 'icon') variant.icon = null;
+  if (role === 'mask') layer.mask = null;
+  if (role === 'image') {
+    layer.base = null;
+    if (layer.mask) {
+      library.unrecognized.push({ pack: packName, path: layer.mask.path, src: layer.mask.src, reason: 'Its image was reassigned' });
+      layer.mask = null;
+    }
+  }
+  variant.layers = variant.layers.filter((l) => l.base || l.mask);
+  if (!variant.layers.some((l) => l.base) && !variant.icon) {
+    for (const l of variant.layers) {
+      library.unrecognized.push({ pack: packName, path: l.mask.path, src: l.mask.src, reason: 'Its image was reassigned' });
+    }
+    library.variants.delete(variant.id);
+    const parts = library.bodyTypes.get(variant.bodyType)?.parts;
+    parts?.get(variant.part)?.delete(variant.id);
+    if (parts && !parts.get(variant.part)?.size) parts.delete(variant.part);
+  }
+  library.readAs.delete(`${packName}|${path}`);
+  library.unrecognized.push({ pack: packName, path, src, reason });
+  return { src };
 }
 
 /** "p17" -> "p17 (alt)"; "p17 (2)" -> "p17 (2, alt)". */
@@ -307,7 +363,7 @@ function addParsed(library, name, parsed, path, src) {
 
   const variant = getVariant(library, name, parsed);
   if (parsed.isIcon) {
-    variant.icon = { src, pixels: null };
+    variant.icon = { src, pixels: null, path };
     return;
   }
 

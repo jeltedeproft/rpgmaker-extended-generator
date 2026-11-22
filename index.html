@@ -18,6 +18,7 @@
       <span class="divider"></span>
       <button id="randomize" disabled>Randomize</button>
       <button id="random-rules" disabled title="Rules for Randomize">Rules…</button>
+      <button id="open-files" disabled title="Every file the generator read, and the ones it couldn't: assign, reassign or unassign them">Files…</button>
       <button id="save-character" disabled>Save character</button>
       <label class="button" id="load-character-label">Load character
         <input id="load-character" type="file" accept=".json,application/json" hidden disabled>
@@ -262,10 +263,39 @@
     </form>
   </dialog>
 
+  <dialog id="files-dialog" class="files-dialog">
+    <form method="dialog">
+      <div class="files-head">
+        <h3>Files</h3>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <div class="files-tabs" id="files-tabs">
+        <button type="button" data-tab="queue">To assign</button>
+        <button type="button" data-tab="odd">Odd names</button>
+        <button type="button" data-tab="hand">Assigned by you</button>
+        <button type="button" data-tab="all">All files</button>
+      </div>
+      <div class="files-tools">
+        <input id="files-search" type="search" placeholder="Filter by file name or part, e.g. Clothing or p07">
+        <button type="button" id="files-start" class="small-button primary">Assign one by one</button>
+      </div>
+      <p id="files-note" class="muted small"></p>
+      <div id="files-list" class="files-list"></div>
+      <button type="button" id="files-more" class="small-button" hidden>Show more</button>
+    </form>
+  </dialog>
+
   <dialog id="assign-dialog">
     <form method="dialog" class="assign-form">
-      <h3>Assign a file</h3>
-      <p class="small"><code id="assign-file"></code> <span id="assign-size" class="muted"></span></p>
+      <h3 id="assign-title">Assign a file</h3>
+      <div class="assign-top">
+        <div class="assign-preview"><canvas id="assign-preview" width="0" height="0"></canvas></div>
+        <div>
+          <p class="small"><code id="assign-file"></code> <span id="assign-size" class="muted"></span></p>
+          <p class="small" id="assign-current"></p>
+          <p class="small muted" id="assign-queue"></p>
+        </div>
+      </div>
       <label class="field">Sheet
         <select id="assign-sheet">
           <option value="FG">Face (FG)</option>
@@ -304,7 +334,8 @@
       <label class="lock"><input type="checkbox" id="assign-remember" checked> Remember for this pack</label>
       <div class="dialog-actions">
         <button value="cancel">Cancel</button>
-        <button value="ok" class="primary">Add</button>
+        <button value="skip" id="assign-skip">Skip</button>
+        <button value="ok" class="primary" id="assign-ok">Add</button>
       </div>
     </form>
   </dialog>

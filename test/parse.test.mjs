@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles } from '../src/parse.js';
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
@@ -153,4 +153,28 @@ test('a part word anywhere in an odd name, and a "b" file as the mask', () => {
   assert.equal(fur.layers[0].base.src, 'fur');
   assert.equal(fur.layers[0].mask.src, 'furMask');
   assert.ok(![...lib.variants.keys()].some((k) => k.endsWith('/pb')));
+});
+
+test('files can be unassigned and reassigned', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', [
+    { path: 'TV/Male/TV_Hat_p01.png', src: 'hat' },
+    { path: 'TV/Male/TV_Hat_p01_c.png', src: 'hatMask' },
+    { path: 'TV/Male/TV_ClothingEric.png', src: 'eric' },
+  ]);
+  assert.equal(lib.readAs.get('P|TV/Male/TV_ClothingEric.png').how, 'odd');
+  // Unassigning the image takes the variant away and queues image and mask.
+  unassignFile(lib, 'P', 'TV/Male/TV_Hat_p01.png');
+  assert.ok(!lib.variants.has('P/Male/Hat/p01'));
+  assert.ok(!lib.bodyTypes.get('Male').parts.has('Hat'));
+  assert.deepEqual(lib.unrecognized.map((u) => u.src).sort(), ['hat', 'hatMask']);
+  // Reassign both as AccA.
+  assignFile(lib, 'P', 'TV/Male/TV_Hat_p01.png', 'hat', 'TV_AccA_p05.png', 'Male');
+  assignFile(lib, 'P', 'TV/Male/TV_Hat_p01_c.png', 'hatMask', 'TV_AccA_p05_c.png', 'Male');
+  const acc = lib.variants.get('P/Male/AccA/p05');
+  assert.equal(acc.layers[0].base.src, 'hat');
+  assert.equal(acc.layers[0].mask.src, 'hatMask');
+  assert.equal(lib.unrecognized.length, 0);
+  assert.equal(lib.readAs.get('P|TV/Male/TV_Hat_p01.png').how, 'hand');
+  assert.equal(libraryFiles(lib).length, 3);
 });

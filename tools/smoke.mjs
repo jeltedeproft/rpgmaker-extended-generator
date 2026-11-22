@@ -248,6 +248,39 @@ try {
       await sleep(900);
       check('assigned file shows up as a new part', await evaluate(`[...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('AccC'))`));
     }
+    // Files dialog: the queue of skipped files, with pictures, one by one.
+    await click('#open-files');
+    await sleep(1200);
+    const queued = await evaluate(`document.querySelectorAll('#files-list .file-card').length`);
+    check('files dialog lists files to assign', queued > 0, `${queued} cards`);
+    check('files to assign have pictures', await evaluate(`[...document.querySelectorAll('#files-list canvas')].every(c => c.width > 0)`));
+    await click('#files-start');
+    await sleep(900);
+    check('assign dialog shows the image', await evaluate(`document.getElementById('assign-preview').width > 0`));
+    check('one by one offers skip', await evaluate(`!document.getElementById('assign-skip').hidden`));
+    await evaluate(`document.getElementById('assign-skip').click()`);
+    await sleep(600);
+    // Reassign a file that was read from its name.
+    await evaluate(`document.getElementById('assign-dialog').open && document.querySelector('#assign-dialog button[value="cancel"]').click()`);
+    await evaluate(`document.querySelector('#files-tabs [data-tab="all"]').click()`);
+    await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = '/Male/TV_AccA_p835.png'; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(800);
+    const cards = await evaluate(`document.querySelectorAll('#files-list .file-card').length`);
+    check('all files can be searched', cards === 1, `${cards} cards`);
+    await evaluate(`document.querySelector('#files-list .file-card button').click()`);
+    await sleep(900);
+    check('reassign starts from the current reading', await evaluate(`document.getElementById('assign-title').textContent === 'Reassign a file' && document.getElementById('assign-part').value === 'AccA' && document.getElementById('assign-pid').value === '835'`));
+    await evaluate(`(() => { const p = document.getElementById('assign-part'); p.value = 'AccD'; p.dispatchEvent(new Event('input')); document.getElementById('assign-remember').checked = false; document.querySelector('#assign-dialog button[value="ok"]').click(); })()`);
+    await sleep(1200);
+    check('reassigned file moves to its new part', await evaluate(`[...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('AccD'))`));
+    check('reassigned file shows its new reading', await evaluate(`document.querySelector('#files-list .file-reading')?.textContent.includes('AccD p835')`));
+    await shot('4b-files.png');
+    await evaluate(`document.querySelector('#files-list .file-card button:nth-child(2)').click()`);
+    await sleep(900);
+    check('unassigned file (and its mask) go back to the queue', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 2) + ')');
+    await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);
+    await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('xgen-settings') || '{}'); delete s.assignments; localStorage.setItem('xgen-settings', JSON.stringify(s)); })()`);
+
     check('both body types offered', await evaluate(`[...document.querySelectorAll('#body-type option')].map(o => o.value).join(',')`) === 'Male,Female');
     // Male character wearing a Female-only accessory.
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('AccA')).click()`);
