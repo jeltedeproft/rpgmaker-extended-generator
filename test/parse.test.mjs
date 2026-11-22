@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePartPath, parseGradientPath, createLibrary, addPack } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName } from '../src/parse.js';
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
@@ -110,4 +110,31 @@ test('set folders and copy suffixes become separate variants instead of duplicat
   assert.deepEqual(pids, ['AccB p07 (2)', 'AccB p2-2', 'Body p01', 'Body p01 (left_green)', 'Body p01 (left_red)']);
   const copy = [...lib.variants.values()].find((v) => v.pid === 'p07 (2)');
   assert.equal(copy.layers[0].mask.src, 5);
+});
+
+test('names without a part number are still read (and typos are forgiven)', () => {
+  assert.equal(lenientName('TV_ClothingEric.png'), 'TV_Clothing_pEric.png');
+  assert.equal(lenientName('TV_Clothing2_pXX.png.png'), 'TV_Clothing2_pXX.png');
+  assert.equal(lenientName('FG_FrontHair_p17_c1].png'), 'FG_FrontHair_p17_c1.png');
+  assert.equal(lenientName('SV_Hat_c.png'), 'SV_Hat_p01_c.png');
+  assert.equal(lenientName('hat.png'), null);
+  const lib = createLibrary();
+  addPack(lib, 'Mine', [{ path: 'Mine/TV/Male/TV_ClothingEric.png', src: 'e' }]);
+  assert.ok(lib.variants.has('Mine/Male/Clothing/pEric'));
+  assert.ok(lib.warnings.some((w) => w.includes('read as TV_Clothing_pEric.png')));
+});
+
+test('a file can be assigned by hand, as a new part and a new body type', () => {
+  const lib = createLibrary();
+  addPack(lib, 'Mine', [{ path: 'Mine/stuff/hat.png', src: 'h' }, { path: 'Mine/stuff/hat_mask.png', src: 'm' }]);
+  assert.equal(lib.unrecognized.length, 2);
+  // The mask first: it waits for its image.
+  assert.equal(assignFile(lib, 'Mine', 'Mine/stuff/hat_mask.png', 'm', buildPartName({ sheet: 'TV', part: 'AccC', pid: 'hat', mask: true }), 'Elf'), null);
+  assert.equal(assignFile(lib, 'Mine', 'Mine/stuff/hat.png', 'h', buildPartName({ sheet: 'TV', part: 'AccC', pid: 'hat' }), 'Elf'), null);
+  assert.equal(lib.unrecognized.length, 0);
+  const v = lib.variants.get('Mine/Elf/AccC/phat');
+  assert.equal(v.layers.length, 1);
+  assert.equal(v.layers[0].base.src, 'h');
+  assert.equal(v.layers[0].mask.src, 'm');
+  assert.equal(buildPartName({ sheet: 'FG', part: 'Eyes', pid: 'p02', cell: 'c2', slotM: 2 }), 'FG_Eyes_p02_c2_m002.png');
 });

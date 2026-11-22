@@ -158,7 +158,7 @@ export function layersForSheet(sheet, character, library) {
     const variant = variantForSheet(selected, sheet, library);
     const pieces = pieceKeys(character, key);
     for (const layer of variant?.layers || []) {
-      if (layer.sheet !== sheet) continue;
+      if (layer.sheet !== sheet || !layer.base) continue;
       if (!pieces.length) draws.push({ layer, item: key });
       // A split item draws each piece as its own layer (own position, colours and draw order).
       pieces.forEach((piece, i) => draws.push({ layer, item: piece, piece: { of: key, n: i + 1 } }));
@@ -219,7 +219,7 @@ export function countPieces(character, library, key, gap) {
   if (!variant) return 0;
   for (const sheet of ['FG', 'TV', 'SV', 'TVD']) {
     const source = variantForSheet(variant, sheet, library);
-    const own = (source?.layers || []).filter((l) => l.sheet === sheet && l.base.pixels);
+    const own = (source?.layers || []).filter((l) => l.sheet === sheet && l.base?.pixels);
     if (!own.length) continue;
     const draws = layersForSheet(sheet, { ...character, parts: { [key]: character.parts[key] }, split: {} }, library);
     const size = sheetSize(sheet, draws);

@@ -168,6 +168,53 @@
     </section>
   </main>
 
+  <dialog id="assign-dialog">
+    <form method="dialog" class="assign-form">
+      <h3>Assign a file</h3>
+      <p class="small"><code id="assign-file"></code> <span id="assign-size" class="muted"></span></p>
+      <label class="field">Sheet
+        <select id="assign-sheet">
+          <option value="FG">Face (FG)</option>
+          <option value="TV">Walk (TV)</option>
+          <option value="TVD">Damage (TVD)</option>
+          <option value="SV">Battler (SV)</option>
+          <option value="icon">Variation icon</option>
+        </select>
+      </label>
+      <label class="field">Part (type a new name for a new category, e.g. AccC)
+        <input id="assign-part" type="text" list="assign-part-list" maxlength="30">
+        <datalist id="assign-part-list"></datalist>
+      </label>
+      <div class="assign-row">
+        <label class="field">Layer number (optional)
+          <input id="assign-layer" type="text" maxlength="2" placeholder="e.g. 1 or 2">
+        </label>
+        <label class="field">Variation
+          <input id="assign-pid" type="text" maxlength="30">
+        </label>
+        <label class="field">Body type
+          <input id="assign-body" type="text" list="assign-body-list" maxlength="30">
+          <datalist id="assign-body-list"></datalist>
+        </label>
+      </div>
+      <label class="lock"><input type="checkbox" id="assign-mask"> This is a colour mask (<code>_c</code>) for the image with the same name</label>
+      <div id="assign-face-fields" class="assign-row">
+        <label class="field">Face cell
+          <select id="assign-cell"><option>c1</option><option>c2</option><option>c3</option><option>c4</option><option>c5</option><option>c6</option></select>
+        </label>
+        <label class="field">Colour slot
+          <select id="assign-slot"></select>
+        </label>
+      </div>
+      <p class="small">Read as <code id="assign-result"></code></p>
+      <label class="lock"><input type="checkbox" id="assign-remember" checked> Remember for this pack</label>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button value="ok" class="primary">Add</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="gradient-dialog">
     <form method="dialog" class="gradient-form">
       <h3>New gradient</h3>

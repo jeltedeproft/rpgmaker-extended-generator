@@ -81,6 +81,56 @@ export function parsePartPath(path) {
   return result;
 }
 
+const LENIENT_RE = /^(FG|TVD|TV|SV|icon)[_ -](.+)\.png$/i;
+const MASK_SUFFIX_RE = /((?:_(?:c\d*|m\d+))*)$/i;
+const KNOWN_PARTS_LONGEST_FIRST = [...PART_ORDER].sort((a, b) => b.length - a.length);
+
+/**
+ * Reads names that skip the part number, e.g. "TV_ClothingEric.png" (part Clothing, variation
+ * "Eric") or "SV_Hat.png" (a new part "Hat"). Returns the strict name it was read as, or null.
+ */
+export function lenientName(fileName) {
+  // Typos seen in real packs: "TV_Clothing2_pXX.png.png", "FG_FrontHair_p17_c1].png".
+  const cleaned = fileName.replace(COPY_SUFFIX_RE, '').replace(/(\.png)+$/i, '.png').replace(/[^A-Za-z0-9_. -]+/g, '');
+  if (PART_FILE_RE.test(cleaned)) return cleaned;
+  const match = LENIENT_RE.exec(cleaned);
+  if (!match) return null;
+  const prefix = match[1];
+  const suffixes = MASK_SUFFIX_RE.exec(match[2])[1];
+  const stem = match[2].slice(0, match[2].length - suffixes.length);
+  const known = KNOWN_PARTS_LONGEST_FIRST.find((p) => stem.toLowerCase().startsWith(p.toLowerCase()));
+  let part;
+  let rest;
+  if (known) {
+    part = known;
+    rest = stem.slice(known.length);
+  } else {
+    const m = /^([A-Za-z]+)(.*)$/.exec(stem);
+    if (!m) return null;
+    [, part, rest] = m;
+  }
+  const layer = /^\d*/.exec(rest)[0];
+  const pid = rest.slice(layer.length).replace(/^_p(?=[A-Za-z0-9])/i, '_').replace(/^[_ -]+/, '').replace(/[^A-Za-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || '01';
+  return `${prefix}_${part}${layer}_p${pid}${suffixes}.png`;
+}
+
+/**
+ * Builds a generator file name from its pieces (used to assign unrecognised files by hand).
+ * @param {{sheet:string, part:string, layer?:string|number, pid:string, mask?:boolean, cell?:string, slotM?:number}} a
+ */
+export function buildPartName(a) {
+  const pid = String(a.pid || '01').replace(/^p/i, '').replace(/[^A-Za-z0-9-]+/g, '-') || '01';
+  const part = String(a.part).replace(/[^A-Za-z]+/g, '') || 'Part';
+  let name = `${a.sheet}_${part}${a.layer ?? ''}_p${pid}`;
+  if (a.sheet === 'FG') {
+    name += `_${a.cell || 'c1'}`;
+    if (a.slotM) name += `_m${String(a.slotM).padStart(3, '0')}`;
+  } else if (a.mask) {
+    name += '_c';
+  }
+  return name + '.png';
+}
+
 /** @returns {{category:string}|null} */
 export function parseGradientPath(path) {
   const fileName = path.split(/[\\/]/).pop();
@@ -159,59 +209,90 @@ export function addPack(library, packName, entries) {
       continue;
     }
 
-    const parsed = parsePartPath(path);
+    let parsed = parsePartPath(path);
+    if (!parsed) {
+      // Forgiving fallback for names without a part number.
+      const fileName = path.split('/').pop();
+      const readAs = lenientName(fileName);
+      parsed = readAs && parsePartPath(path.slice(0, path.length - fileName.length) + readAs);
+      if (parsed) library.warnings.push(`${path}: read as ${readAs}`);
+    }
     if (!parsed) {
       library.unrecognized.push({ pack: name, path, src, reason: 'Name does not match TYPE_Part_pNN[_c].png' });
       continue;
     }
-    if (parsed.unknownSuffixes.length) {
-      library.warnings.push(`${path}: ignored suffix ${parsed.unknownSuffixes.join(', ')}`);
-    }
-
-    const variant = getVariant(library, name, parsed);
-    if (parsed.isIcon) {
-      variant.icon = { src, pixels: null };
-      continue;
-    }
-
-    const key = layerKey(parsed);
-    // Official MZ faces can use one cell twice: fixed (FG_Clothing1_p04_c1) and recoloured
-    // (FG_Clothing1_p04_c1_m010). Those are two layers, not duplicates.
-    const sameSlot = (l) => parsed.sheet !== 'FG' || !l.base || l.slotId === parsed.slotId;
-    let layer = variant.layers.find((l) => l.sheet === parsed.sheet && l.key === key && sameSlot(l));
-    if (!layer) {
-      layer = { sheet: parsed.sheet, key, layer: parsed.layer, part: parsed.part, slotId: null, base: null, mask: null };
-      variant.layers.push(layer);
-    }
-    if (parsed.isMask) {
-      if (layer.mask) library.warnings.push(`${path}: duplicate mask, keeping the first`);
-      else layer.mask = { src, pixels: null, path };
-    } else {
-      if (layer.base) library.warnings.push(`${path}: duplicate layer, keeping the first`);
-      else {
-        layer.base = { src, pixels: null, path };
-        layer.slotId = parsed.slotId;
-      }
-    }
+    addParsed(library, name, parsed, path, src);
   }
-
+  finishPack(library, name);
   // Credit-like files first: "credits.txt" before "notes.txt".
   const creditLike = (t) => (CREDIT_NAME_RE.test(t.path.split('/').pop()) ? 0 : 1);
   pack.texts.sort((a, b) => creditLike(a) - creditLike(b) || a.path.localeCompare(b.path));
+  return pack;
+}
 
-  // Masks without a base image can't be drawn.
+/**
+ * Adds a file the user assigned by hand (from the import report) under the given name.
+ * @param {string} readAs a generator file name, e.g. "TV_Hat_p01.png"
+ * @param {string} bodyType body type folder, e.g. "Male" (new names make a new body type)
+ * @returns {string|null} an error message, or null when it was added
+ */
+export function assignFile(library, packName, path, src, readAs, bodyType) {
+  const parsed = parsePartPath(`${bodyType || 'Default'}/${readAs}`);
+  if (!parsed) return `"${readAs}" is not a valid part name.`;
+  library.unrecognized = library.unrecognized.filter((u) => !(u.pack === packName && u.path === path));
+  // A mask assigned before its image waits for it (layers without an image aren't drawn).
+  addParsed(library, packName, parsed, path, src);
+  return null;
+}
+
+function addParsed(library, name, parsed, path, src) {
+  if (parsed.unknownSuffixes.length) {
+    library.warnings.push(`${path}: ignored suffix ${parsed.unknownSuffixes.join(', ')}`);
+  }
+
+  const variant = getVariant(library, name, parsed);
+  if (parsed.isIcon) {
+    variant.icon = { src, pixels: null };
+    return;
+  }
+
+  const key = layerKey(parsed);
+  // Official MZ faces can use one cell twice: fixed (FG_Clothing1_p04_c1) and recoloured
+  // (FG_Clothing1_p04_c1_m010). Those are two layers, not duplicates.
+  const sameSlot = (l) => parsed.sheet !== 'FG' || !l.base || l.slotId === parsed.slotId;
+  let layer = variant.layers.find((l) => l.sheet === parsed.sheet && l.key === key && sameSlot(l));
+  if (!layer) {
+    layer = { sheet: parsed.sheet, key, layer: parsed.layer, part: parsed.part, slotId: null, base: null, mask: null };
+    variant.layers.push(layer);
+  }
+  if (parsed.isMask) {
+    if (layer.mask) library.warnings.push(`${path}: duplicate mask, keeping the first`);
+    else layer.mask = { src, pixels: null, path };
+  } else {
+    if (layer.base) library.warnings.push(`${path}: duplicate layer, keeping the first`);
+    else {
+      layer.base = { src, pixels: null, path };
+      layer.slotId = parsed.slotId;
+    }
+  }
+}
+
+/** Masks without a base image can't be drawn: drop them (with a warning). */
+function finishPack(library, name) {
   for (const body of library.bodyTypes.values()) {
     for (const variants of body.parts.values()) {
       for (const variant of variants.values()) {
         if (variant.pack !== name) continue;
         variant.layers = variant.layers.filter((l) => {
-          if (!l.base) library.warnings.push(`${l.mask.path}: mask has no matching base image`);
+          if (!l.base && !l.warned) {
+            library.warnings.push(`${l.mask.path}: mask has no matching base image`);
+            l.warned = true;
+          }
           return !!l.base;
         });
       }
     }
   }
-  return pack;
 }
 
 /**

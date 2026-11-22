@@ -179,3 +179,8 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .credit-pack { font-weight: 600; }
 .credit input { font: inherit; font-size: 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
 .credit-text { white-space: pre-wrap; max-height: 180px; overflow: auto; font-size: 11px; background: var(--hover); padding: 6px; border-radius: 6px; margin: 4px 0 0; }
+.assign-form { width: min(560px, calc(100vw - 48px)); }
+.assign-form h3 { margin-top: 0; }
+.assign-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 10px; }
+.assign-form .field input, .assign-form .field select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+.problems .assign { margin: 0 0 0 4px; padding: 0 6px; font-size: 11px; }

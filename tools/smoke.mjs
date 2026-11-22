@@ -164,6 +164,19 @@ try {
     await send('Page.navigate', { url: `${URL_UNDER_TEST}&pack=${encodeURIComponent(process.env.PACK)}` });
     await sleep(4000);
     check('real pack imported', await evaluate(`document.querySelectorAll('#packs div').length >= 3`));
+    // Assign an unrecognised file by hand, as a brand-new part.
+    await evaluate(`document.getElementById('problems').open = true`);
+    const assignable = await evaluate(`document.querySelectorAll('#problem-list .assign').length`);
+    check('unrecognised files can be assigned', assignable > 0, `${assignable} buttons`);
+    if (assignable) {
+      await click('#problem-list .assign');
+      await sleep(800);
+      await evaluate(`(() => { const p = document.getElementById('assign-part'); p.value = 'AccC'; p.dispatchEvent(new Event('input')); document.getElementById('assign-remember').checked = false; })()`);
+      check('assign dialog previews the name', (await evaluate(`document.getElementById('assign-result').textContent`)).includes('_AccC_p'));
+      await evaluate(`document.querySelector('#assign-dialog button[value="ok"]').click()`);
+      await sleep(900);
+      check('assigned file shows up as a new part', await evaluate(`[...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('AccC'))`));
+    }
     check('both body types offered', await evaluate(`[...document.querySelectorAll('#body-type option')].map(o => o.value).join(',')`) === 'Male,Female');
     // Male character wearing a Female-only accessory.
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('AccA')).click()`);

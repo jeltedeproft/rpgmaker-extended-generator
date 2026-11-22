@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
-import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS } from './format.js';
-import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE } from './parse.js';
+import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, DEFAULT_SIZE } from './format.js';
+import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -105,6 +105,7 @@ async function importEntries(entries, packName) {
       return { path: t.path, text: '(could not read this file)' };
     }
   }));
+  applyRememberedAssignments(pack.name);
   const addedParts = state.library.variants.size - partsBefore;
   const addedGradientFiles = state.library.gradientFiles.length - gradientFilesBefore;
 
@@ -123,14 +124,19 @@ async function importEntries(entries, packName) {
     }
     return;
   }
+  ensureCharacter();
+  toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.`);
+  showApp();
+  renderAll();
+}
+
+/** Makes a first character once there are parts, and gives it colours. */
+function ensureCharacter() {
   if (!state.character) {
     const bodyType = state.library.bodyTypes.has('Male') ? 'Male' : [...state.library.bodyTypes.keys()][0];
     state.character = applyDefaults(createCharacter(bodyType), state.library);
   }
   assignDefaultColours();
-  toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.`);
-  showApp();
-  renderAll();
 }
 
 /** Why a folder gave no parts, in words a user can act on. */
@@ -610,18 +616,114 @@ function unknownMaskColours() {
 
 function renderProblems() {
   const lib = state.library;
+  const skipped = lib.unrecognized.slice(0, 300).map((u) => {
+    const assign = el('button', { className: 'small-button assign', textContent: 'Assign…', title: 'Tell the generator what this file is' });
+    assign.addEventListener('click', () => openAssignDialog(u));
+    return el('li', {}, [`Skipped ${u.path} (${u.reason}) `, assign]);
+  });
   const lines = [
-    ...lib.unrecognized.map((u) => `Skipped ${u.path} (${u.reason})`),
     ...lib.warnings,
     ...state.problems,
     ...state.renderProblems,
   ];
-  $('problems').hidden = !lines.length;
+  const total = lib.unrecognized.length + lines.length;
+  $('problems').hidden = !total;
   $('problem-list').replaceChildren(
-    el('p', { className: 'muted small', textContent: `${lines.length} note(s). Skipped files don't stop the rest from loading.` }),
-    el('ul', {}, lines.slice(0, 500).map((l) => el('li', { textContent: l }))),
+    el('p', { className: 'muted small', textContent: `${total} note(s). Skipped files don't stop the rest from loading; "Assign…" adds one by hand.` }),
+    el('ul', {}, [...skipped, ...lines.slice(0, 500).map((l) => el('li', { textContent: l }))]),
   );
 }
+
+// ---------- assigning unrecognised files by hand ----------
+
+let assigning = null;
+const SHEET_BY_SIZE = Object.entries(DEFAULT_SIZE).map(([sheet, s]) => ({ sheet, ...s }));
+
+function assignFields() {
+  return {
+    sheet: $('assign-sheet').value,
+    part: $('assign-part').value.trim(),
+    layer: $('assign-layer').value.replace(/\D+/g, ''),
+    pid: $('assign-pid').value.trim(),
+    mask: $('assign-mask').checked,
+    cell: $('assign-cell').value || 'c1',
+    slotM: Number($('assign-slot').value) || null,
+  };
+}
+
+function updateAssignPreview() {
+  const f = assignFields();
+  const isFace = f.sheet === 'FG';
+  $('assign-mask').parentElement.hidden = isFace || f.sheet === 'icon';
+  $('assign-face-fields').hidden = !isFace;
+  $('assign-result').textContent = f.part ? `${$('assign-body').value || 'Default'}/${buildPartName(f)}` : 'Pick a part name.';
+}
+
+async function openAssignDialog(entry) {
+  assigning = entry;
+  const fileName = entry.path.split('/').pop();
+  const stem = fileName.replace(/\.png$/i, '');
+  const folders = entry.path.split('/').slice(0, -1);
+  const bodies = [...state.library.bodyTypes.keys()];
+  const folderBody = [...folders].reverse().find((f) => bodies.some((b) => b.toLowerCase() === f.toLowerCase()));
+  $('assign-file').textContent = entry.path;
+  $('assign-part').value = '';
+  $('assign-layer').value = '';
+  $('assign-pid').value = stem.replace(/[^A-Za-z0-9-]+/g, '-');
+  $('assign-mask').checked = /_c$/i.test(stem);
+  $('assign-body').value = folderBody ? bodies.find((b) => b.toLowerCase() === folderBody.toLowerCase()) : state.character?.bodyType || 'Male';
+  $('assign-part-list').replaceChildren(...[...new Set([...PART_ORDER, ...partNames(state.library, state.character?.bodyType)])].map((p) => el('option', { value: p })));
+  $('assign-body-list').replaceChildren(...bodies.map((b) => el('option', { value: b })));
+  $('assign-slot').replaceChildren(el('option', { value: '', textContent: 'none (not recolourable)' }),
+    ...SLOTS.filter((s) => s.m).map((s) => el('option', { value: s.m, textContent: s.label })));
+  // Guess the sheet from the image size.
+  try {
+    const pixels = await ensureImage({ src: entry.src, pixels: null });
+    const guess = SHEET_BY_SIZE.find((s) => s.w === pixels.width && s.h === pixels.height);
+    $('assign-sheet').value = guess ? guess.sheet : pixels.width <= 64 && pixels.height <= 64 ? 'icon' : 'TV';
+    $('assign-size').textContent = `${pixels.width}×${pixels.height}px`;
+  } catch {
+    $('assign-size').textContent = 'could not read the image';
+  }
+  updateAssignPreview();
+  $('assign-dialog').showModal();
+}
+
+/** Assignments the user asked to remember are applied again when the same pack is opened. */
+function applyRememberedAssignments(packName) {
+  const remembered = state.settings.assignments || {};
+  for (const u of [...state.library.unrecognized]) {
+    const a = u.pack === packName && remembered[`${packName}|${u.path}`];
+    if (a) assignFile(state.library, u.pack, u.path, u.src, a.readAs, a.bodyType);
+  }
+}
+
+for (const id of ['assign-sheet', 'assign-part', 'assign-layer', 'assign-pid', 'assign-mask', 'assign-cell', 'assign-slot', 'assign-body']) {
+  $(id).addEventListener('input', updateAssignPreview);
+}
+$('assign-dialog').addEventListener('close', () => {
+  if ($('assign-dialog').returnValue !== 'ok' || !assigning) return;
+  const f = assignFields();
+  if (!f.part) {
+    toast('Not assigned: pick a part name.');
+    return;
+  }
+  const readAs = buildPartName(f);
+  const bodyType = $('assign-body').value.trim() || 'Default';
+  const error = assignFile(state.library, assigning.pack, assigning.path, assigning.src, readAs, bodyType);
+  if (error) {
+    toast(error);
+    return;
+  }
+  if ($('assign-remember').checked) {
+    (state.settings.assignments ||= {})[`${assigning.pack}|${assigning.path}`] = { readAs, bodyType };
+    saveSettings();
+  }
+  toast(`Added ${assigning.path.split('/').pop()} as ${bodyType} ${f.part}.`);
+  ensureCharacter();
+  showApp();
+  renderAll();
+});
 
 // ---------- animation ----------
 

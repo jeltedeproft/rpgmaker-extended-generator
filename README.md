@@ -7,7 +7,9 @@ existing extended generator is, minus the bugs:
 - **Drop in any folder:** RPG Maker's `Generator` folder, asset packs, or both. Each folder is its
   own pack, so same-numbered parts **never overwrite each other**.
 - **Forgiving import:** files that don't match the naming convention are listed in an import
-  report instead of breaking the load. Any variation id works (`p01`, `p5001`, `pMV01`).
+  report instead of breaking the load, with an **Assign…** button to add them by hand (as any
+  part, including new ones like `AccC`, and any body type). Any variation id works (`p01`,
+  `p5001`, `pMV01`), and names without one (`TV_ClothingEric.png`) are read too.
 - **Mix body types:** a Male character can wear Female (or Kid) parts.
 - **Placement control:** per-part pixel offsets and rotation for the face and for sprites. On sprite sheets each
   animation frame is shifted separately, so nothing bleeds into the next frame.

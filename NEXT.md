@@ -32,7 +32,7 @@
 
 ## Features
 - [ ] Insert into an existing 4x2 sheet (faces 576x288, characters 576x384) at slot N.
-- [ ] Manually assign unrecognised files (part / layer / sheet) from the import report.
+- ✅ Manually assign unrecognised files (part / layer / sheet) from the import report.
 - ✅ Multiple items of the same part (e.g. two accessories).
 - [ ] Busts (requested on the forum thread).
 - [ ] Undo/redo.
@@ -44,9 +44,11 @@
 ## Tester wish list (2026-11-21, mostly from the original Extended Generator's feature list)
 Done: own naming (any pid, copies, set folders) · all gradients for any item + custom ones ·
 mixing Male/Female/Kid · pixel offsets.
-- [ ] Manually assign unrecognised files (no part number, e.g. `TV_ClothingEric.png`).
-- [ ] More categories/parts (Accessory C, body types beyond Male/Female/Kid). Body types already
-      come from folder names; new part names already load, but get default draw order.
+- ✅ Manually assign unrecognised files ("Assign…" in the import report, remembered per pack).
+      Names without a part number (`TV_ClothingEric.png`) and typos (`.png.png`, `]`) are read
+      automatically.
+- ✅ More categories/parts (Accessory C, body types beyond Male/Female/Kid): from file and folder
+      names, or typed in the Assign dialog. New parts draw on top; the draw order box moves them.
 - [ ] Templates for non-standard sizes.
 - ✅ Editable draw order (default = MV/MZ order), per sheet, per character.
 - ✅ Several items of the same part (two AccA), each with its own position and optional own colours.
