@@ -13,9 +13,15 @@ export function orderIndex(sheet, key, part) {
   const order = DRAW_ORDER[sheet] || [];
   const exact = order.indexOf(key);
   if (exact !== -1) return exact;
-  const layerName = key.split(':')[0];
+  const [layerName, cell] = key.split(':');
   const sameLayer = order.findIndex((k) => k.split(':')[0] === layerName);
-  if (sameLayer !== -1) return sameLayer;
+  if (sameLayer !== -1) {
+    // A face cell the list doesn't name (FG_RearHair2_p12_c2) goes just below the layer's named
+    // cells: c1 is drawn above c2 (a fixed hair tie in c1 sits on top of the hair in c2).
+    let last = sameLayer;
+    while (order[last + 1]?.split(':')[0] === layerName) last++;
+    return last + (cell ? Number(cell.replace(/\D/g, '')) || 1 : 1) / 100;
+  }
   const samePart = order.findIndex((k) => k.split(':')[0].replace(/\d+$/, '') === part);
   if (samePart !== -1) return samePart;
   return 0;

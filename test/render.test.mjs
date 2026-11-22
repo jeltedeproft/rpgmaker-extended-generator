@@ -75,7 +75,8 @@ test('draw order: listed top-most first, unknown parts on top', () => {
   assert.ok(orderIndex('TV', 'FrontHair1', 'FrontHair') < orderIndex('TV', 'Body', 'Body'));
   assert.ok(orderIndex('TV', 'Body', 'Body') < orderIndex('TV', 'Wing2', 'Wing'));
   assert.equal(orderIndex('TV', 'Hat', 'Hat'), 0);
-  assert.equal(orderIndex('FG', 'Clothing2:c9', 'Clothing'), orderIndex('FG', 'Clothing2:c3', 'Clothing'));
+  assert.ok(orderIndex('FG', 'Clothing2:c9', 'Clothing') > orderIndex('FG', 'Clothing2:c6', 'Clothing'));
+  assert.ok(orderIndex('FG', 'Clothing2:c9', 'Clothing') < orderIndex('FG', 'Body:c1', 'Body'));
 });
 
 function sampleLibrary() {
@@ -397,4 +398,10 @@ test('randomize rules: wear chances, parts that never go together, colour links,
   const set = { name: 'Hat', parts: { AccA: 'P/Female/AccA/p07' }, colors: {} };
   const withSet = randomize(base, lib, gradients, { rng, rules: { setChance: 100 }, sets: [set] });
   assert.equal(withSet.parts.AccA, 'P/Female/AccA/p07');
+});
+
+test('face cells the draw order does not name: c1 above c2 (hair tie over the ponytail)', () => {
+  assert.ok(orderIndex('FG', 'RearHair2:c1', 'RearHair') < orderIndex('FG', 'RearHair2:c2', 'RearHair'));
+  assert.ok(orderIndex('FG', 'FrontHair:c1', 'FrontHair') < orderIndex('FG', 'FrontHair:c2', 'FrontHair'));
+  assert.ok(orderIndex('FG', 'FrontHair:c2', 'FrontHair') < orderIndex('FG', 'Cloak1:c1', 'Cloak'));
 });
