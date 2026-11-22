@@ -1358,11 +1358,23 @@ async function renderSuggestions(entry, fill = false) {
     return;
   }
   box.append(el('span', { textContent: 'Sits where these parts sit:' }), ...ranked.map((r) => {
-    const b = el('button', { type: 'button', className: 'small-button', textContent: `${r.part}${r.layer}${sheet === 'FG' && r.cell ? ` ${r.cell}` : ''} · ${Math.round(r.score * 100)}%`, title: 'Use this part' });
+    const b = el('button', { type: 'button', className: 'small-button', textContent: `${suggestionLabel(r, refs, sheet)} · ${Math.round(r.score * 100)}%`, title: 'Use this part' });
     b.addEventListener('click', () => applySuggestion(r));
     return b;
   }));
   if (fill && !$('assign-part').value) applySuggestion(ranked[0]);
+}
+
+/**
+ * A suggestion in words: "Cloak · front layer" instead of "Cloak1" (layer 1 is drawn in front of
+ * layer 2). The layer is only named when that part has more than one.
+ */
+function suggestionLabel(r, refs, sheet) {
+  const layers = new Set(refs.filter((x) => x.part === r.part).map((x) => x.layer));
+  let label = r.part;
+  if (layers.size > 1 && r.layer) label += r.layer === '1' ? ' · front layer' : r.layer === '2' ? ' · back layer' : ` · layer ${r.layer}`;
+  if (sheet === 'FG' && r.cell) label += ` · ${r.cell}`;
+  return label;
 }
 
 function applySuggestion(r) {

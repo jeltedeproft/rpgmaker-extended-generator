@@ -344,6 +344,7 @@ try {
     check('assign dialog suggests an image', (await evaluate(`document.getElementById('assign-suggest').textContent`)).includes('Suggested image'));
     check('assign dialog suggests parts by position', await evaluate(`document.querySelectorAll('#assign-suggest button').length > 0 && document.getElementById('assign-part').value.length > 0`), await evaluate(`document.getElementById('assign-suggest').textContent`));
     await shot('4d-assign-suggest.png');
+    check('suggestions name layers in words, not as Beard1', await evaluate(`[...document.querySelectorAll('#assign-suggest button')].every(b => !/[a-z][0-9]( |$)/.test(b.textContent))`), await evaluate(`document.getElementById('assign-suggest').textContent`));
     await evaluate(`document.getElementById('assign-skip').click()`);
     await sleep(600);
     // Reassign a file that was read from its name.
