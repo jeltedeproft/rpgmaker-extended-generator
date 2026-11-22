@@ -233,6 +233,17 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .files-dialog { width: min(980px, 96vw); max-height: 92vh; }
 .files-dialog form { display: flex; flex-direction: column; gap: 8px; }
 .alike-list { display: grid; gap: 8px; overflow: auto; max-height: 64vh; }
+.gallery-list { overflow: auto; max-height: 64vh; }
+.gallery-list h4 { margin: 10px 0 6px; font-size: 13px; }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.gallery-card { border: 1px solid var(--line); border-radius: 8px; padding: 6px; display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 12px; }
+.gallery-pics { display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 4px; border: 0; height: 104px; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 12px 12px; border-radius: 6px; }
+.gallery-pics canvas { image-rendering: pixelated; }
+.gallery-face { width: 96px; height: 96px; }
+.gallery-sprite { height: 72px; }
+.gallery-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gallery-buttons { display: flex; gap: 4px; margin-top: auto; }
+.gallery-buttons .small-button { margin-top: 0; }
 .alike-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; font-size: 13px; }
 .alike-card.hidden-part { opacity: 0.6; }
 .alike-pics { display: flex; gap: 10px; flex-wrap: wrap; }

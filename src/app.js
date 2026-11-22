@@ -174,7 +174,7 @@ function showApp() {
   $('app').classList.remove('empty');
   $('welcome').hidden = true;
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = false;
-  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files']) $(id).disabled = false;
+  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files', 'open-gallery']) $(id).disabled = false;
 }
 
 // ---------- rendering ----------
@@ -1398,6 +1398,152 @@ $('open-alikes').addEventListener('click', openAlikesDialog);
 $('alike-all').addEventListener('change', renderAlikes);
 
 
+// ---------- gallery ----------
+// Saved and loaded characters (kept in this browser) and the presets in your folders, as cards
+// with a picture, to look through and pick from.
+
+const GALLERY_KEY = 'xgen-gallery';
+
+function galleryEntries() {
+  try {
+    return JSON.parse(localStorage.getItem(GALLERY_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveGallery(entries) {
+  try {
+    localStorage.setItem(GALLERY_KEY, JSON.stringify(entries));
+    return true;
+  } catch {
+    toast('The gallery is full or blocked in this browser; the character was not kept there.');
+    return false;
+  }
+}
+
+/** Keeps a character in the gallery. Saving again under the same name updates it. */
+function addToGallery(text, name, kind) {
+  const entries = galleryEntries();
+  const same = entries.findIndex((e) => e.text === text || (kind === 'saved' && e.kind === 'saved' && e.name === name));
+  const entry = { id: same >= 0 ? entries[same].id : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, kind, text, at: Date.now() };
+  if (same >= 0) entries.splice(same, 1);
+  entries.unshift(entry);
+  return saveGallery(entries);
+}
+
+const galleryPictures = new Map();
+/** Face and standing walk frame of a saved character, drawn with the folders open now. */
+function galleryPicture(text, fileName) {
+  const cacheKey = `${state.library.variants.size}|${fileName}|${text}`;
+  if (!galleryPictures.has(cacheKey)) {
+    if (galleryPictures.size > 200) galleryPictures.clear();
+    galleryPictures.set(cacheKey, (async () => {
+      const { character, customGradients, missing } = deserializeCharacter(text, state.library, allGradients(), fileName);
+      applyDefaults(character, state.library);
+      await ensureVariants(variantsToDecode(character, state.library));
+      const byId = new Map([...gradientsById(), ...customGradients.map((g) => [g.id, g])]);
+      const face = composeSheet('FG', character, state.library, byId, state.settings).image;
+      const walk = composeSheet('TV', character, state.library, byId, state.settings);
+      let sprite = null;
+      if (walk.image) {
+        const f = frameOf('TV', walk.image, walk.frame);
+        const x = f.cols === 3 ? f.w : 0;
+        sprite = createImage(f.w, f.h);
+        for (let y = 0; y < f.h; y++) {
+          const start = (y * walk.image.width + x) * 4;
+          sprite.data.set(walk.image.data.subarray(start, start + f.w * 4), y * f.w * 4);
+        }
+      }
+      return { face, sprite, missing, name: character.name };
+    })());
+  }
+  return galleryPictures.get(cacheKey);
+}
+
+function galleryCard(item, observer) {
+  const face = el('canvas', { width: 0, height: 0, className: 'gallery-face' });
+  const sprite = el('canvas', { width: 0, height: 0, className: 'gallery-sprite' });
+  const note = el('span', { className: 'gallery-note muted small' });
+  const pics = el('button', { type: 'button', className: 'gallery-pics', title: `Use ${item.name}` }, [face, sprite]);
+  pics.item = item;
+  pics.draw = () => galleryPicture(item.text, item.fileName || '').then(({ face: f, sprite: s, missing }) => {
+    putPixels(face, f);
+    putPixels(sprite, s);
+    if (missing.length) {
+      note.textContent = `${missing.length} part${missing.length > 1 ? 's' : ''} not in the open folders`;
+      note.title = missing.join(', ');
+    }
+  }).catch((err) => {
+    note.textContent = `Can't be drawn: ${err.message}`;
+  });
+  observer.observe(pics);
+  const use = el('button', { type: 'button', className: 'small-button primary', textContent: 'Use' });
+  const load = async () => {
+    await loadCharacterText(item.text, item.fileName || '', false);
+    $('gallery-dialog').close();
+  };
+  use.addEventListener('click', load);
+  pics.addEventListener('click', load);
+  const buttons = [use];
+  if (item.id) {
+    const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Remove from the gallery (files on your computer stay)' });
+    remove.addEventListener('click', () => {
+      saveGallery(galleryEntries().filter((e) => e.id !== item.id));
+      renderGallery();
+    });
+    buttons.push(remove);
+  }
+  return el('div', { className: 'gallery-card' }, [
+    pics,
+    el('div', { className: 'gallery-name', textContent: item.name, title: item.name }),
+    el('div', { className: 'muted small', textContent: item.label }),
+    note,
+    el('div', { className: 'gallery-buttons' }, buttons),
+  ]);
+}
+
+function renderGallery() {
+  const query = $('gallery-search').value.trim().toLowerCase();
+  const fmt = (t) => new Date(t).toLocaleDateString();
+  const stored = galleryEntries().map((e) => ({ ...e, label: e.kind === 'saved' ? `Saved ${fmt(e.at)}` : `Loaded ${fmt(e.at)}` }));
+  const presets = [...state.library.packs.values()].flatMap((p) => (p.presets || []).map((preset) => ({
+    name: preset.name, text: preset.text, fileName: preset.fileName, label: `Preset · ${p.name}`,
+  })));
+  const match = (i) => !query || i.name.toLowerCase().includes(query) || i.label.toLowerCase().includes(query);
+  const observer = new IntersectionObserver((seen) => {
+    for (const e of seen) {
+      if (!e.isIntersecting) continue;
+      observer.unobserve(e.target);
+      e.target.draw();
+    }
+  }, { root: $('gallery-list') });
+  const sections = [];
+  for (const [title, items, empty] of [
+    ['Your characters', stored.filter(match), 'Characters you save, or load from a file, show up here.'],
+    ['Presets in your folders', presets.filter(match), 'No presets found in the open folders.'],
+  ]) {
+    sections.push(el('h4', { textContent: `${title} (${items.length})` }));
+    sections.push(items.length
+      ? el('div', { className: 'gallery-grid' }, items.map((i) => galleryCard(i, observer)))
+      : el('p', { className: 'muted small', textContent: query ? 'Nothing matches.' : empty }));
+  }
+  $('gallery-list').replaceChildren(...sections);
+}
+
+function openGallery() {
+  renderGallery();
+  if (!$('gallery-dialog').open) $('gallery-dialog').showModal();
+}
+$('open-gallery').addEventListener('click', openGallery);
+$('gallery-search').addEventListener('input', renderGallery);
+$('gallery-save').addEventListener('click', () => {
+  if (addToGallery(serializeCharacter(state.character, state.customGradients), state.character.name, 'saved')) {
+    toast(`Kept "${state.character.name}" in the gallery.`);
+    renderGallery();
+  }
+});
+
 // ---------- animation ----------
 
 const PATTERN = [0, 1, 2, 1];
@@ -2008,15 +2154,18 @@ document.querySelector('.export').addEventListener('click', async (e) => {
 $('save-character').addEventListener('click', () => {
   const json = serializeCharacter(state.character, state.customGradients);
   downloadBlob(new Blob([json], { type: 'application/json' }), `${safeFileName(state.character.name)}.json`);
+  if (addToGallery(json, state.character.name, 'saved')) toast(`Saved "${state.character.name}"; it's also in the Gallery.`);
 });
 
 async function loadCharacterFile(file) {
-  await loadCharacterText(await readText(file), file.name || '');
+  await loadCharacterText(await readText(file), file.name || '', true);
 }
 
-async function loadCharacterText(text, fileName) {
+/** keep: also put it in the gallery (a character file you loaded; not the folder presets). */
+async function loadCharacterText(text, fileName, keep = false) {
   try {
     const { character, customGradients, missing } = deserializeCharacter(text, state.library, allGradients(), fileName);
+    if (keep) addToGallery(text, character.name, 'loaded');
     for (const g of customGradients) {
       if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(g);
     }

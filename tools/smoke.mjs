@@ -237,6 +237,29 @@ try {
     await sleep(900);
     check('undo clear puts the parts back', (await evaluate(worn)).length === before.length);
   }
+  // Gallery: keep the current character, see it with a picture, change it, pick it again.
+  {
+    await evaluate(`localStorage.removeItem('xgen-gallery')`);
+    await evaluate(`(() => { const n = document.getElementById('character-name'); n.value = 'Gallery hero'; n.dispatchEvent(new Event('input')); n.dispatchEvent(new Event('change')); })()`);
+    const keptSig = await evaluate(`[...document.getElementById('face-canvas').getContext('2d').getImageData(0,0,144,144).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`);
+    await click('#open-gallery');
+    await sleep(500);
+    await click('#gallery-save');
+    await sleep(1500);
+    check('gallery keeps the character', await evaluate(`[...document.querySelectorAll('#gallery-list .gallery-name')].some(n => n.textContent === 'Gallery hero')`));
+    check('gallery card has a picture', await evaluate(`[...document.querySelectorAll('#gallery-list .gallery-face')].some(c => c.width > 0)`));
+    await shot('4c-gallery.png');
+    await evaluate(`document.querySelector('#gallery-dialog button[value="close"]').click()`);
+    await click('#randomize');
+    await sleep(900);
+    await click('#open-gallery');
+    await sleep(800);
+    await evaluate(`[...document.querySelectorAll('#gallery-list .gallery-card')].find(c => c.textContent.includes('Gallery hero')).querySelector('.gallery-buttons button').click()`);
+    await sleep(1200);
+    const backSig = await evaluate(`[...document.getElementById('face-canvas').getContext('2d').getImageData(0,0,144,144).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`);
+    check('using a gallery card loads it', !(await evaluate(`document.getElementById('gallery-dialog').open`)) && await evaluate(`document.getElementById('character-name').value`) === 'Gallery hero' && backSig === keptSig);
+    await evaluate(`localStorage.removeItem('xgen-gallery')`);
+  }
   // Opening the same folder again asks first.
   {
     const packsBefore = await evaluate(`document.querySelectorAll('#packs div').length`);

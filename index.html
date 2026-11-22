@@ -20,6 +20,7 @@
       <button id="clear-all" disabled title="Take off every part except Body and Face (locked parts stay)">Clear all</button>
       <button id="random-rules" disabled title="Rules for Randomize">Rules…</button>
       <button id="open-alikes" hidden title="Copies and alternates that look the same as another part: compare them and hide the ones you don't need">Look-alikes…</button>
+      <button id="open-gallery" disabled title="Your saved and loaded characters and the presets in your folders, with pictures">Gallery…</button>
       <button id="open-files" disabled title="Every file the generator read, and the ones it couldn't: assign, reassign or unassign them">Files…</button>
       <button id="save-character" disabled>Save character</button>
       <label class="button" id="load-character-label">Load character
@@ -316,6 +317,21 @@
         <button value="open">Open anyway</button>
         <button value="skip" class="primary">Skip it</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="gallery-dialog" class="files-dialog">
+    <form method="dialog">
+      <div class="files-head">
+        <h3>Gallery</h3>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <div class="files-tools">
+        <input id="gallery-search" type="search" placeholder="Filter by name or folder">
+        <button type="button" id="gallery-save" class="small-button primary" title="Keep the current character in this gallery">Keep current character</button>
+      </div>
+      <p class="muted small">Pictures are drawn with the folders you have open. Characters are kept in this browser; "Save character" also downloads a file you can share.</p>
+      <div id="gallery-list" class="gallery-list"></div>
     </form>
   </dialog>
 
