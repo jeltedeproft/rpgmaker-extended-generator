@@ -99,3 +99,76 @@ export function rankParts(profile, references, limit = 3) {
   }
   return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
+
+/** Words in file names that name a part (besides the part names themselves). */
+const PART_WORDS = {
+  beard: 'Beard', mustache: 'Beard', moustache: 'Beard', stubble: 'Beard', goatee: 'Beard',
+  hair: 'FrontHair', bangs: 'FrontHair', fringe: 'FrontHair', fronthair: 'FrontHair',
+  rearhair: 'RearHair', ponytail: 'RearHair', braid: 'RearHair', braids: 'RearHair', bun: 'RearHair',
+  ear: 'Ears', ears: 'Ears', beastears: 'BeastEars',
+  eye: 'Eyes', eyes: 'Eyes', eyebrow: 'Eyebrows', eyebrows: 'Eyebrows', brow: 'Eyebrows', brows: 'Eyebrows',
+  nose: 'Nose', mouth: 'Mouth', lips: 'Mouth',
+  facialmark: 'FacialMark', scar: 'FacialMark', tattoo: 'FacialMark', freckles: 'FacialMark', blush: 'FacialMark',
+  tail: 'Tail', wing: 'Wing', wings: 'Wing',
+  clothing: 'Clothing', clothes: 'Clothing', outfit: 'Clothing', shirt: 'Clothing', dress: 'Clothing', robe: 'Clothing', armor: 'Clothing', armour: 'Clothing',
+  cloak: 'Cloak', cape: 'Cloak', mantle: 'Cloak',
+  glasses: 'Glasses', goggles: 'Glasses', monocle: 'Glasses', spectacles: 'Glasses',
+  body: 'Body', face: 'Face', acca: 'AccA', accb: 'AccB',
+};
+
+/** The words of a file name: "TV_LongBeard2-dark" -> ["tv", "long", "beard", "dark"]. */
+export function nameWords(fileName) {
+  return fileName.replace(/\.png$/i, '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .split(/[^A-Za-z]+/)
+    .map((w) => w.toLowerCase())
+    .filter(Boolean);
+}
+
+/** Parts a file name names ("beard", "Cloak2", "cape"), from known words and the given part names. */
+export function partsInName(fileName, partNames = []) {
+  const words = nameWords(fileName);
+  const joined = fileName.toLowerCase().replace(/[^a-z]/g, '');
+  const found = new Set();
+  for (const w of words) if (PART_WORDS[w]) found.add(PART_WORDS[w]);
+  // Part names written in one piece ("FrontHair", "BeastEars", "AccB").
+  for (const part of partNames) if (part.length > 3 && joined.includes(part.toLowerCase())) found.add(part);
+  if (found.has('BeastEars')) found.delete('Ears');
+  if (found.has('RearHair') && !words.includes('front')) found.delete('FrontHair');
+  return [...found];
+}
+
+/**
+ * How much of a picture is drawn in colour-mask colours (the flat slot colours and white of a
+ * `_c` file), 0..1. A colour mask is ~1; a drawn part (even a wearable mask) is near 0.
+ * @param {(rgb:number)=>string|null} matchSlot
+ */
+export function maskColourShare(pixels, matchSlot, ignoreRgb = 0xffffff) {
+  let opaque = 0;
+  let maskColoured = 0;
+  const d = pixels.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue;
+    opaque++;
+    const rgb = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+    if (rgb === ignoreRgb || matchSlot(rgb)) maskColoured++;
+  }
+  return opaque ? maskColoured / opaque : 0;
+}
+
+/** Score added for a part the file name names. */
+export const NAME_BONUS = 0.35;
+
+/**
+ * Shape ranking plus the file name: parts the name names score NAME_BONUS higher (capped at 1),
+ * and show up even when no loaded part of that kind sits there. Each result has `named`.
+ */
+export function rankWithName(profile, references, named, limit = 3) {
+  const ranked = rankParts(profile, references, Infinity);
+  const byPart = new Map(ranked.map((r) => [r.part, { ...r, named: false }]));
+  for (const part of named) {
+    const r = byPart.get(part) || { part, layer: references.find((x) => x.part === part)?.layer || '', cell: undefined, score: 0 };
+    byPart.set(part, { ...r, score: Math.min(1, r.score + NAME_BONUS), named: true });
+  }
+  return [...byPart.values()].sort((a, b) => b.score - a.score).slice(0, limit);
+}

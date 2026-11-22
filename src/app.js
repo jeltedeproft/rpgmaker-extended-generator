@@ -7,8 +7,8 @@ import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
   layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
-import { createImage, scanMask } from './recolor.js';
-import { guessSheet, shapeProfile, rankParts } from './suggest.js';
+import { createImage, scanMask, matchSlot } from './recolor.js';
+import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare } from './suggest.js';
 import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -1207,6 +1207,7 @@ function updateAssignPreview() {
   const f = assignFields();
   const isFace = f.sheet === 'FG';
   $('assign-mask').parentElement.hidden = isFace || f.sheet === 'icon';
+  $('assign-mask-note').hidden = $('assign-mask').parentElement.hidden;
   $('assign-face-fields').hidden = !isFace;
   $('assign-result').textContent = f.part ? `${$('assign-body').value || 'Default'}/${buildPartName(f)}` : 'Pick a part name.';
 }
@@ -1294,6 +1295,8 @@ async function openAssignDialog(entry, queue = null) {
     if (current.cell) $('assign-cell').value = current.cell;
     $('assign-slot').value = SLOT_BY_ID.get(current.slotId)?.m || '';
   }
+  if (!loaded) suggestMask(entry, assigningPixels);
+  else $('assign-mask-note').textContent = '';
   updateAssignPreview();
   if (!$('assign-dialog').open) $('assign-dialog').showModal();
   renderSuggestions(entry, !loaded);
@@ -1352,13 +1355,16 @@ async function renderSuggestions(entry, fill = false) {
   const refs = (await shapeReferences(sheet)).filter((r) => !(r.pack === entry.pack && r.path === entry.path));
   if (token !== suggestToken || assigning !== entry) return;
   waiting.remove();
-  const ranked = rankParts(profile, refs).filter((r) => r.score >= 0.15);
+  const fileName = entry.path.split('/').pop();
+  const named = partsInName(fileName, [...new Set([...PART_ORDER, ...partNames(state.library, state.character?.bodyType)])]);
+  const ranked = rankWithName(profile, refs, named).filter((r) => r.score >= 0.15);
   if (!ranked.length) {
     box.append(el('span', { className: 'muted', textContent: 'No loaded part sits in the same place.' }));
     return;
   }
-  box.append(el('span', { textContent: 'Sits where these parts sit:' }), ...ranked.map((r) => {
-    const b = el('button', { type: 'button', className: 'small-button', textContent: `${suggestionLabel(r, refs, sheet)} · ${Math.round(r.score * 100)}%`, title: 'Use this part' });
+  box.append(el('span', { textContent: named.length ? 'By its name and where it sits:' : 'Sits where these parts sit:' }), ...ranked.map((r) => {
+    const why = r.named ? `"${fileName}" names this part, and its shape is compared with the loaded ${r.part} parts` : `Sits where the loaded ${r.part} parts sit`;
+    const b = el('button', { type: 'button', className: 'small-button', textContent: `${suggestionLabel(r, refs, sheet)}${r.named ? ' (name)' : ''} · ${Math.round(r.score * 100)}%`, title: `${why}. Click to use it.` });
     b.addEventListener('click', () => applySuggestion(r));
     return b;
   }));
@@ -1375,6 +1381,24 @@ function suggestionLabel(r, refs, sheet) {
   if (layers.size > 1 && r.layer) label += r.layer === '1' ? ' · front layer' : r.layer === '2' ? ' · back layer' : ` · layer ${r.layer}`;
   if (sheet === 'FG' && r.cell) label += ` · ${r.cell}`;
   return label;
+}
+
+/**
+ * Colour mask or not: a "_c" name says so; otherwise a file is read as a colour mask when it is
+ * drawn in mask colours, whatever its name ("FaceMask.png" drawn normally is something worn).
+ */
+function suggestMask(entry, pixels) {
+  const stem = entry.path.split('/').pop().replace(/\.png$/i, '');
+  const note = $('assign-mask-note');
+  note.textContent = '';
+  if (/_c$/i.test(stem) || !pixels) return;
+  const share = maskColourShare(pixels, matchSlot);
+  const looksLikeMask = share >= 0.8;
+  const namedMask = /mask/i.test(stem);
+  $('assign-mask').checked = looksLikeMask;
+  if (looksLikeMask) note.textContent = `Ticked: ${Math.round(share * 100)}% of it is in colour-mask colours.`;
+  else if (namedMask) note.textContent = `Named "mask", but only ${Math.round(share * 100)}% is in colour-mask colours, so it's probably something worn, not a colour mask.`;
+  updateAssignPreview();
 }
 
 function applySuggestion(r) {
