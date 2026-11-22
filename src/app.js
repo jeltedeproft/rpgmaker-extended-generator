@@ -199,7 +199,7 @@ function renderSidebar() {
     for (const key of [part, ...itemKeys(state.character, part)]) {
       const variant = lib.variants.get(state.character.parts[key]);
       items.push([key, key, variant ? variantLabel(lib, variant, state.character.bodyType) : 'none']);
-      for (const piece of pieceKeys(state.character, key)) items.push([piece, `↳ piece ${piece.split('#').pop()}`, '']);
+      for (const piece of pieceKeys(state.character, key)) items.push([piece, `↳ piece ${piece.split('#').pop()}${linkOf(piece) ? ' ⛓' : ''}`, '']);
     }
   }
   $('part-list').replaceChildren(...items.map(([key, label, value]) => {
@@ -506,6 +506,7 @@ function renderOffsets() {
   }
   $('cell-box').hidden = !hasSprite;
   if (hasSprite) renderCellOptions();
+  renderLink();
 }
 
 const SHAPE_FIELDS = ['x', 'y', 'rot', 'scale', 'flipx', 'flipy'];
@@ -518,6 +519,87 @@ function readShape(prefix, range = 64) {
     scale: num('scale', 10, 400, 100), flipX: $(`${prefix}-flipx`).checked, flipY: $(`${prefix}-flipy`).checked,
   };
 }
+
+// ---------- chained pieces: two pieces of a split part that change together ----------
+// Stored on the split item: split.links = {"1": {to: 2, mode: "mirror"}, "2": {to: 1, ...}}.
+
+function pieceInfo(key) {
+  const item = itemOfKey(key);
+  const split = item !== key && state.character.split?.[item];
+  return split ? { item, n: Number(key.split('#').pop()), split } : null;
+}
+
+/** The piece chained to this one: {partner: "Eyes #2", mode: "mirror"|"together"}, or null. */
+function linkOf(key) {
+  const info = pieceInfo(key);
+  const link = info?.split.links?.[info.n];
+  if (!link || link.to > info.split.count || link.to === info.n) return null;
+  return { partner: `${info.item} #${link.to}`, mode: link.mode };
+}
+
+/** A position for the chained piece: mirrored (x and turn the other way) or the same. */
+function chained(o, mode) {
+  return mode === 'mirror' ? { ...o, x: -(o.x || 0) || 0, rot: -(o.rot || 0) || 0 } : { ...o };
+}
+
+/** Gives the chained piece this piece's position (mirrored or the same). */
+function syncPartner(key) {
+  const link = linkOf(key);
+  if (!link) return;
+  const offsets = (state.character.offsets ||= {});
+  const own = offsets[key];
+  if (!own) {
+    delete offsets[link.partner];
+    return;
+  }
+  const next = {};
+  if (own.face) next.face = chained(own.face, link.mode);
+  if (own.sprite) next.sprite = chained(own.sprite, link.mode);
+  if (own.cells) {
+    next.cells = Object.fromEntries(Object.entries(own.cells).map(([sheet, cells]) => [
+      sheet, Object.fromEntries(Object.entries(cells).map(([cell, o]) => [cell, chained(o, link.mode)])),
+    ]));
+  }
+  offsets[link.partner] = next;
+}
+
+function setLink(key, to, mode) {
+  const info = pieceInfo(key);
+  if (!info) return;
+  const links = (info.split.links ||= {});
+  for (const n of [info.n, to]) {
+    if (!n) continue;
+    if (links[n]) delete links[links[n].to];
+    delete links[n];
+  }
+  if (to) {
+    links[info.n] = { to, mode };
+    links[to] = { to: info.n, mode };
+    syncPartner(key);
+  }
+  if (!Object.keys(links).length) delete info.split.links;
+}
+
+function renderLink() {
+  const info = pieceInfo(state.selectedPart);
+  $('link-box').hidden = !info || info.split.count < 2;
+  if ($('link-box').hidden) return;
+  const link = linkOf(state.selectedPart);
+  const others = Array.from({ length: info.split.count }, (_, i) => i + 1).filter((n) => n !== info.n);
+  $('link-to').replaceChildren(el('option', { value: '', textContent: 'nothing' }),
+    ...others.map((n) => el('option', { value: n, textContent: `piece ${n}` })));
+  $('link-to').value = link ? link.partner.split('#').pop() : '';
+  $('link-mode').value = link?.mode || 'mirror';
+}
+
+function updateLink() {
+  setLink(state.selectedPart, Number($('link-to').value) || 0, $('link-mode').value);
+  renderSidebar();
+  renderOffsets();
+  renderPreview();
+}
+$('link-to').addEventListener('change', updateLink);
+$('link-mode').addEventListener('change', updateLink);
 
 // ---------- whole image: move, resize, turn, mirror or flip a whole sheet ----------
 
@@ -642,6 +724,7 @@ function updateCellOffset() {
     else delete cells[cell];
   }
   if (!Object.keys(cells).length) delete item.cells[sheet];
+  syncPartner(state.selectedPart);
   showCellInPreview();
   renderCellValues();
   renderPreview();
@@ -650,6 +733,7 @@ function updateCellOffset() {
 function updateOffset() {
   const offsets = (state.character.offsets ||= {});
   offsets[state.selectedPart] = { ...offsets[state.selectedPart], face: readShape('off-face'), sprite: readShape('off-sprite') };
+  syncPartner(state.selectedPart);
   renderPreview();
 }
 
@@ -1988,6 +2072,7 @@ $('cell-group').addEventListener('change', () => {
 $('cell-frame').addEventListener('change', renderCellValues);
 $('off-reset').addEventListener('click', () => {
   delete state.character.offsets?.[state.selectedPart];
+  syncPartner(state.selectedPart);
   renderOffsets();
   renderPreview();
 });

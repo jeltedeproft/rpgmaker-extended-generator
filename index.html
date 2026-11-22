@@ -110,6 +110,17 @@
           <label title="Mirror left to right"><input type="checkbox" id="off-sprite-flipx"> mirror</label>
           <label title="Upside down"><input type="checkbox" id="off-sprite-flipy"> flip</label>
         </div>
+        <div id="link-box" class="link-box" hidden>
+          <div class="layer-head">
+            <span class="small">⛓ Chain with</span>
+            <select id="link-to"></select>
+            <select id="link-mode">
+              <option value="mirror">mirrored</option>
+              <option value="together">the same way</option>
+            </select>
+          </div>
+          <p class="muted small">Chained pieces change together. Mirrored: moving this piece left moves the other right, and turning it turns the other the opposite way (eye spacing, eyebrow tilt). The same way: both move and turn alike.</p>
+        </div>
         <div id="cell-box" class="cell-box">
           <div class="layer-head">
             <span class="small">Only for</span>

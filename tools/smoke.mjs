@@ -440,6 +440,16 @@ try {
       await evaluate(`(() => { const i = document.getElementById('off-face-x'); i.value = 4; i.dispatchEvent(new Event('input')); })()`);
       await sleep(900);
       check('one piece moves on its own', (await evaluate(faceSig)) !== beforePiece);
+      // Chain the two eyes, mirrored: moving one apart moves the other the opposite way.
+      check('pieces can be chained', await evaluate(`!document.getElementById('link-box').hidden && document.querySelectorAll('#link-to option').length >= 2`));
+      await evaluate(`(() => { const s = document.getElementById('link-to'); s.value = '1'; s.dispatchEvent(new Event('change')); })()`);
+      await sleep(600);
+      await evaluate(`(() => { const i = document.getElementById('off-face-x'); i.value = 3; i.dispatchEvent(new Event('input')); const r = document.getElementById('off-face-rot'); r.value = 10; r.dispatchEvent(new Event('input')); })()`);
+      await sleep(900);
+      check('chained pieces are marked', await evaluate(`[...document.querySelectorAll('#part-list button.piece')].filter(b => b.textContent.includes('⛓')).length === 2`));
+      await evaluate(`document.querySelectorAll('#part-list button.piece')[0].click()`);
+      await sleep(500);
+      check('chained piece moves mirrored', await evaluate(`document.getElementById('off-face-x').value === '-3' && document.getElementById('off-face-rot').value === '-10'`), await evaluate(`document.getElementById('off-face-x').value + ' ' + document.getElementById('off-face-rot').value`));
       await shot('4b-split-eyes.png');
       await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Eyes')).click()`);
       await sleep(500);
