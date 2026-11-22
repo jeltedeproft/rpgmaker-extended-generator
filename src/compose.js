@@ -3,6 +3,7 @@
 import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
 import { createImage, recolorLayer, blendOver, rotateFrames, frameCentres } from './recolor.js';
 import { islandLabels, keepIsland } from './islands.js';
+import { solidOf, insideOutline, applyClip } from './clip.js';
 
 /**
  * Position in the draw order, 0 = top-most. Unknown layers fall back to the first entry for the
@@ -101,6 +102,16 @@ function sheetFallback(variant, sheet, library) {
 export function variantForSheet(variant, sheet, library) {
   if (variant.layers.some((l) => l.sheet === sheet)) return variant;
   return sheetFallback(variant, sheet, library);
+}
+
+/**
+ * How an item or piece is clipped: {by: item key, mode: "inside"|"over"|"outside"}, or null.
+ * Pieces follow their item's clip unless they have their own.
+ */
+export function clipOf(character, key) {
+  const clip = character.clip?.[key] || character.clip?.[itemOfKey(key)];
+  if (!clip?.by || clip.by === key || clip.by === itemOfKey(key)) return null;
+  return clip;
 }
 
 /** The colour a slot gets for an item or piece: its own choice, else its item's, else the character's. */
@@ -297,7 +308,31 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     p.image = rotateFrames(p.image, p.offset.rot, p.frame, centres.get(key));
   }
 
-  // 3. Draw bottom to top.
-  for (const p of placed) blendOver(out, p.image, p.offset.x, p.offset.y, p.frame);
+  // 3. Draw bottom to top. Clipped items only show inside (or outside) another item's shape.
+  const regions = new Map();
+  const regionOf = (by, mode) => {
+    const key = `${by}|${mode}`;
+    if (!regions.has(key)) {
+      const own = placed.filter((q) => q.item === by || itemOfKey(q.item) === by);
+      if (!own.length) regions.set(key, null);
+      else {
+        const shape = createImage(size.w, size.h);
+        for (const q of own) blendOver(shape, q.image, q.offset.x, q.offset.y, q.frame);
+        const solid = solidOf(shape);
+        regions.set(key, mode === 'inside' ? insideOutline(solid, size.w, size.h, own[0].frame) : solid);
+      }
+    }
+    return regions.get(key);
+  };
+  for (const p of placed) {
+    const clip = clipOf(character, p.item);
+    const region = clip && regionOf(clip.by, clip.mode);
+    if (!region) {
+      blendOver(out, p.image, p.offset.x, p.offset.y, p.frame);
+      continue;
+    }
+    const moved = blendOver(createImage(size.w, size.h), p.image, p.offset.x, p.offset.y, p.frame);
+    blendOver(out, applyClip(moved, region, clip.mode));
+  }
   return { image: out, problems };
 }

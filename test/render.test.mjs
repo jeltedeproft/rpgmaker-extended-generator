@@ -4,6 +4,7 @@ import { recolorLayer, blendOver, createImage, matchSlot, scanMask, rotateFrames
 import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
 import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces } from '../src/compose.js';
 import { islandLabels } from '../src/islands.js';
+import { solidOf, insideOutline, applyClip } from '../src/clip.js';
 import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter } from '../src/character.js';
 import { createLibrary, addPack } from '../src/parse.js';
 
@@ -304,4 +305,30 @@ test('a split item draws each piece with its own offset and colours', () => {
   assert.deepEqual(px(image, 40, 70), [0, 0, 255, 255]); // left eye: shared colour, in place
   assert.equal(px(image, 100, 70)[3], 0); // right eye moved...
   assert.deepEqual(px(image, 103, 70), [255, 0, 0, 255]); // ...3px right, in its own colour
+});
+
+test('clipping: hair only shows inside the outline of a hood, including its open bottom', () => {
+  // A 7x5 hood: an arch (top row + both sides), open at the bottom.
+  const hood = createImage(7, 5);
+  for (let x = 1; x <= 5; x++) hood.data.set([9, 9, 9, 255], (0 * 7 + x) * 4);
+  for (let y = 0; y < 5; y++) for (const x of [1, 5]) hood.data.set([9, 9, 9, 255], (y * 7 + x) * 4);
+  const inside = insideOutline(solidOf(hood), 7, 5);
+  assert.equal(inside[2 * 7 + 3], 1); // the opening
+  assert.equal(inside[2 * 7 + 0], 0); // beside the hood
+  assert.equal(inside[2 * 7 + 6], 0);
+
+  const hair = createImage(7, 5);
+  for (let x = 0; x < 7; x++) hair.data.set([200, 0, 0, 255], (2 * 7 + x) * 4);
+  applyClip(hair, inside, 'inside');
+  assert.deepEqual([0, 3, 6].map((x) => hair.data[(2 * 7 + x) * 4 + 3]), [0, 255, 0]);
+});
+
+test('a clipped item is cut by the other item at its drawn position', () => {
+  const lib = sampleLibrary();
+  // AccA has one pixel at (1,1); clip the body to "except where AccA overlaps".
+  const character = { bodyType: 'Male', parts: { Body: 'P/Male/Body/p01', AccA: 'P/Female/AccA/p07' }, colors: {}, clip: { Body: { by: 'AccA', mode: 'outside' } } };
+  character.drawOrder = { TV: ['Body|Body', 'AccA|AccA'] }; // body on top, so the hole shows AccA below
+  const { image } = composeSheet('TV', character, lib, new Map(), settings);
+  assert.deepEqual(px(image, 1, 1), [77, 77, 77, 255]);
+  assert.equal(px(image, 0, 0)[3], 255);
 });

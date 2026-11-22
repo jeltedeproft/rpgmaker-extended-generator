@@ -22,6 +22,8 @@ existing extended generator is, minus the bugs:
   if you want, its own colours.
 - **Split a part into pieces** where transparent gaps separate it (left and right eye, two
   earrings): move, turn, recolour and reorder each piece on its own.
+- **Regional transparency:** show a part only inside another part's outline (hair in a hood's
+  opening), only where they overlap, or except where they overlap.
 - **Editable draw order** per sheet (starts as RPG Maker's order).
 - **Randomize** with per-part locks.
 

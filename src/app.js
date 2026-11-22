@@ -5,7 +5,7 @@ import { createLibrary, addPack, variantLabel, variantsForPart } from './parse.j
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
-  layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces,
+  layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, selectedItems,
 } from './compose.js';
 import { createImage } from './recolor.js';
 import {
@@ -213,6 +213,8 @@ async function renderEditor() {
   $('add-item').textContent = `+ Another ${part}`;
   $('remove-item').hidden = !isExtra;
   $('pieces').hidden = !worn || isPiece;
+  $('clip-box').hidden = !worn;
+  if (worn) renderClip();
   $('piece-note').hidden = !isPiece;
 
   $('variants').replaceChildren();
@@ -278,6 +280,29 @@ async function partThumbnail(part, variant) {
     return out;
   }
   return null;
+}
+
+/** The "Visibility" box: show this item only inside / over / outside another item. */
+function renderClip() {
+  const key = state.selectedPart;
+  const clip = state.character.clip?.[key];
+  const others = selectedItems(state.character, state.library).map((i) => i.key).filter((k) => k !== itemOfKey(key));
+  $('clip-by').replaceChildren(...others.map((k) => el('option', { value: k, textContent: k })));
+  $('clip-mode').value = clip?.mode || '';
+  if (clip?.by && others.includes(clip.by)) $('clip-by').value = clip.by;
+  $('clip-by').disabled = !others.length;
+  $('clip-by').hidden = !clip?.mode;
+}
+
+function updateClip() {
+  const key = state.selectedPart;
+  const mode = $('clip-mode').value;
+  const by = $('clip-by').value;
+  const clips = (state.character.clip ||= {});
+  if (mode && by) clips[key] = { mode, by };
+  else delete clips[key];
+  renderClip();
+  renderPreview();
 }
 
 /** The "Pieces" box: split an item into islands (e.g. left and right eye), or join them again. */
@@ -729,6 +754,8 @@ $('remove-item').addEventListener('click', () => {
   renderAll();
 });
 
+$('clip-mode').addEventListener('change', updateClip);
+$('clip-by').addEventListener('change', updateClip);
 $('split-item').addEventListener('click', () => splitSelected(Math.max(0, Math.min(8, Number($('split-gap').value) || 0))));
 $('unsplit-item').addEventListener('click', unsplitSelected);
 $('split-gap').addEventListener('change', () => {

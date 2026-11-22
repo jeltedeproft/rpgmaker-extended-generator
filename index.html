@@ -77,6 +77,20 @@
         <p id="offsets-note" class="note small"></p>
         <p class="muted small">Moves this part in pixels, and turns it (degrees, clockwise). On sprites every walk, damage and battler frame is moved and turned on its own, around its own centre.</p>
       </div>
+      <div id="clip-box" class="offsets" hidden>
+        <h3>Visibility</h3>
+        <div class="layer-head">
+          <span class="small">Show this part</span>
+          <select id="clip-mode">
+            <option value="">everywhere</option>
+            <option value="inside">only inside the outline of</option>
+            <option value="over">only where it overlaps</option>
+            <option value="outside">except where it overlaps</option>
+          </select>
+          <select id="clip-by"></select>
+        </div>
+        <p class="muted small">Example: hair under a hood. Set the hair to "only inside the outline of" the cloak, and only the bit in the hood's opening shows.</p>
+      </div>
       <div id="pieces" class="offsets" hidden>
         <h3>Pieces</h3>
         <div class="layer-head">

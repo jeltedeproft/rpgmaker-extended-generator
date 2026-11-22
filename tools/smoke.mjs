@@ -94,6 +94,18 @@ try {
   await sleep(800);
   check('recolour changes pixels', (await evaluate(hairPixel)) !== hairBefore, `${hairBefore} -> ${await evaluate(hairPixel)}`);
 
+  // Visibility: hide the hair wherever the face is drawn.
+  const faceHash = `[...document.getElementById('face-canvas').getContext('2d').getImageData(0,0,144,144).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`;
+  const beforeClip = await evaluate(faceHash);
+  await evaluate(`(() => { const m = document.getElementById('clip-mode'); m.value = 'outside'; m.dispatchEvent(new Event('change')); })()`);
+  await sleep(300);
+  await evaluate(`(() => { const b = document.getElementById('clip-by'); b.value = 'Face'; b.dispatchEvent(new Event('change')); })()`);
+  await sleep(900);
+  check('clipping hides part of the hair', (await evaluate(faceHash)) !== beforeClip);
+  await evaluate(`(() => { const m = document.getElementById('clip-mode'); m.value = ''; m.dispatchEvent(new Event('change')); })()`);
+  await sleep(900);
+  check('clipping can be turned off', (await evaluate(faceHash)) === beforeClip);
+
   // Every part tile has a picture (its Variation icon, or a render of the part itself).
   await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
   await sleep(1200);

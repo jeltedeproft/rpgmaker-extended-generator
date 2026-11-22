@@ -58,4 +58,5 @@ Tester's own ideas:
 - ✅ Split an image into islands separated by transparent gaps (e.g. left/right eye) as separate
       layers: move/tilt/recolour/reorder each (heterochromia, eye spacing). All 29 MZ female eyes
       split into exactly 2 pieces.
-- [ ] Regional transparency: clip one layer by another (hair only visible inside a hood opening).
+- ✅ Regional transparency: clip one layer by another (hair only visible inside a hood opening):
+      "inside the outline of", "only where it overlaps", "except where it overlaps".
