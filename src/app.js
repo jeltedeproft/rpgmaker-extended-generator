@@ -5,7 +5,7 @@ import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, as
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
-  layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, selectedItems, sheetLayers,
+  layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask } from './recolor.js';
 import {
@@ -299,8 +299,9 @@ ${variant.id}` : 'None' });
     const split = state.character.split?.[key];
     if (split) {
       await ensureVariants(variantsToDecode(state.character, state.library));
-      const count = variant ? countPieces(state.character, state.library, key, split.gap, state.settings) : 0;
-      if (count > 1) split.count = count;
+      const sheets = variant ? piecesPerSheet(state.character, state.library, key, split.gap, state.settings) : {};
+      const count = Math.max(0, ...Object.values(sheets));
+      if (count > 1) Object.assign(split, { count, sheets });
       else delete state.character.split[key];
     }
     renderSidebar();
@@ -387,22 +388,25 @@ function renderPieces() {
   $('split-item').hidden = !!split;
   $('unsplit-item').hidden = !split;
   $('split-gap').value = split?.gap ?? $('split-gap').value ?? 0;
+  const SHEET_WORD = { FG: 'face', TV: 'walk', TVD: 'damage', SV: 'battler' };
+  const perSheet = split?.sheets && Object.entries(split.sheets).map(([s, n]) => `${SHEET_WORD[s] || s} ${n}`).join(', ');
   $('pieces-status').textContent = split
-    ? `Split into ${split.count} pieces, listed under ${key} on the left. Each can be moved, turned, recoloured and reordered on its own.`
+    ? `Split into ${split.count} pieces${perSheet ? ` (${perSheet})` : ''}, listed under ${key} on the left. Each can be moved, turned, recoloured and reordered on its own. An image with fewer pieces keeps its whole picture in piece 1.`
     : '';
 }
 
 async function splitSelected(gap) {
   const key = state.selectedPart;
   await ensureVariants(variantsToDecode(state.character, state.library));
-  const count = countPieces(state.character, state.library, key, gap, state.settings);
+  const sheets = piecesPerSheet(state.character, state.library, key, gap, state.settings);
+  const count = Math.max(0, ...Object.values(sheets));
   if (count < 2) {
     toast(gap > 0
       ? `${key} stays one piece with a gap of ${gap}px. Try a smaller gap.`
-      : `${key} is one piece: no transparent gap separates its parts.`);
+      : `${key} is one piece in every image (face, walk, damage, battler): no transparent gap separates its parts.`);
     return;
   }
-  (state.character.split ||= {})[key] = { gap, count };
+  (state.character.split ||= {})[key] = { gap, count, sheets };
   renderAll();
 }
 

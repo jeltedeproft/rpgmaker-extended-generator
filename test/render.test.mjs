@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { recolorLayer, blendOver, createImage, matchSlot, scanMask, rotateFrames } from '../src/recolor.js';
 import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
-import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces, sheetLayout, placeOnSheet } from '../src/compose.js';
+import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces, piecesPerSheet, sheetLayout, placeOnSheet } from '../src/compose.js';
 import { islandLabels } from '../src/islands.js';
 import { solidOf, insideOutline, applyClip } from '../src/clip.js';
 import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter, creditsFor, creditsText, makeSet, applySet } from '../src/character.js';
@@ -286,6 +286,28 @@ test('islands: two eyes become two pieces, left to right; a gap setting can join
   assert.equal(labels[1 * 9 + 1], 1);
   assert.equal(labels[1 * 9 + 7], 2);
   assert.equal(islandLabels([img], null, 3).count, 1); // 3px gap bridged
+});
+
+test('an item that is one piece on the face can still split on the walk sprite', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', [
+    { path: 'Face/Male/FG_AccB_p01_c1_m001.png', src: 'face' },
+    { path: 'TV/Male/TV_AccB_p01.png', src: 'walk' },
+  ]);
+  const face = createImage(144, 144);
+  for (let x = 40; x < 100; x++) face.data.set([128, 128, 128, 255], (20 * 144 + x) * 4); // one band
+  const walk = createImage(144, 192);
+  for (let fy = 0; fy < 192; fy += 48) {
+    for (let fx = 0; fx < 144; fx += 48) {
+      for (const x of [10, 11, 36, 37]) walk.data.set([128, 128, 128, 255], ((fy + 5) * 144 + fx + x) * 4); // two horns
+    }
+  }
+  const variant = lib.variants.get('P/Male/AccB/p01');
+  variant.layers.find((l) => l.sheet === 'FG').base.pixels = face;
+  variant.layers.find((l) => l.sheet === 'TV').base.pixels = walk;
+  const character = { bodyType: 'Male', parts: { AccB: 'P/Male/AccB/p01' }, colors: {}, offsets: {}, itemColors: {} };
+  assert.deepEqual(piecesPerSheet(character, lib, 'AccB', 0), { FG: 1, TV: 2 });
+  assert.equal(countPieces(character, lib, 'AccB', 0), 2);
 });
 
 test('a split item draws each piece with its own offset and colours', () => {

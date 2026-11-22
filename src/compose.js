@@ -318,22 +318,31 @@ export function placeOnSheet(img, sheet, { size, frame }) {
 }
 
 /**
- * How many pieces an item falls apart into with a given gap: the most islands found in one frame,
- * looking at the face first (that's where eyes, earrings and ornaments are easiest to tell
- * apart), then the sprites. Layers must be decoded.
+ * How many pieces an item falls apart into on each sheet with a given gap: {FG: 1, TV: 2, ...},
+ * the most islands found in one frame. Each sheet is its own picture, so horns can split on the
+ * walk sprite while the face stays one piece. Layers must be decoded.
  */
-export function countPieces(character, library, key, gap, settings = null) {
+export function piecesPerSheet(character, library, key, gap, settings = null) {
   const variant = library.variants.get(character.parts[key]);
-  if (!variant) return 0;
+  const result = {};
+  if (!variant) return result;
   for (const sheet of ['FG', 'TV', 'SV', 'TVD']) {
     const own = sheetLayers(variant, sheet, library).filter((l) => l.base?.pixels);
     if (!own.length) continue;
     const draws = layersForSheet(sheet, { ...character, parts: { [key]: character.parts[key] }, split: {} }, library);
     const layout = sheetLayout(sheet, draws, settings);
     const placed = own.map((l) => placeOnSheet(l.base.pixels, sheet, layout));
-    return islandLabels(placed.map((p) => p.image), placed[0].tiled ? layout.frame : null, gap).count;
+    result[sheet] = islandLabels(placed.map((p) => p.image), placed[0].tiled ? layout.frame : null, gap).count;
   }
-  return 0;
+  return result;
+}
+
+/**
+ * Number of pieces to split an item into: the most of any sheet. On a sheet with fewer islands
+ * the extra pieces are simply empty (a one-piece face is all "piece 1").
+ */
+export function countPieces(character, library, key, gap, settings = null) {
+  return Math.max(0, ...Object.values(piecesPerSheet(character, library, key, gap, settings)));
 }
 
 /**
