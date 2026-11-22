@@ -3,7 +3,7 @@
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS } from './format.js';
 import { createLibrary, addPack, variantLabel, variantsForPart } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
-import { composeSheet, selectedVariants } from './compose.js';
+import { composeSheet, selectedVariants, variantsToDecode, variantForSheet } from './compose.js';
 import { createImage } from './recolor.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -217,7 +217,7 @@ async function renderEditor() {
 
   // Colour slots depend on decoded masks, so decode the selected variants first.
   const token = ++state.editorToken;
-  await ensureVariants(selectedVariants(state.character, state.library));
+  await ensureVariants(variantsToDecode(state.character, state.library));
   if (token !== state.editorToken) return;
   renderSlots();
 }
@@ -245,8 +245,8 @@ function variantTile(part, variant) {
  * face if it has one, else the first walk frame (facing down), else the first battler frame.
  */
 async function partThumbnail(part, variant) {
-  await ensureVariants([variant]);
   const alone = { ...state.character, parts: { [part]: variant.id }, offsets: {} };
+  await ensureVariants(variantsToDecode(alone, state.library));
   for (const [sheet, frame] of [['FG', null], ['TV', { x: 48, y: 0, w: 48, h: 48 }], ['SV', { x: 0, y: 0, w: 64, h: 64 }]]) {
     const { image } = composeSheet(sheet, alone, state.library, gradientsById(), state.settings);
     if (!image) continue;
@@ -264,7 +264,7 @@ async function partThumbnail(part, variant) {
 function renderOffsets() {
   const o = state.character.offsets?.[state.selectedPart] || {};
   const variant = state.library.variants.get(state.character.parts[state.selectedPart]);
-  const sheets = new Set(variant?.layers.map((l) => l.sheet));
+  const sheets = new Set(variant ? SHEET_KEYS.filter((s) => variantForSheet(variant, s, state.library)) : []);
   const hasFace = sheets.has('FG');
   const hasSprite = ['TV', 'TVD', 'SV'].some((s) => sheets.has(s));
   for (const id of ['off-face-x', 'off-face-y']) $(id).disabled = !hasFace;
@@ -376,7 +376,7 @@ function swatchButton(slot, gradient) {
 
 async function renderPreview() {
   const token = ++state.previewToken;
-  const errors = await ensureVariants(selectedVariants(state.character, state.library));
+  const errors = await ensureVariants(variantsToDecode(state.character, state.library));
   if (token !== state.previewToken) return;
   const byId = gradientsById();
   const problems = [...errors, ...unknownMaskColours()];

@@ -1,9 +1,12 @@
 // Turns a list of files (from a dropped/selected generator folder) into a part library.
 // Pure: no DOM. File objects are stored as opaque `src` values and decoded later.
 
-import { SHEETS, SLOT_BY_M } from './format.js';
+import { SHEETS, SLOT_BY_M, PART_ORDER } from './format.js';
 
-const PART_FILE_RE = /^(FG|TVD|TV|SV|icon)_([A-Za-z]+?)(\d*)_p([A-Za-z0-9]+)((?:_[A-Za-z]+\d*)*)\.png$/i;
+const PART_FILE_RE = /^(FG|TVD|TV|SV|icon)_([A-Za-z]+?)(\d*)_p([A-Za-z0-9-]+)((?:_[A-Za-z]+\d*)*)\.png$/i;
+/** "TV_Body_p01 (2).png": the copy suffix Windows adds, and RPG Maker's DLC readme tells you to rename to. */
+const COPY_SUFFIX_RE = /\s*\((\d+)\)(?=\.png$)/i;
+const CANONICAL_PART = new Map(PART_ORDER.map((p) => [p.toLowerCase(), p]));
 const GRADIENT_FILE_RE = /^(?:gradients|grad_([A-Za-z0-9]+))\.png$/i;
 
 const SHEET_FOLDER_NAMES = new Set(
@@ -22,21 +25,31 @@ function normaliseBodyType(name) {
  */
 export function parsePartPath(path) {
   const segments = path.split(/[\\/]/).filter(Boolean);
-  const fileName = segments[segments.length - 1];
-  const match = PART_FILE_RE.exec(fileName);
+  const rawName = segments[segments.length - 1];
+  const copy = COPY_SUFFIX_RE.exec(rawName);
+  const match = PART_FILE_RE.exec(rawName.replace(COPY_SUFFIX_RE, ''));
   if (!match) return null;
 
-  const [, rawPrefix, name, layerNumber, pid, suffixString] = match;
+  const [, rawPrefix, rawPart, layerNumber, pid, suffixString] = match;
   const prefix = rawPrefix.toLowerCase() === 'icon' ? 'icon' : rawPrefix.toUpperCase();
+  // "SV_body_p01" (RPG Maker's odd-eye bodies) is the same part as "SV_Body_p01".
+  const name = CANONICAL_PART.get(rawPart.toLowerCase()) || rawPart;
   const parent = segments.length >= 2 ? segments[segments.length - 2] : '';
   const bodyType = SHEET_FOLDER_NAMES.has(parent.toLowerCase()) ? 'Default' : normaliseBodyType(parent);
+  // A folder holding the body-type folders that isn't a sheet folder or the picked folder itself
+  // marks a set of alternatives, e.g. odd-eye_bodies/left_green/Female/SV_body_p01.png.
+  const grand = segments.length >= 4 ? segments[segments.length - 3] : '';
+  const group = grand && !SHEET_FOLDER_NAMES.has(grand.toLowerCase()) && !SHEET_FOLDER_NAMES.has(parent.toLowerCase()) ? grand : '';
+  const tags = [group, copy?.[1]].filter(Boolean);
 
   const result = {
     sheet: prefix === 'icon' ? null : prefix,
     isIcon: prefix === 'icon',
     part: name,
     layer: name + layerNumber,
-    pid: 'p' + pid,
+    pid: 'p' + pid + (tags.length ? ` (${tags.join(', ')})` : ''),
+    /** The plain part number, without set or copy tags. */
+    basePid: 'p' + pid,
     bodyType,
     isMask: false,
     cell: null,
@@ -103,7 +116,9 @@ function getVariant(library, packName, parsed) {
   const id = `${packName}/${parsed.bodyType}/${parsed.part}/${parsed.pid}`;
   let variant = variants.get(id);
   if (!variant) {
-    variant = { id, pack: packName, bodyType: parsed.bodyType, pid: parsed.pid, part: parsed.part, icon: null, layers: [] };
+    variant = {
+      id, pack: packName, bodyType: parsed.bodyType, pid: parsed.pid, basePid: parsed.basePid, part: parsed.part, icon: null, layers: [],
+    };
     variants.set(id, variant);
     library.variants.set(id, variant);
   }

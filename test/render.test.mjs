@@ -180,3 +180,16 @@ test('scanMask lists slots and reports colours that match no slot', () => {
   assert.deepEqual([...slots], ['eyes']);
   assert.deepEqual([...unknown], [[0x1380f8, 2]]);
 });
+
+test('a set variant (odd-eye body) borrows the sheets it lacks from the plain variant', () => {
+  const lib = createLibrary();
+  addPack(lib, 'MZ', [
+    { path: 'g/Face/Male/FG_Body_p01_c1_m001.png', src: 'face' },
+    { path: 'g/SV/Male/SV_Body_p01.png', src: 'plain' },
+  ]);
+  addPack(lib, 'DLC', [{ path: 'g/odd-eye_bodies/left_red/Male/SV_body_p01.png', src: 'odd' }]);
+  const odd = [...lib.variants.values()].find((v) => v.pid === 'p01 (left_red)');
+  const character = { bodyType: 'Male', parts: { Body: odd.id }, colors: {}, offsets: {} };
+  assert.deepEqual(layersForSheet('SV', character, lib).map((l) => l.base.src), ['odd']);
+  assert.deepEqual(layersForSheet('FG', character, lib).map((l) => l.base.src), ['face']);
+});

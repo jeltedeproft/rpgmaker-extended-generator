@@ -29,17 +29,48 @@ export function selectedVariants(character, library) {
   return result;
 }
 
+/** Selected variants plus the fallbacks they borrow sheets from: everything that needs decoding. */
+export function variantsToDecode(character, library) {
+  const result = new Set();
+  for (const variant of selectedVariants(character, library)) {
+    result.add(variant);
+    for (const sheet of Object.keys(DRAW_ORDER)) {
+      const source = variantForSheet(variant, sheet, library);
+      if (source) result.add(source);
+    }
+  }
+  return [...result];
+}
+
 /** Offset of a part on a sheet: "face" for FG, "sprite" for walk/damage/battler. */
 export function partOffset(character, part, sheet) {
   const o = character.offsets?.[part]?.[sheet === 'FG' ? 'face' : 'sprite'];
   return { x: o?.x || 0, y: o?.y || 0 };
 }
 
+/**
+ * A set variant (e.g. an odd-eye body, "p01 (left_green)") only replaces some sheets. For the
+ * sheets it lacks, use the plain variant with the same number: same pack first, then any pack.
+ */
+function sheetFallback(variant, sheet, library) {
+  if (variant.basePid === variant.pid) return null;
+  const candidates = [...(library.bodyTypes.get(variant.bodyType)?.parts.get(variant.part)?.values() || [])]
+    .filter((v) => v.pid === variant.basePid && v.layers.some((l) => l.sheet === sheet));
+  return candidates.find((v) => v.pack === variant.pack) || candidates[0] || null;
+}
+
+/** The variant that supplies a sheet for a selected variant (itself, or its fallback). */
+export function variantForSheet(variant, sheet, library) {
+  if (variant.layers.some((l) => l.sheet === sheet)) return variant;
+  return sheetFallback(variant, sheet, library);
+}
+
 /** Layers to draw for one sheet, bottom-most first. */
 export function layersForSheet(sheet, character, library) {
   const layers = [];
-  for (const variant of selectedVariants(character, library)) {
-    for (const layer of variant.layers) {
+  for (const selected of selectedVariants(character, library)) {
+    const variant = variantForSheet(selected, sheet, library);
+    for (const layer of variant?.layers || []) {
       if (layer.sheet === sheet) layers.push(layer);
     }
   }

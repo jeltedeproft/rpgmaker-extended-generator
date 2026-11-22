@@ -86,3 +86,28 @@ test('face cells without a colour number are kept as uncoloured layers', () => {
   assert.equal(p.slotId, null);
   assert.deepEqual(p.unknownSuffixes, []);
 });
+
+test('lowercase part names map to the standard part ("SV_body" is Body)', () => {
+  const p = parsePartPath('generator/SV/Male/SV_body_p01_c.png');
+  assert.equal(p.part, 'Body');
+  assert.equal(p.layer, 'Body');
+  assert.equal(p.isMask, true);
+});
+
+test('set folders and copy suffixes become separate variants instead of duplicates', () => {
+  const lib = createLibrary();
+  addPack(lib, 'DLC', [
+    { path: 'gen/SV/Male/SV_Body_p01.png', src: 1 },
+    { path: 'gen/odd-eye_bodies/left_green/Male/SV_body_p01.png', src: 2 },
+    { path: 'gen/odd-eye_bodies/left_red/Male/SV_body_p01.png', src: 3 },
+    { path: 'gen/TV/Male/TV_AccB_p07 (2).png', src: 4 },
+    { path: 'gen/TV/Male/TV_AccB_p07_c (2).png', src: 5 },
+    { path: 'gen/TV/Male/TV_AccB_p2-2.png', src: 6 },
+  ]);
+  assert.deepEqual(lib.warnings, []);
+  assert.deepEqual(lib.unrecognized, []);
+  const pids = [...lib.variants.values()].map((v) => `${v.part} ${v.pid}`).sort();
+  assert.deepEqual(pids, ['AccB p07 (2)', 'AccB p2-2', 'Body p01', 'Body p01 (left_green)', 'Body p01 (left_red)']);
+  const copy = [...lib.variants.values()].find((v) => v.pid === 'p07 (2)');
+  assert.equal(copy.layers[0].mask.src, 5);
+});
