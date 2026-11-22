@@ -152,6 +152,16 @@ try {
   await evaluate(`document.getElementById('credits').open = true`);
   check('credits list the pack and its credits file', await evaluate(`(() => { const t = document.getElementById('credit-list').textContent; return t.includes('Sample kit') && t.includes('credits.txt'); })()`));
 
+  // Sheet template: 64px walk frames.
+  await evaluate(`(() => { const i = document.querySelectorAll('#template-grid input')[4]; i.value = 64; i.dispatchEvent(new Event('change')); const j = document.querySelectorAll('#template-grid input')[5]; j.value = 64; j.dispatchEvent(new Event('change')); })()`);
+  await sleep(1200);
+  check('walk template changes the frame size', await evaluate(`document.getElementById('walk-canvas').width === 64 && document.getElementById('walk-canvas').height === 64`));
+  await evaluate(`document.querySelector('.settings').open = true`);
+  await shot('3b-template.png');
+  await evaluate(`(() => { for (const i of [...document.querySelectorAll('#template-grid input')].slice(4, 6)) { i.value = ''; i.dispatchEvent(new Event('change')); } })()`);
+  await sleep(1200);
+  check('template can be cleared', await evaluate(`document.getElementById('walk-canvas').width === 48`));
+
   // Save/load round trip through the real (de)serializer.
   const roundTrip = await evaluate(`(async () => {
     const m = await import(new URL('src/character.js', location.href).href);

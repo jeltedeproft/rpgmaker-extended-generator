@@ -210,11 +210,77 @@ export function frameFor(sheet, size) {
 }
 
 /**
+ * A sheet template from the settings: frame size and grid, e.g. 64x64 walk frames, or a 4x4
+ * walk sheet. null = automatic (the body's size, RPG Maker's grid).
+ * @returns {{fw:number, fh:number, cols:number, rows:number}|null}
+ */
+export function templateFor(sheet, settings) {
+  const t = settings?.templates?.[sheet];
+  if (!(t?.fw > 0) || !(t?.fh > 0)) return null;
+  const grid = SHEETS[sheet].frame || { cols: 1, rows: 1 };
+  return { fw: t.fw, fh: t.fh, cols: t.cols > 0 ? t.cols : grid.cols, rows: t.rows > 0 ? t.rows : grid.rows };
+}
+
+/** Size and frame grid of a sheet: from its template, else from the parts. */
+export function sheetLayout(sheet, draws, settings) {
+  const t = templateFor(sheet, settings);
+  if (!t) {
+    const size = sheetSize(sheet, draws);
+    return { size, frame: frameFor(sheet, size) };
+  }
+  const size = { w: t.fw * t.cols, h: t.fh * t.rows };
+  const frame = t.cols * t.rows > 1 ? { w: t.fw, h: t.fh, cols: t.cols, rows: t.rows } : null;
+  return { size, frame };
+}
+
+/**
+ * Brings a part image to the sheet's size. Same size: as is. A sprite part in RPG Maker's grid
+ * but with other frame sizes (48px parts on a 64px template, or the other way): frame by frame,
+ * centred and standing on the frame's bottom. Anything else: centred on the sheet.
+ * @returns {{image:object, tiled:boolean}} tiled = the image is laid out in the sheet's frames
+ */
+export function placeOnSheet(img, sheet, { size, frame }) {
+  if (img.width === size.w && img.height === size.h) return { image: img, tiled: !!frame };
+  const grid = SHEETS[sheet].frame;
+  if (frame && grid && frame.cols === grid.cols && frame.rows === grid.rows
+    && img.width % grid.cols === 0 && img.height % grid.rows === 0) {
+    const sw = img.width / grid.cols;
+    const sh = img.height / grid.rows;
+    const out = createImage(size.w, size.h);
+    const dx = Math.round((frame.w - sw) / 2);
+    const dy = frame.h - sh;
+    for (let row = 0; row < grid.rows; row++) {
+      for (let col = 0; col < grid.cols; col++) {
+        for (let y = 0; y < sh; y++) {
+          const ty = row * frame.h + dy + y;
+          if (ty < row * frame.h || ty >= (row + 1) * frame.h) continue;
+          for (let x = 0; x < sw; x++) {
+            const tx = col * frame.w + dx + x;
+            if (tx < col * frame.w || tx >= (col + 1) * frame.w) continue;
+            const si = ((row * sh + y) * img.width + col * sw + x) * 4;
+            const ti = (ty * size.w + tx) * 4;
+            out.data[ti] = img.data[si];
+            out.data[ti + 1] = img.data[si + 1];
+            out.data[ti + 2] = img.data[si + 2];
+            out.data[ti + 3] = img.data[si + 3];
+          }
+        }
+      }
+    }
+    return { image: out, tiled: true };
+  }
+  // Parts of a different size (e.g. 160px MZ faces vs 144px) are centred.
+  const out = createImage(size.w, size.h);
+  blendOver(out, img, Math.round((size.w - img.width) / 2), Math.round((size.h - img.height) / 2));
+  return { image: out, tiled: false };
+}
+
+/**
  * How many pieces an item falls apart into with a given gap: the most islands found in one frame,
  * looking at the face first (that's where eyes, earrings and ornaments are easiest to tell
  * apart), then the sprites. Layers must be decoded.
  */
-export function countPieces(character, library, key, gap) {
+export function countPieces(character, library, key, gap, settings = null) {
   const variant = library.variants.get(character.parts[key]);
   if (!variant) return 0;
   for (const sheet of ['FG', 'TV', 'SV', 'TVD']) {
@@ -222,17 +288,9 @@ export function countPieces(character, library, key, gap) {
     const own = (source?.layers || []).filter((l) => l.sheet === sheet && l.base?.pixels);
     if (!own.length) continue;
     const draws = layersForSheet(sheet, { ...character, parts: { [key]: character.parts[key] }, split: {} }, library);
-    const size = sheetSize(sheet, draws);
-    const frame = frameFor(sheet, size);
-    const images = own.map((l) => {
-      const img = l.base.pixels;
-      if (img.width === size.w && img.height === size.h) return img;
-      const o = createImage(size.w, size.h);
-      blendOver(o, img, Math.round((size.w - img.width) / 2), Math.round((size.h - img.height) / 2));
-      return o;
-    });
-    const tiled = frame && own[0].base.pixels.width === size.w && own[0].base.pixels.height === size.h;
-    return islandLabels(images, tiled ? frame : null, gap).count;
+    const layout = sheetLayout(sheet, draws, settings);
+    const placed = own.map((l) => placeOnSheet(l.base.pixels, sheet, layout));
+    return islandLabels(placed.map((p) => p.image), placed[0].tiled ? layout.frame : null, gap).count;
   }
   return 0;
 }
@@ -247,25 +305,17 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
   const problems = [];
   if (!layers.length) return { image: null, problems };
 
-  const size = sheetSize(sheet, layers);
+  const layout = sheetLayout(sheet, layers, settings);
+  const { size, frame } = layout;
   const out = createImage(size.w, size.h);
-  const frame = frameFor(sheet, size);
-  const tiled = (img) => !!frame && img.width === size.w && img.height === size.h;
-  // Parts of a different size (e.g. 160px MZ faces vs 144px) are centred.
-  const fit = (img) => {
-    if (img.width === size.w && img.height === size.h) return img;
-    const o = createImage(size.w, size.h);
-    blendOver(o, img, Math.round((size.w - img.width) / 2), Math.round((size.h - img.height) / 2));
-    return o;
-  };
   const islands = new Map();
   const islandsOf = (itemKey) => {
     if (!islands.has(itemKey)) {
       const own = [...new Set(layers.filter((d) => d.piece?.of === itemKey && d.layer.base.pixels).map((d) => d.layer))];
-      const images = own.map((l) => fit(l.base.pixels));
-      const cacheKey = `${sheet}|${size.w}x${size.h}|` + own.map((l) => l.base.path).join(',');
-      islands.set(itemKey, images.length
-        ? islandLabels(images, tiled(own[0].base.pixels) ? frame : null, character.split[itemKey].gap, cacheKey).labels
+      const placedOwn = own.map((l) => placeOnSheet(l.base.pixels, sheet, layout));
+      const cacheKey = `${sheet}|${size.w}x${size.h}|${frame?.w}x${frame?.h}|` + own.map((l) => l.base.path).join(',');
+      islands.set(itemKey, placedOwn.length
+        ? islandLabels(placedOwn.map((p) => p.image), placedOwn[0].tiled ? frame : null, character.split[itemKey].gap, cacheKey).labels
         : null);
     }
     return islands.get(itemKey);
@@ -287,13 +337,14 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     if (mask && (mask.width !== base.width || mask.height !== base.height)) {
       problems.push(`${layer.mask.path}: mask is ${mask.width}x${mask.height}, image is ${base.width}x${base.height}`);
     }
-    let image = fit(recolorLayer(base, mask, layer.slotId, gradientFor, settings));
+    const onSheet = placeOnSheet(recolorLayer(base, mask, layer.slotId, gradientFor, settings), sheet, layout);
+    let image = onSheet.image;
     if (piece) {
       const labels = islandsOf(piece.of);
       if (labels) image = keepIsland(image, labels, piece.n);
     }
     // Sprite sheets are shifted inside each animation frame, so nothing bleeds into the next one.
-    placed.push({ item, image, offset: partOffset(character, item, sheet), frame: tiled(base) ? frame : null });
+    placed.push({ item, image, offset: partOffset(character, item, sheet), frame: onSheet.tiled ? frame : null });
   }
 
   // 2. Rotate: all layers of an item turn around one shared centre per frame.
@@ -334,5 +385,5 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     const moved = blendOver(createImage(size.w, size.h), p.image, p.offset.x, p.offset.y, p.frame);
     blendOver(out, applyClip(moved, region, clip.mode));
   }
-  return { image: out, problems };
+  return { image: out, problems, frame };
 }

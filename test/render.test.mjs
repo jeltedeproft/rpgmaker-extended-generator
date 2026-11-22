@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { recolorLayer, blendOver, createImage, matchSlot, scanMask, rotateFrames } from '../src/recolor.js';
 import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
-import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces } from '../src/compose.js';
+import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces, sheetLayout, placeOnSheet } from '../src/compose.js';
 import { islandLabels } from '../src/islands.js';
 import { solidOf, insideOutline, applyClip } from '../src/clip.js';
 import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter, creditsFor, creditsText } from '../src/character.js';
@@ -345,4 +345,16 @@ test('credits list every pack a character uses, and readme files are kept with t
   const credits = creditsFor(character, lib);
   assert.deepEqual(credits.map((c) => [c.pack, c.parts, c.colours]), [['P', ['Body p01'], false], ['Hats by Ann', ['AccB p01'], true]]);
   assert.equal(creditsText(credits, { 'Hats by Ann': 'CC-BY' }), 'P: Body p01\nHats by Ann (CC-BY): AccB p01; colours');
+});
+
+test('sheet templates: 48px walk parts go frame by frame onto a 64px template, standing on the bottom', () => {
+  const part = createImage(144, 192); // RPG Maker walk sheet: 3x4 frames of 48px
+  part.data.set([1, 2, 3, 255], (47 * 144 + 48) * 4); // bottom-left pixel of frame (1,0)
+  const layout = sheetLayout('TV', [], { templates: { TV: { fw: 64, fh: 64 } } });
+  assert.deepEqual(layout.size, { w: 192, h: 256 });
+  const { image, tiled } = placeOnSheet(part, 'TV', layout);
+  assert.equal(tiled, true);
+  // Frame (1,0) starts at x=64; the 48px frame is centred (+8) and bottom-aligned (+16).
+  assert.deepEqual(px(image, 64 + 8, 63), [1, 2, 3, 255]);
+  assert.equal(sheetLayout('TV', [], {}).size.w, 144); // no template: automatic
 });

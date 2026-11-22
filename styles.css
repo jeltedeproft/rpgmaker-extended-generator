@@ -128,9 +128,9 @@ figure canvas {
   max-width: 100%;
 }
 #face-canvas { width: 144px; height: 144px; }
-#walk-canvas { width: 144px; height: 144px; }
-#sv-canvas { width: 144px; height: 144px; }
-#damage-canvas { width: 288px; height: 96px; grid-column: 1 / -1; }
+#walk-canvas { width: 144px; height: auto; }
+#sv-canvas { width: 144px; height: auto; }
+#damage-canvas { width: 288px; height: auto; grid-column: 1 / -1; }
 figure:last-child { grid-column: 1 / -1; }
 figcaption { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: center; }
 .dir-buttons button { padding: 0 6px; font-size: 12px; }
@@ -184,3 +184,6 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .assign-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 10px; }
 .assign-form .field input, .assign-form .field select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .problems .assign { margin: 0 0 0 4px; padding: 0 6px; font-size: 11px; }
+.template-grid { display: grid; grid-template-columns: auto repeat(4, 64px); gap: 4px 6px; align-items: center; font-size: 12px; }
+.template-grid input { width: 64px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 5px; }
+.template-grid input[hidden] { display: block !important; visibility: hidden; }

@@ -17,6 +17,8 @@ existing extended generator is, minus the bugs:
   it with one click next time.
 - **Unlimited colours:** every gradient sheet found is loaded, any gradient fits any slot, and you
   can make your own (exportable as a gradient sheet).
+- **Any sheet size:** sheet templates set the frame size and grid per sheet (e.g. 64px walk
+  frames); parts made for other frame sizes are fitted in frame by frame.
 - **Live preview** of face, animated walk (4 directions), animated battler (18 motions), damage.
 - **Export** face / walk (`$Name.png`) / damage / battler PNGs; **save/load** characters as JSON
   (still loads if a pack folder was renamed).

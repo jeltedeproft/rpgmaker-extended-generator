@@ -283,10 +283,14 @@ function variantTile(key, variant) {
 async function partThumbnail(part, variant) {
   const alone = { ...state.character, parts: { [part]: variant.id }, offsets: {} };
   await ensureVariants(variantsToDecode(alone, state.library));
-  for (const [sheet, frame] of [['FG', null], ['TV', { x: 48, y: 0, w: 48, h: 48 }], ['SV', { x: 0, y: 0, w: 64, h: 64 }]]) {
-    const { image } = composeSheet(sheet, alone, state.library, gradientsById(), state.settings);
+  for (const sheet of ['FG', 'TV', 'SV']) {
+    const result = composeSheet(sheet, alone, state.library, gradientsById(), state.settings);
+    const { image } = result;
     if (!image) continue;
-    if (!frame) return image;
+    if (sheet === 'FG') return image;
+    // The middle walk frame facing down, or the first battler frame.
+    const f = frameOf(sheet, image, result.frame);
+    const frame = { x: sheet === 'TV' && f.cols > 1 ? f.w : 0, y: 0, w: f.w, h: f.h };
     const out = createImage(frame.w, frame.h);
     for (let y = 0; y < frame.h; y++) {
       const start = ((frame.y + y) * image.width + frame.x) * 4;
@@ -335,7 +339,7 @@ function renderPieces() {
 async function splitSelected(gap) {
   const key = state.selectedPart;
   await ensureVariants(variantsToDecode(state.character, state.library));
-  const count = countPieces(state.character, state.library, key, gap);
+  const count = countPieces(state.character, state.library, key, gap, state.settings);
   if (count < 2) {
     toast(gap > 0
       ? `${key} stays one piece with a gap of ${gap}px. Try a smaller gap.`
@@ -507,9 +511,9 @@ async function renderPreview() {
   const byId = gradientsById();
   const problems = [...errors, ...unknownMaskColours()];
   for (const sheet of SHEET_KEYS) {
-    const { image, problems: p } = composeSheet(sheet, state.character, state.library, byId, state.settings);
-    problems.push(...p);
-    state.composites[sheet] = image ? { image, canvas: toCanvas(image) } : null;
+    const { image, problems: pr, ...p } = composeSheet(sheet, state.character, state.library, byId, state.settings);
+    problems.push(...pr);
+    state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(sheet, image, p.frame) } : null;
   }
   state.renderProblems = problems;
 
@@ -523,9 +527,23 @@ async function renderPreview() {
   } else {
     ctx.clearRect(0, 0, faceCanvas.width, faceCanvas.height);
   }
-  const dmgCtx = $('damage-canvas').getContext('2d');
-  dmgCtx.clearRect(0, 0, 144, 48);
-  if (state.composites.TVD) dmgCtx.drawImage(state.composites.TVD.canvas, 0, 0);
+  const damage = state.composites.TVD;
+  const dmgCanvas = $('damage-canvas');
+  if (damage) {
+    dmgCanvas.width = damage.image.width;
+    dmgCanvas.height = damage.image.height;
+  }
+  const dmgCtx = dmgCanvas.getContext('2d');
+  dmgCtx.clearRect(0, 0, dmgCanvas.width, dmgCanvas.height);
+  if (damage) dmgCtx.drawImage(damage.canvas, 0, 0);
+  // Animated previews are one frame big.
+  for (const [id, key] of [['walk-canvas', 'TV'], ['sv-canvas', 'SV']]) {
+    const f = state.composites[key]?.frame;
+    if (f && ($(id).width !== f.w || $(id).height !== f.h)) {
+      $(id).width = f.w;
+      $(id).height = f.h;
+    }
+  }
   renderLayers();
   renderCredits();
   renderProblems();
@@ -729,21 +747,41 @@ $('assign-dialog').addEventListener('close', () => {
 
 const PATTERN = [0, 1, 2, 1];
 let tick = 0;
+/** The animation grid of a composed sheet (a whole-sheet "frame" when it doesn't split). */
+function frameOf(sheet, image, frame) {
+  return frame || { w: image.width, h: image.height, cols: 1, rows: 1 };
+}
+
+/** Column to show: RPG Maker's 3-frame walk goes 0,1,2,1; other grids just loop. */
+function animationColumn(cols) {
+  return cols === 3 ? PATTERN[tick % PATTERN.length] : tick % cols;
+}
+
 function animate() {
-  tick = (tick + 1) % PATTERN.length;
-  const frame = PATTERN[tick];
+  tick = (tick + 1) % 12;
 
   const wctx = $('walk-canvas').getContext('2d');
-  wctx.clearRect(0, 0, 48, 48);
   const walk = state.composites.TV;
-  if (walk) wctx.drawImage(walk.canvas, frame * 48, state.walkDir * 48, 48, 48, 0, 0, 48, 48);
+  wctx.clearRect(0, 0, $('walk-canvas').width, $('walk-canvas').height);
+  if (walk) {
+    const f = walk.frame;
+    const row = Math.min(state.walkDir, f.rows - 1);
+    wctx.drawImage(walk.canvas, animationColumn(f.cols) * f.w, row * f.h, f.w, f.h, 0, 0, f.w, f.h);
+  }
 
   const sctx = $('sv-canvas').getContext('2d');
-  sctx.clearRect(0, 0, 64, 64);
   const sv = state.composites.SV;
+  sctx.clearRect(0, 0, $('sv-canvas').width, $('sv-canvas').height);
   if (sv) {
+    const f = sv.frame;
     const m = state.svMotion;
-    sctx.drawImage(sv.canvas, (Math.floor(m / 6) * 3 + frame) * 64, (m % 6) * 64, 64, 64, 0, 0, 64, 64);
+    if (f.cols === 9 && f.rows === 6) {
+      // RPG Maker's battler: 18 motions of 3 frames, in 2 blocks of 9 columns.
+      const col = Math.floor(m / 6) * 3 + PATTERN[tick % PATTERN.length];
+      sctx.drawImage(sv.canvas, col * f.w, (m % 6) * f.h, f.w, f.h, 0, 0, f.w, f.h);
+    } else {
+      sctx.drawImage(sv.canvas, animationColumn(f.cols) * f.w, (m % f.rows) * f.h, f.w, f.h, 0, 0, f.w, f.h);
+    }
   }
 }
 setInterval(animate, 180);
@@ -959,6 +997,30 @@ $('dir-buttons').children[0].classList.add('active');
 
 $('sv-motion').replaceChildren(...SV_MOTIONS.map((m, i) => el('option', { value: i, textContent: m })));
 $('sv-motion').addEventListener('change', (e) => (state.svMotion = Number(e.target.value)));
+
+// Sheet templates: frame size and grid per sheet; blank = automatic.
+function renderTemplates() {
+  const rows = [['FG', 'Face'], ['TV', 'Walk'], ['TVD', 'Damage'], ['SV', 'Battler']];
+  const t = state.settings.templates || {};
+  $('template-grid').replaceChildren(...rows.flatMap(([sheet, label]) => {
+    const input = (field, placeholder, hidden = false) => {
+      const i = el('input', { type: 'number', min: 1, max: 1024, value: t[sheet]?.[field] || '', placeholder, title: placeholder });
+      i.hidden = hidden;
+      i.addEventListener('change', () => {
+        const templates = (state.settings.templates ||= {});
+        const entry = (templates[sheet] ||= {});
+        entry[field] = Math.max(0, Math.min(1024, Math.round(Number(i.value) || 0))) || undefined;
+        if (!Object.values(entry).some(Boolean)) delete templates[sheet];
+        saveSettings();
+        if (state.character) renderPreview();
+      });
+      return i;
+    };
+    const grid = sheet !== 'FG';
+    return [el('span', { textContent: label }), input('fw', 'width'), input('fh', 'height'), input('cols', 'columns', !grid), input('rows', 'rows', !grid)];
+  }));
+}
+renderTemplates();
 
 $('flip-gradient').checked = state.settings.flipGradient;
 $('flip-gradient').addEventListener('change', (e) => {

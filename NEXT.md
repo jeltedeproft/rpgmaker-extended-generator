@@ -49,7 +49,8 @@ mixing Male/Female/Kid · pixel offsets.
       automatically.
 - ✅ More categories/parts (Accessory C, body types beyond Male/Female/Kid): from file and folder
       names, or typed in the Assign dialog. New parts draw on top; the draw order box moves them.
-- [ ] Templates for non-standard sizes.
+- ✅ Templates for non-standard sizes (Settings → Sheet templates: frame size + grid per sheet).
+      Sprite parts with other frame sizes are placed frame by frame, standing on the bottom.
 - ✅ Editable draw order (default = MV/MZ order), per sheet, per character.
 - ✅ Several items of the same part (two AccA), each with its own position and optional own colours.
 - ✅ Rotate elements per tile/frame (face and sprites separately, each frame around its own centre).
