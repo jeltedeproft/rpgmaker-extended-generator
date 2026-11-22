@@ -50,7 +50,7 @@ mixing Male/Female/Kid · pixel offsets.
 - [ ] Templates for non-standard sizes.
 - ✅ Editable draw order (default = MV/MZ order), per sheet, per character.
 - ✅ Several items of the same part (two AccA), each with its own position and optional own colours.
-- [ ] Rotate elements per tile/frame.
+- ✅ Rotate elements per tile/frame (face and sprites separately, each frame around its own centre).
 - [ ] Character sets / partial characters (save a group of parts + colours, apply on top).
 - [ ] Randomize with rules.
 - [ ] Credits: show which pack every used part came from, with a readme/credit text per pack.

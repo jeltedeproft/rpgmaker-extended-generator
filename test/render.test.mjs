@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { recolorLayer, blendOver, createImage, matchSlot, scanMask } from '../src/recolor.js';
+import { recolorLayer, blendOver, createImage, matchSlot, scanMask, rotateFrames } from '../src/recolor.js';
 import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
 import { composeSheet, layersForSheet, orderIndex, moveLayer } from '../src/compose.js';
 import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter } from '../src/character.js';
@@ -250,4 +250,26 @@ test('custom draw order: moving a layer swaps it with its neighbour; new layers 
   character.parts.AccA = 'P/Female/AccA/p07';
   assert.deepEqual(keys(), ['FrontHair2', 'FrontHair1', 'AccA', 'Body']);
   assert.deepEqual(layersForSheet('FG', character, lib), []);
+});
+
+test('rotation turns each frame around its own centre and never leaks into the next frame', () => {
+  // Two 3x3 frames, each with a horizontal bar through the middle row.
+  const img = createImage(6, 3);
+  for (const x of [0, 1, 2, 3, 4, 5]) img.data.set([200, 0, 0, 255], (1 * 6 + x) * 4);
+  const out = rotateFrames(img, 90, { w: 3, h: 3 });
+  const alpha = (x, y) => out.data[(y * 6 + x) * 4 + 3];
+  for (const fx of [0, 3]) {
+    assert.deepEqual([alpha(fx + 1, 0), alpha(fx + 1, 1), alpha(fx + 1, 2)], [255, 255, 255]); // vertical now
+    assert.equal(alpha(fx, 1), 0);
+  }
+  assert.equal(rotateFrames(img, 0), img);
+});
+
+test('all layers of a rotated item turn around one shared centre', () => {
+  const lib = sampleLibrary();
+  const character = { bodyType: 'Male', parts: { FrontHair: 'P/Male/FrontHair/p01' }, colors: {}, offsets: { FrontHair: { sprite: { x: 0, y: 0, rot: 180 } } } };
+  // hairBack fills the 2x2 frame, the front layer has one pixel at (0,0): a half turn around the
+  // shared centre (0.5, 0.5) moves it to (1,1). Around its own centre it would stay put.
+  const { image } = composeSheet('TV', character, lib, new Map(), settings);
+  assert.deepEqual(px(image, 1, 1), [10, 20, 30, 255]);
 });

@@ -278,8 +278,8 @@ function renderOffsets() {
   const sheets = new Set(variant ? SHEET_KEYS.filter((s) => variantForSheet(variant, s, state.library)) : []);
   const hasFace = sheets.has('FG');
   const hasSprite = ['TV', 'TVD', 'SV'].some((s) => sheets.has(s));
-  for (const id of ['off-face-x', 'off-face-y']) $(id).disabled = !hasFace;
-  for (const id of ['off-sprite-x', 'off-sprite-y']) $(id).disabled = !hasSprite;
+  for (const id of ['off-face-x', 'off-face-y', 'off-face-rot']) $(id).disabled = !hasFace;
+  for (const id of ['off-sprite-x', 'off-sprite-y', 'off-sprite-rot']) $(id).disabled = !hasSprite;
   $('offsets-note').textContent = !hasSprite
     ? 'This part only appears on the face, so it has no sprite position.'
     : !hasFace
@@ -289,14 +289,17 @@ function renderOffsets() {
   $('off-face-y').value = o.face?.y || 0;
   $('off-sprite-x').value = o.sprite?.x || 0;
   $('off-sprite-y').value = o.sprite?.y || 0;
+  $('off-face-rot').value = o.face?.rot || 0;
+  $('off-sprite-rot').value = o.sprite?.rot || 0;
 }
 
 function updateOffset() {
   const read = (id) => Math.max(-64, Math.min(64, Math.round(Number($(id).value) || 0)));
+  const angle = (id) => Math.max(-180, Math.min(180, Math.round(Number($(id).value) || 0)));
   const offsets = (state.character.offsets ||= {});
   offsets[state.selectedPart] = {
-    face: { x: read('off-face-x'), y: read('off-face-y') },
-    sprite: { x: read('off-sprite-x'), y: read('off-sprite-y') },
+    face: { x: read('off-face-x'), y: read('off-face-y'), rot: angle('off-face-rot') },
+    sprite: { x: read('off-sprite-x'), y: read('off-sprite-y'), rot: angle('off-sprite-rot') },
   };
   renderPreview();
 }
@@ -688,7 +691,7 @@ $('lock-part').addEventListener('change', (e) => {
   renderSidebar();
 });
 
-for (const id of ['off-face-x', 'off-face-y', 'off-sprite-x', 'off-sprite-y']) $(id).addEventListener('input', updateOffset);
+for (const id of ['off-face-x', 'off-face-y', 'off-face-rot', 'off-sprite-x', 'off-sprite-y', 'off-sprite-rot']) $(id).addEventListener('input', updateOffset);
 $('off-reset').addEventListener('click', () => {
   delete state.character.offsets?.[state.selectedPart];
   renderOffsets();

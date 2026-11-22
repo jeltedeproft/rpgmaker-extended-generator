@@ -163,6 +163,10 @@ try {
     await evaluate(`(() => { const i = document.getElementById('off-face-y'); i.value = -6; i.dispatchEvent(new Event('input')); })()`);
     await sleep(900);
     check('face offset moves the part', (await evaluate(faceSig)) !== beforeNudge);
+    const beforeTurn = await evaluate(faceSig);
+    await evaluate(`(() => { const i = document.getElementById('off-face-rot'); i.value = 25; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(900);
+    check('face rotation turns the part', (await evaluate(faceSig)) !== beforeTurn);
     await shot('4-real-pack.png');
 
     // Parts that only exist on the face can't be moved on sprites (and say so).

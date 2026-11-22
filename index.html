@@ -66,13 +66,15 @@
           <span>Face</span>
           <label>x <input type="number" id="off-face-x" step="1" value="0"></label>
           <label>y <input type="number" id="off-face-y" step="1" value="0"></label>
+          <label>turn <input type="number" id="off-face-rot" step="5" value="0" title="Degrees, clockwise"></label>
           <span>Sprites</span>
           <label>x <input type="number" id="off-sprite-x" step="1" value="0"></label>
           <label>y <input type="number" id="off-sprite-y" step="1" value="0"></label>
+          <label>turn <input type="number" id="off-sprite-rot" step="5" value="0" title="Degrees, clockwise"></label>
         </div>
         <button id="off-reset" class="small-button">Reset position</button>
         <p id="offsets-note" class="note small"></p>
-        <p class="muted small">Moves this part in pixels. Sprite offsets apply to each walk, damage and battler frame.</p>
+        <p class="muted small">Moves this part in pixels, and turns it (degrees, clockwise). On sprites every walk, damage and battler frame is moved and turned on its own, around its own centre.</p>
       </div>
       <div id="slots" class="slots"></div>
     </section>

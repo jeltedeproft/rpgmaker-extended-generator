@@ -183,3 +183,80 @@ export function blendOver(target, top, ox = 0, oy = 0, frame = null) {
   }
   return target;
 }
+
+/**
+ * Centre of the visible pixels in every frame, over several same-size images (all layers of one
+ * item, so they turn together). Map "fx,fy" -> {cx, cy}.
+ * @param {{w:number,h:number}|null} frame null = the whole image is one frame
+ */
+export function frameCentres(images, frame = null) {
+  const centres = new Map();
+  if (!images.length) return centres;
+  const { width, height } = images[0];
+  const fw = frame?.w || width;
+  const fh = frame?.h || height;
+  for (let fy = 0; fy + fh <= height; fy += fh) {
+    for (let fx = 0; fx + fw <= width; fx += fw) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -1;
+      let maxY = -1;
+      for (const image of images) {
+        const s = image.data;
+        for (let y = fy; y < fy + fh; y++) {
+          for (let x = fx; x < fx + fw; x++) {
+            if (!s[(y * width + x) * 4 + 3]) continue;
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (maxX >= 0) centres.set(`${fx},${fy}`, { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 });
+    }
+  }
+  return centres;
+}
+
+/**
+ * Rotates the content of every frame (tile) around its centre, by `degrees` clockwise.
+ * Nearest-neighbour sampling keeps pixel art crisp. Nothing moves into a neighbouring frame.
+ * @param {{w:number,h:number}|null} frame null = the whole image is one frame
+ * @param {Map} [centres] from frameCentres; defaults to this image's own pixels
+ */
+export function rotateFrames(image, degrees, frame = null, centres = frameCentres([image], frame)) {
+  if (!degrees) return image;
+  const fw = frame?.w || image.width;
+  const fh = frame?.h || image.height;
+  const out = createImage(image.width, image.height);
+  const rad = (degrees * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const s = image.data;
+  for (let fy = 0; fy + fh <= image.height; fy += fh) {
+    for (let fx = 0; fx + fw <= image.width; fx += fw) {
+      const centre = centres.get(`${fx},${fy}`);
+      if (!centre) continue;
+      const { cx, cy } = centre;
+      for (let y = fy; y < fy + fh; y++) {
+        for (let x = fx; x < fx + fw; x++) {
+          // Inverse mapping: which source pixel lands here.
+          const dx = x - cx;
+          const dy = y - cy;
+          const sx = Math.round(cx + dx * cos + dy * sin);
+          const sy = Math.round(cy - dx * sin + dy * cos);
+          if (sx < fx || sx >= fx + fw || sy < fy || sy >= fy + fh) continue;
+          const si = (sy * image.width + sx) * 4;
+          if (!s[si + 3]) continue;
+          const di = (y * image.width + x) * 4;
+          out.data[di] = s[si];
+          out.data[di + 1] = s[si + 1];
+          out.data[di + 2] = s[si + 2];
+          out.data[di + 3] = s[si + 3];
+        }
+      }
+    }
+  }
+  return out;
+}

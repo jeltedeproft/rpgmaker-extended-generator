@@ -1,7 +1,7 @@
 // Composites a character's selected parts into one sheet image.
 
 import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
-import { createImage, recolorLayer, blendOver } from './recolor.js';
+import { createImage, recolorLayer, blendOver, rotateFrames, frameCentres } from './recolor.js';
 
 /**
  * Position in the draw order, 0 = top-most. Unknown layers fall back to the first entry for the
@@ -55,10 +55,13 @@ export function variantsToDecode(character, library) {
   return [...result];
 }
 
-/** Offset of an item on a sheet: "face" for FG, "sprite" for walk/damage/battler. */
+/**
+ * Offset and rotation (degrees, clockwise) of an item on a sheet: "face" for FG, "sprite" for
+ * walk/damage/battler.
+ */
 export function partOffset(character, key, sheet) {
   const o = character.offsets?.[key]?.[sheet === 'FG' ? 'face' : 'sprite'];
-  return { x: o?.x || 0, y: o?.y || 0 };
+  return { x: o?.x || 0, y: o?.y || 0, rot: o?.rot || 0 };
 }
 
 /**
@@ -157,6 +160,17 @@ function sheetSize(sheet, draws) {
 }
 
 /**
+ * Animation frame (tile) size of a sheet: the sheet split into RPG Maker's grid (3x4 walk, 9x6
+ * battler, ...), so bigger or smaller sprites work too. null when the size doesn't split evenly:
+ * then the whole sheet counts as one frame.
+ */
+export function frameFor(sheet, size) {
+  const grid = SHEETS[sheet].frame;
+  if (!grid || size.w % grid.cols || size.h % grid.rows) return null;
+  return { w: size.w / grid.cols, h: size.h / grid.rows, cols: grid.cols, rows: grid.rows };
+}
+
+/**
  * Renders one sheet. All layer pixels must be decoded first (see loader.ensureVariants).
  * @param {Map<string,{colors:Uint8ClampedArray}>} gradientsById
  * @returns {{image:object|null, problems:string[]}}
@@ -168,7 +182,9 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
 
   const size = sheetSize(sheet, layers);
   const out = createImage(size.w, size.h);
-  const frame = SHEETS[sheet].frame;
+  const frame = frameFor(sheet, size);
+  // 1. Recolour every layer and bring it to sheet size.
+  const placed = [];
   for (const { layer, item } of layers) {
     const gradientFor = (slotId) => {
       const id = itemColor(character, item, slotId);
@@ -186,14 +202,31 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     const colored = recolorLayer(base, mask, layer.slotId, gradientFor, settings);
     const offset = partOffset(character, item, sheet);
     if (frame && base.width === size.w && base.height === size.h) {
-      // Sprite sheets: shift inside each animation frame.
-      blendOver(out, colored, offset.x, offset.y, frame);
+      // Sprite sheets: shifted later, inside each animation frame.
+      placed.push({ item, image: colored, offset, frame });
     } else {
-      // Parts of a different size (e.g. 160px MZ faces vs 144px) are centred.
+      // Parts of a different size (e.g. 160px MZ faces vs 144px) are centred, then shifted.
+      const image = createImage(size.w, size.h);
       const ox = Math.round((size.w - base.width) / 2) + offset.x;
       const oy = Math.round((size.h - base.height) / 2) + offset.y;
-      blendOver(out, colored, ox, oy);
+      blendOver(image, colored, ox, oy);
+      placed.push({ item, image, offset: { ...offset, x: 0, y: 0 }, frame: null });
     }
   }
+
+  // 2. Rotate: all layers of an item turn around one shared centre per frame.
+  const centres = new Map();
+  for (const p of placed) {
+    if (!p.offset.rot) continue;
+    const key = `${p.item}|${!!p.frame}`;
+    if (!centres.has(key)) {
+      const own = placed.filter((q) => q.item === p.item && q.frame === p.frame);
+      centres.set(key, frameCentres(own.map((q) => q.image), p.frame));
+    }
+    p.image = rotateFrames(p.image, p.offset.rot, p.frame, centres.get(key));
+  }
+
+  // 3. Draw bottom to top.
+  for (const p of placed) blendOver(out, p.image, p.offset.x, p.offset.y, p.frame);
   return { image: out, problems };
 }

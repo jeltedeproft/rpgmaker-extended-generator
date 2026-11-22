@@ -9,7 +9,7 @@ existing extended generator is, minus the bugs:
 - **Forgiving import:** files that don't match the naming convention are listed in an import
   report instead of breaking the load. Any variation id works (`p01`, `p5001`, `pMV01`).
 - **Mix body types:** a Male character can wear Female (or Kid) parts.
-- **Placement control:** per-part pixel offsets for the face and for sprites. On sprite sheets each
+- **Placement control:** per-part pixel offsets and rotation for the face and for sprites. On sprite sheets each
   animation frame is shifted separately, so nothing bleeds into the next frame.
 - **Remembers your folders** (Chrome/Edge): pick RPG Maker's `generator` folder once, then reopen
   it with one click next time.
