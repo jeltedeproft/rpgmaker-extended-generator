@@ -138,3 +138,19 @@ test('a file can be assigned by hand, as a new part and a new body type', () => 
   assert.equal(v.layers[0].mask.src, 'm');
   assert.equal(buildPartName({ sheet: 'FG', part: 'Eyes', pid: 'p02', cell: 'c2', slotM: 2 }), 'FG_Eyes_p02_c2_m002.png');
 });
+
+test('a part word anywhere in an odd name, and a "b" file as the mask', () => {
+  const lib = createLibrary();
+  addPack(lib, 'MV', [
+    { path: 'Generator/TV/Male/TV_FurClothes01.png', src: 'fur' },
+    { path: 'Generator/TV/Male/TV_FurClothes01b.png', src: 'furMask' },
+    { path: 'Generator/TV/Male/TV_Clothing2_p01.png', src: 'c' },
+  ]);
+  assert.ok(![...lib.bodyTypes.get('Male').parts.keys()].includes('FurClothes'));
+  const fur = lib.variants.get('MV/Male/Clothing/pFur01');
+  assert.ok(fur, [...lib.variants.keys()].join());
+  assert.equal(fur.layers.length, 1);
+  assert.equal(fur.layers[0].base.src, 'fur');
+  assert.equal(fur.layers[0].mask.src, 'furMask');
+  assert.ok(![...lib.variants.keys()].some((k) => k.endsWith('/pb')));
+});

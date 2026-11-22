@@ -45,6 +45,12 @@
   had the picture's own colour (copied outlines and buckles), meant to stay as drawn. No longer
   reported.
 
+- ✅ MV generator (ticket zip, same as `official-mv`): `TV_FurClothes01.png` was its own part
+  "FurClothes" and its mask `TV_FurClothes01b.png` a variant "pb". Now Clothing "Fur01" with that
+  mask. Part words anywhere in a name (clothes, outfit, cape, goggles, ...) map to the known part;
+  a "b"/"mask" file next to its image is read as the mask. `TV_Clothing2_pXX.png.png` is a
+  different image (grey-background preview) and stays "pXX (alt)".
+
 ## Blocked on RPG Maker's own generator (trial: rpgmakerweb.com/free-trials, or the tester's files)
 - [ ] Settle the open questions in `docs/FORMAT.md` (brightness measure first).
 - [ ] Compare one character pixel-for-pixel with RPG Maker's own generator.

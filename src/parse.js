@@ -84,10 +84,19 @@ export function parsePartPath(path) {
 const LENIENT_RE = /^(FG|TVD|TV|SV|icon)[_ -](.+)\.png$/i;
 const MASK_SUFFIX_RE = /((?:_(?:c\d*|m\d+))*)$/i;
 const KNOWN_PARTS_LONGEST_FIRST = [...PART_ORDER].sort((a, b) => b.length - a.length);
+/** Other words packs use for a part, found anywhere in a name ("TV_FurClothes01" is clothing). */
+const PART_WORDS = [
+  ['Clothing', /clothing|clothes|cloth|outfit|armou?r|dress|robe|shirt/i],
+  ['Cloak', /cloak|cape|mantle/i],
+  ['Glasses', /glasses|goggles/i],
+];
+/** "TV_FurClothes01b.png" next to "TV_FurClothes01.png": the b (or "mask") file is its colour mask. */
+const NAMED_MASK_RE = /^(.+?)(?:[_ -]?mask|_?b)\.png$/i;
 
 /**
- * Reads names that skip the part number, e.g. "TV_ClothingEric.png" (part Clothing, variation
- * "Eric") or "SV_Hat.png" (a new part "Hat"). Returns the strict name it was read as, or null.
+ * Reads names that skip the part number, e.g. "TV_ClothingEric.png" or "TV_FurClothes01.png" (part
+ * Clothing, variation "Eric" / "Fur01") or "SV_Hat.png" (a new part "Hat"). Returns the strict name
+ * it was read as, or null.
  */
 export function lenientName(fileName) {
   // Typos seen in real packs: "TV_Clothing2_pXX.png.png", "FG_FrontHair_p17_c1].png".
@@ -101,9 +110,14 @@ export function lenientName(fileName) {
   const known = KNOWN_PARTS_LONGEST_FIRST.find((p) => stem.toLowerCase().startsWith(p.toLowerCase()));
   let part;
   let rest;
+  const word = !known && PART_WORDS.find(([, re]) => re.test(stem));
   if (known) {
     part = known;
     rest = stem.slice(known.length);
+  } else if (word) {
+    // The part word can sit anywhere: "FurClothes01" -> Clothing, variation "Fur01".
+    part = word[0];
+    rest = '_' + stem.replace(word[1], '');
   } else {
     const m = /^([A-Za-z]+)(.*)$/.exec(stem);
     if (!m) return null;
@@ -218,9 +232,17 @@ export function addPack(library, packName, entries) {
   }
   // Odd names go last, so a typo'd copy ("FG_FrontHair_p17_c1].png") becomes the alternate,
   // not the original.
+  const names = new Set(entries.map((e) => e.path.toLowerCase()));
   for (const { path, src } of lenient) {
     const fileName = path.split('/').pop();
-    const readAs = lenientName(fileName);
+    let readAs = lenientName(fileName);
+    // A mask named after its image with "b" or "mask" added.
+    const namedMask = NAMED_MASK_RE.exec(fileName);
+    const imagePath = namedMask && `${path.slice(0, path.length - fileName.length)}${namedMask[1]}.png`;
+    if (imagePath && !/^FG/i.test(fileName) && names.has(imagePath.toLowerCase())) {
+      const imageAs = lenientName(`${namedMask[1]}.png`);
+      if (imageAs && !/_c\.png$/i.test(imageAs)) readAs = imageAs.replace(/\.png$/i, '_c.png');
+    }
     const parsed = readAs && parsePartPath(path.slice(0, path.length - fileName.length) + readAs);
     if (!parsed) {
       library.unrecognized.push({ pack: name, path, src, reason: 'Name does not match TYPE_Part_pNN[_c].png' });
