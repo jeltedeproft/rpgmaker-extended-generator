@@ -2,7 +2,7 @@
 // and per-part pixel offsets.
 
 import { PART_ORDER, REQUIRED_PARTS, SLOTS, SLOT_BY_RGB } from './format.js';
-import { preferredCategory, createCustomGradient } from './gradients.js';
+import { preferredCategory, customGradientToJson, customGradientFromJson } from './gradients.js';
 import { partOfKey, pieceKeys, selectedItems, variantForSheet } from './compose.js';
 import { SHEET_KEYS } from './format.js';
 
@@ -269,7 +269,7 @@ export function serializeCharacter(character, customGradients) {
       character,
       customGradients: customGradients
         .filter((g) => used.has(g.id))
-        .map((g) => ({ id: g.id, label: g.label, stops: g.stops })),
+        .map(customGradientToJson),
     },
     null,
     2,
@@ -385,6 +385,6 @@ export function deserializeCharacter(json, library, gradients = [], fileName = '
     if (!resolved) missing.push(`${part} ${id}`);
     character.parts[part] = resolved;
   }
-  const customGradients = (data.customGradients || []).map((g) => createCustomGradient(g.id, g.label, g.stops));
+  const customGradients = (data.customGradients || []).map(customGradientFromJson);
   return { character, customGradients, missing };
 }

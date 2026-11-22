@@ -2,7 +2,7 @@
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, DEFAULT_SIZE, SHEETS, SLOT_BY_ID } from './format.js';
 import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
-import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
+import { createCustomGradient, gradientsToImage, preferredCategory, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
   layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
@@ -641,7 +641,11 @@ function renderSlots() {
     }
     const add = el('button', { className: 'swatch add', textContent: '+ New', title: 'Make your own gradient' });
     add.addEventListener('click', () => openGradientDialog(slot));
-    wrap.append(el('div', { className: 'swatches', style: 'margin-top:5px' }, [add]));
+    const current = gradients.find((g) => g.id === slotColour(slot.id));
+    const adjust = el('button', { className: 'swatch add', textContent: 'Adjust…', disabled: !current,
+      title: current ? `Shift the hue, saturation or brightness of "${current.label}"` : 'Pick a colour first' });
+    adjust.addEventListener('click', () => openAdjustDialog(slot, current));
+    wrap.append(el('div', { className: 'swatches', style: 'margin-top:5px' }, [add, adjust]));
     return wrap;
   }));
 }
@@ -837,7 +841,7 @@ function renderSets() {
     const apply = el('button', { className: 'set-apply', textContent: set.name, title: `Put on: ${Object.keys(set.parts).join(', ')}` });
     apply.addEventListener('click', () => {
       for (const g of set.customGradients || []) {
-        if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(createCustomGradient(g.id, g.label, g.stops));
+        if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(customGradientFromJson(g));
       }
       const { character, missing } = applySet(state.character, set, state.library);
       state.character = character;
@@ -875,7 +879,7 @@ $('set-dialog').addEventListener('close', () => {
   const name = $('set-name').value.trim() || keys.join(' + ');
   const set = makeSet(state.character, state.library, name, keys, $('set-colours').checked);
   const used = new Set([...Object.values(set.colors), ...Object.values(set.itemColors).flatMap((c) => Object.values(c))]);
-  set.customGradients = state.customGradients.filter((g) => used.has(g.id)).map((g) => ({ id: g.id, label: g.label, stops: g.stops }));
+  set.customGradients = state.customGradients.filter((g) => used.has(g.id)).map(customGradientToJson);
   (state.settings.sets ||= []).push(set);
   saveSettings();
   renderSets();
@@ -1323,6 +1327,77 @@ $('gradient-dialog').addEventListener('close', () => {
   refreshTiles();
 });
 
+// Adjust: hue / saturation / brightness on top of a chosen gradient, previewed live.
+const ADJUST_FIELDS = ['hue', 'saturation', 'brightness'];
+const ADJUSTING_ID = 'custom/adjusting';
+let adjusting = null; // {slot, base, previous}
+
+function drawGradientRow(canvasId, colors) {
+  $(canvasId).getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(colors), 256, 1), 0, 0);
+}
+
+function adjustValues() {
+  return Object.fromEntries(ADJUST_FIELDS.map((f) => [f, Number($(`adjust-${f}`).value) || 0]));
+}
+
+let adjustFrame = 0;
+function updateAdjust() {
+  if (!adjusting) return;
+  const colors = adjustGradient(adjusting.base.colors, adjustValues());
+  drawGradientRow('adjust-after', colors);
+  const temp = createAdjustedGradient(ADJUSTING_ID, $('adjust-name').value, adjusting.base.id, adjustValues(), colors);
+  state.customGradients = [...state.customGradients.filter((g) => g.id !== ADJUSTING_ID), temp];
+  setSlotColour(adjusting.slot.id, ADJUSTING_ID);
+  cancelAnimationFrame(adjustFrame);
+  adjustFrame = requestAnimationFrame(() => renderPreview());
+}
+
+function setAdjustValues(values) {
+  for (const f of ADJUST_FIELDS) $(`adjust-${f}`).value = $(`adjust-${f}-n`).value = values[f];
+}
+
+function openAdjustDialog(slot, current) {
+  if (!current) return;
+  // Adjusting an adjusted colour starts again from its original, with the same settings.
+  const origin = current.from && allGradients().find((g) => g.id === current.from);
+  const base = origin || current;
+  adjusting = { slot, base, previous: current.id };
+  $('adjust-title').textContent = `Adjust ${slot.label.toLowerCase()} colour`;
+  $('adjust-name').value = `${base.label} (adjusted)`;
+  setAdjustValues(origin ? { hue: 0, saturation: 100, brightness: 100, ...current.adjust } : { hue: 0, saturation: 100, brightness: 100 });
+  drawGradientRow('adjust-before', base.colors);
+  updateAdjust();
+  $('adjust-dialog').returnValue = ''; // Esc keeps the last value otherwise
+  $('adjust-dialog').showModal();
+}
+
+for (const f of ADJUST_FIELDS) {
+  $(`adjust-${f}`).addEventListener('input', () => { $(`adjust-${f}-n`).value = $(`adjust-${f}`).value; updateAdjust(); });
+  $(`adjust-${f}-n`).addEventListener('input', () => { $(`adjust-${f}`).value = $(`adjust-${f}-n`).value; updateAdjust(); });
+}
+$('adjust-reset').addEventListener('click', () => {
+  setAdjustValues({ hue: 0, saturation: 100, brightness: 100 });
+  updateAdjust();
+});
+$('adjust-dialog').addEventListener('close', () => {
+  if (!adjusting) return;
+  const temp = state.customGradients.find((g) => g.id === ADJUSTING_ID);
+  state.customGradients = state.customGradients.filter((g) => g.id !== ADJUSTING_ID);
+  swatchCache.delete(ADJUSTING_ID);
+  const unchanged = ADJUST_FIELDS.every((f) => adjustValues()[f] === { hue: 0, saturation: 100, brightness: 100 }[f]);
+  if ($('adjust-dialog').returnValue === 'ok' && temp && !unchanged) {
+    const id = `custom/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    state.customGradients.push(createAdjustedGradient(id, $('adjust-name').value || 'Adjusted', temp.from, temp.adjust, temp.colors));
+    setSlotColour(adjusting.slot.id, id);
+  } else {
+    setSlotColour(adjusting.slot.id, $('adjust-dialog').returnValue === 'ok' && unchanged ? adjusting.base.id : adjusting.previous);
+  }
+  adjusting = null;
+  renderSlots();
+  renderPreview();
+  refreshTiles();
+});
+
 // ---------- folders ----------
 
 async function importHandle(handle) {
@@ -1561,7 +1636,7 @@ $('rules-reset').addEventListener('click', () => {
 $('randomize').addEventListener('click', () => {
   for (const set of state.settings.sets || []) {
     for (const g of set.customGradients || []) {
-      if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(createCustomGradient(g.id, g.label, g.stops));
+      if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(customGradientFromJson(g));
     }
   }
   state.character = randomize(state.character, state.library, allGradients(), {

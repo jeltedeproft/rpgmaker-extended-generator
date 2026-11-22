@@ -357,6 +357,28 @@
     </form>
   </dialog>
 
+  <dialog id="adjust-dialog">
+    <form method="dialog" class="gradient-form">
+      <h3 id="adjust-title">Adjust colour</h3>
+      <p class="muted small">Shift the chosen gradient to a colour the colour sheets don't have. The character updates as you slide.</p>
+      <div class="adjust-rows">
+        <label>Hue <input type="range" id="adjust-hue" min="-180" max="180" step="1" value="0"><input type="number" id="adjust-hue-n" min="-180" max="180" step="1" value="0"> °</label>
+        <label>Saturation <input type="range" id="adjust-saturation" min="0" max="200" step="1" value="100"><input type="number" id="adjust-saturation-n" min="0" max="200" step="1" value="100"> %</label>
+        <label>Brightness <input type="range" id="adjust-brightness" min="0" max="200" step="1" value="100"><input type="number" id="adjust-brightness-n" min="0" max="200" step="1" value="100"> %</label>
+      </div>
+      <div class="adjust-compare">
+        <span class="muted small">Before</span><canvas id="adjust-before" width="256" height="1"></canvas>
+        <span class="muted small">After</span><canvas id="adjust-after" width="256" height="1"></canvas>
+      </div>
+      <label class="field">Name <input id="adjust-name" type="text" maxlength="40"></label>
+      <div class="dialog-actions">
+        <button value="reset" id="adjust-reset" type="button">Reset</button>
+        <button value="cancel">Cancel</button>
+        <button value="ok" class="primary">Use this colour</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" hidden></div>
   <script type="module" src="src/app.js"></script>
 </body>

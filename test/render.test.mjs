@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { recolorLayer, blendOver, createImage, matchSlot, scanMask, rotateFrames } from '../src/recolor.js';
-import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
+import { gradientFromStops, splitGradientImage, gradientsToImage, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from '../src/gradients.js';
 import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces, piecesPerSheet, sheetLayout, placeOnSheet } from '../src/compose.js';
 import { islandLabels } from '../src/islands.js';
 import { solidOf, insideOutline, applyClip } from '../src/clip.js';
@@ -513,4 +513,27 @@ test('a renamed copy "p07 (2)" does not borrow the damage sprite of p07', () => 
   const draw = (sheet) => layersForSheet(sheet, { bodyType: 'Female', parts: { AccB: 'MV/Female/AccB/p07 (2)' }, colors: {} }, lib).map((d) => d.layer.base.src);
   assert.deepEqual(draw('TV'), ['horns']);
   assert.deepEqual(draw('TVD'), []);
+});
+
+test('adjusting a gradient shifts hue, saturation and brightness', () => {
+  const red = new Uint8ClampedArray(256 * 4);
+  for (let i = 0; i < 256; i++) red.set([200, 0, 0, 255], i * 4);
+  assert.deepEqual([...adjustGradient(red, {}).slice(0, 4)], [200, 0, 0, 255]);
+  assert.deepEqual([...adjustGradient(red, { hue: 120 }).slice(0, 4)], [0, 200, 0, 255]);
+  assert.deepEqual([...adjustGradient(red, { saturation: 0 }).slice(0, 4)], [200, 200, 200, 255]);
+  assert.deepEqual([...adjustGradient(red, { brightness: 50 }).slice(0, 4)], [100, 0, 0, 255]);
+  assert.deepEqual([...adjustGradient(red, { hue: -120 }).slice(0, 3)], [0, 0, 200]);
+});
+
+test('an adjusted gradient survives saving and loading', () => {
+  const colors = new Uint8ClampedArray(256 * 4);
+  for (let i = 0; i < 256; i++) colors.set([i, 255 - i, 7, 255], i * 4);
+  const g = createAdjustedGradient('custom/x', 'Green hair', 'P/grad_hair/3', { hue: 20, saturation: 90, brightness: 110 }, colors);
+  const back = customGradientFromJson(JSON.parse(JSON.stringify(customGradientToJson(g))));
+  assert.equal(back.label, 'Green hair');
+  assert.equal(back.from, 'P/grad_hair/3');
+  assert.deepEqual(back.adjust, { hue: 20, saturation: 90, brightness: 110 });
+  assert.deepEqual([...back.colors], [...colors]);
+  const stops = customGradientFromJson(customGradientToJson({ id: 'custom/s', label: 'S', stops: [{ pos: 0, color: '#000000' }, { pos: 1, color: '#ffffff' }] }));
+  assert.equal(stops.colors.length, 256 * 4);
 });

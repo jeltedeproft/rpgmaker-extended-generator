@@ -330,6 +330,7 @@ try {
     await sleep(1500);
     const pieces = await evaluate(`[...document.querySelectorAll('#part-list button.piece')].length`);
     check('eyes split into pieces', pieces >= 2, `${pieces} pieces`);
+    check('split status lists pieces per image', await evaluate(`/face [0-9]/.test(document.getElementById('pieces-status').textContent)`));
     if (pieces >= 2) {
       const beforePiece = await evaluate(faceSig);
       await evaluate(`document.querySelectorAll('#part-list button.piece')[1].click()`);
@@ -343,6 +344,20 @@ try {
       await click('#unsplit-item');
       await sleep(900);
       check('pieces join again', (await evaluate(`document.querySelectorAll('#part-list button.piece').length`)) === 0);
+    }
+    // Adjust: shift a chosen colour's hue, previewed live, kept under "Your colours".
+    {
+      const beforeAdjust = await evaluate(faceSig);
+      await evaluate(`[...document.querySelectorAll('.slot .swatch.add')].find(b => b.textContent.startsWith('Adjust') && !b.disabled).click()`);
+      await sleep(500);
+      check('adjust dialog opens', await evaluate(`document.getElementById('adjust-dialog').open`));
+      await evaluate(`(() => { const i = document.getElementById('adjust-hue'); i.value = 120; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(1200);
+      check('adjusting previews live', (await evaluate(faceSig)) !== beforeAdjust);
+      await evaluate(`document.querySelector('#adjust-dialog button[value="ok"]').click()`);
+      await sleep(900);
+      check('adjusted colour is kept and selected', await evaluate(`[...document.querySelectorAll('.slot .swatch.selected')].some(b => b.title.includes('(adjusted)'))`));
+      check('adjusted colour stays on the character', (await evaluate(faceSig)) !== beforeAdjust);
     }
     // "Other colours" stays open after picking from it.
     const picked = await evaluate(`(() => { const d = document.querySelector('.slot details'); if (!d) return 'no list'; d.open = true; d.dispatchEvent(new Event('toggle')); d.querySelector('.swatch').click(); return 'ok'; })()`);
