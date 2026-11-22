@@ -92,6 +92,16 @@ export function ensureImage(ref, isMask = false) {
   return pending.get(ref);
 }
 
+/** Decodes the given layers (image and mask). Returns error messages instead of throwing. */
+export async function ensureLayers(layers) {
+  const errors = [];
+  await Promise.all(layers.flatMap((layer) => [
+    ensureImage(layer.base).catch((e) => errors.push(`${layer.base.path}: ${e.message}`)),
+    layer.mask && ensureImage(layer.mask, true).catch((e) => errors.push(`${layer.mask.path}: ${e.message}`)),
+  ]));
+  return errors;
+}
+
 /** Decodes every layer of the given variants. Returns error messages instead of throwing. */
 export async function ensureVariants(variants) {
   const errors = [];

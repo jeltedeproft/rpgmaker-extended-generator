@@ -5,7 +5,7 @@ import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, as
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
-  layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, selectedItems,
+  layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage } from './recolor.js';
 import {
@@ -17,7 +17,7 @@ import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage,
   ensureVariants, loadGradients, toCanvas, downloadBlob, downloadImage,
   canRememberFolders, pickFolder, entriesFromHandle, rememberFolder, forgetFolder, rememberedFolders,
-  ensureReadPermission, readText,
+  ensureReadPermission, readText, ensureLayers,
 } from './loader.js';
 
 const ALL_COLOURS = '__colours';
@@ -260,14 +260,24 @@ async function renderEditor() {
 }
 
 function variantTile(key, variant) {
-  const part = partOfKey(key);
   const selected = (state.character.parts[key] || null) === (variant?.id || null);
   const tile = el('button', { className: 'variant' + (selected ? ' selected' : ''), title: variant ? variant.id : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
   tile.append(thumb, el('span', { textContent: variant ? variantLabel(state.library, variant, state.character.bodyType) : 'None' }));
   if (variant) {
-    const thumbnail = variant.icon ? ensureImage(variant.icon) : partThumbnail(part, variant);
-    thumbnail.then((pixels) => pixels && thumb.replaceWith(toCanvas(pixels))).catch(() => {});
+    // Drawn in the current colours, so tiles follow colour changes (RPG Maker's own Variation
+    // icons have fixed colours; they're only used when the part can't be drawn).
+    let shown = thumb;
+    tile.refresh = () => partThumbnail(key, variant)
+      .then((pixels) => pixels || (variant.icon ? ensureImage(variant.icon) : null))
+      .then((pixels) => {
+        if (!pixels) return;
+        const canvas = toCanvas(pixels);
+        shown.replaceWith(canvas);
+        shown = canvas;
+      })
+      .catch(() => {});
+    tile.refresh();
   }
   tile.addEventListener('click', async () => {
     state.character.parts[key] = variant?.id || null;
@@ -286,29 +296,50 @@ function variantTile(key, variant) {
   return tile;
 }
 
+const thumbCache = new Map();
+let thumbTimer;
+/** Redraws the part tiles after a colour change (each tile caches per colour choice). */
+function refreshTiles() {
+  clearTimeout(thumbTimer);
+  thumbTimer = setTimeout(() => {
+    for (const tile of [...$('variants').children, ...$('other-variants').children]) tile.refresh?.();
+  }, 150);
+}
+
 /**
- * Preview for parts without a Variation icon: the part alone, in the current colours. Uses the
- * face if it has one, else the first walk frame (facing down), else the first battler frame.
+ * A tile picture: the part alone, in the current colours. Uses the face if it has one, else the
+ * middle walk frame facing down, else the first battler frame. Only that sheet is decoded.
  */
-async function partThumbnail(part, variant) {
-  const alone = { ...state.character, parts: { [part]: variant.id }, offsets: {} };
-  await ensureVariants(variantsToDecode(alone, state.library));
-  for (const sheet of ['FG', 'TV', 'SV']) {
-    const result = composeSheet(sheet, alone, state.library, gradientsById(), state.settings);
-    const { image } = result;
-    if (!image) continue;
-    if (sheet === 'FG') return image;
-    // The middle walk frame facing down, or the first battler frame.
-    const f = frameOf(sheet, image, result.frame);
-    const frame = { x: sheet === 'TV' && f.cols > 1 ? f.w : 0, y: 0, w: f.w, h: f.h };
-    const out = createImage(frame.w, frame.h);
-    for (let y = 0; y < frame.h; y++) {
-      const start = ((frame.y + y) * image.width + frame.x) * 4;
-      out.data.set(image.data.subarray(start, start + frame.w * 4), y * frame.w * 4);
-    }
-    return out;
+function partThumbnail(key, variant) {
+  const alone = {
+    ...state.character, parts: { [key]: variant.id }, offsets: {}, split: {}, clip: {}, drawOrder: {},
+  };
+  const colours = JSON.stringify([state.character.colors, state.character.itemColors?.[key], state.settings.templates]);
+  const cacheKey = `${key}|${variant.id}|${colours}`;
+  if (!thumbCache.has(cacheKey)) {
+    if (thumbCache.size > 600) thumbCache.clear();
+    thumbCache.set(cacheKey, (async () => {
+      for (const sheet of ['FG', 'TV', 'SV']) {
+        const layers = sheetLayers(variant, sheet, state.library);
+        if (!layers.length) continue;
+        await ensureLayers(layers);
+        const { image, frame } = composeSheet(sheet, alone, state.library, gradientsById(), state.settings);
+        if (!image) continue;
+        if (sheet === 'FG') return image;
+        // The middle walk frame facing down, or the first battler frame.
+        const f = frameOf(sheet, image, frame);
+        const x = sheet === 'TV' && f.cols > 1 ? f.w : 0;
+        const out = createImage(f.w, f.h);
+        for (let y = 0; y < f.h; y++) {
+          const start = (y * image.width + x) * 4;
+          out.data.set(image.data.subarray(start, start + f.w * 4), y * f.w * 4);
+        }
+        return out;
+      }
+      return null;
+    })());
   }
-  return null;
+  return thumbCache.get(cacheKey);
 }
 
 /** The "Visibility" box: show this item only inside / over / outside another item. */
@@ -510,6 +541,7 @@ function swatchButton(slot, gradient) {
     setSlotColour(slot.id, gradient.id);
     renderSlots();
     renderPreview();
+    refreshTiles();
   });
   return button;
 }
@@ -898,6 +930,7 @@ $('gradient-dialog').addEventListener('close', () => {
   setSlotColour(dialogSlot.id, id);
   renderSlots();
   renderPreview();
+  refreshTiles();
 });
 
 // ---------- folders ----------
