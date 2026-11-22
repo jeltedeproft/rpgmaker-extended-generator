@@ -417,12 +417,16 @@ export function variantLabel(library, variant, bodyType) {
   return label;
 }
 
-/** All variants of a part across body types, the given body type first. */
-export function variantsForPart(library, part, bodyType) {
-  const own = [...(library.bodyTypes.get(bodyType)?.parts.get(part)?.values() || [])];
+/**
+ * All variants of a part across body types, the given body type first. Hidden ones (look-alikes,
+ * see lookalike.js) are left out, except `keepId` (the one being worn).
+ */
+export function variantsForPart(library, part, bodyType, keepId = null) {
+  const shown = (v) => !v.hidden || v.id === keepId;
+  const own = [...(library.bodyTypes.get(bodyType)?.parts.get(part)?.values() || [])].filter(shown);
   const others = [];
   for (const [name, body] of library.bodyTypes) {
-    if (name !== bodyType) others.push(...(body.parts.get(part)?.values() || []));
+    if (name !== bodyType) others.push(...[...(body.parts.get(part)?.values() || [])].filter(shown));
   }
   return { own, others };
 }

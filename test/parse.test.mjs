@@ -178,3 +178,30 @@ test('files can be unassigned and reassigned', () => {
   assert.equal(lib.readAs.get('P|TV/Male/TV_Hat_p01.png').how, 'hand');
   assert.equal(libraryFiles(lib).length, 3);
 });
+
+test('copies identical to another copy are found, near copies are measured', async () => {
+  const { findLookalikes, copyBase } = await import('../src/lookalike.js');
+  const { createImage } = await import('../src/recolor.js');
+  assert.equal(copyBase('p01 (2)'), 'p01');
+  assert.equal(copyBase('p17 (alt)'), 'p17');
+  assert.equal(copyBase('p01 (left_green)'), null); // a set, not a copy
+  const lib = createLibrary();
+  addPack(lib, 'P', [
+    { path: 'TV/Male/TV_Body_p01.png', src: 'a' },
+    { path: 'TV/Male/TV_Body_p01 (2).png', src: 'b' },
+    { path: 'TV/Male/TV_Body_p01 (3).png', src: 'c' },
+  ]);
+  const img = (paint) => { const i = createImage(4, 4); for (let p = 0; p < 16; p++) i.data.set([10, 10, 10, 255], p * 4); paint(i); return i; };
+  const set = (id, pixels) => { lib.variants.get(id).layers[0].base.pixels = pixels; };
+  set('P/Male/Body/p01', img(() => {}));
+  set('P/Male/Body/p01 (2)', img((i) => i.data.set([200, 0, 0, 255], 0))); // 1 of 16 differs
+  set('P/Male/Body/p01 (3)', img((i) => i.data.set([200, 0, 0, 255], 0))); // same as (2)
+  const found = findLookalikes(lib);
+  const three = found.find((f) => f.variant.pid === 'p01 (3)');
+  assert.equal(three.other.pid, 'p01 (2)');
+  assert.equal(three.result.identical, true);
+  const two = found.find((f) => f.variant.pid === 'p01 (2)');
+  assert.equal(two.result.identical, false);
+  assert.equal(two.result.ratio, 1 / 16);
+  assert.equal(two.result.sheet, 'TV');
+});

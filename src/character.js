@@ -77,7 +77,8 @@ export function applyDefaults(character, library) {
   if (!body) return character;
   for (const part of REQUIRED_PARTS) {
     const variants = body.parts.get(part);
-    if (variants?.size && character.parts[part] === undefined) character.parts[part] = [...variants.keys()][0];
+    const first = [...(variants?.values() || [])].find((v) => !v.hidden);
+    if (first && character.parts[part] === undefined) character.parts[part] = first.id;
   }
   return character;
 }
@@ -121,9 +122,8 @@ export function randomize(character, library, gradients, { rng = Math.random, lo
   if (rules.mixBodyTypes) for (const b of library.bodyTypes.values()) b.parts.forEach((_, p) => parts.add(p));
   for (const part of parts) {
     if (locked.has(part)) continue;
-    const pool = rules.mixBodyTypes
-      ? [...library.bodyTypes.values()].flatMap((b) => [...(b.parts.get(part)?.keys() || [])])
-      : [...(own?.parts.get(part)?.keys() || [])];
+    const ids = (b) => [...(b?.parts.get(part)?.values() || [])].filter((v) => !v.hidden).map((v) => v.id);
+    const pool = rules.mixBodyTypes ? [...library.bodyTypes.values()].flatMap(ids) : ids(own);
     if (!pool.length) continue;
     changed(part, rng() < wearChance(part, rules) ? pick(pool, rng) : null);
   }

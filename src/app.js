@@ -8,6 +8,7 @@ import {
   layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask } from './recolor.js';
+import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, isGeneratorSettings, itemKeys, addItem, removeItem, creditsFor, creditsText,
@@ -138,6 +139,7 @@ async function importEntries(entries, packName) {
     return;
   }
   ensureCharacter();
+  checkLookalikes(pack.name).catch((e) => console.error(e));
   toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.`);
   showApp();
   renderAll();
@@ -253,7 +255,7 @@ async function renderEditor() {
     renderOffsets();
   } else if (!isColours) {
     renderPieces();
-    const { own, others } = variantsForPart(state.library, part, state.character.bodyType);
+    const { own, others } = variantsForPart(state.library, part, state.character.bodyType, state.character.parts[key]);
     for (const variant of [null, ...own]) $('variants').append(variantTile(key, variant));
     if (others.length) {
       $('other-bodies').hidden = false;
@@ -326,16 +328,16 @@ function refreshTiles() {
  * middle walk frame facing down, else the first battler frame, else the first damage frame (some
  * packs only add a damage sprite). Only that sheet is decoded.
  */
-function partThumbnail(key, variant) {
+function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD']) {
   const alone = {
     ...state.character, parts: { [key]: variant.id }, offsets: {}, split: {}, clip: {}, drawOrder: {},
   };
   const colours = JSON.stringify([state.character.colors, state.character.itemColors?.[key], state.settings.templates]);
-  const cacheKey = `${key}|${variant.id}|${colours}`;
+  const cacheKey = `${key}|${variant.id}|${sheets}|${colours}`;
   if (!thumbCache.has(cacheKey)) {
     if (thumbCache.size > 600) thumbCache.clear();
     thumbCache.set(cacheKey, (async () => {
-      for (const sheet of ['FG', 'TV', 'SV', 'TVD']) {
+      for (const sheet of sheets) {
         const layers = sheetLayers(variant, sheet, state.library);
         if (!layers.length) continue;
         await ensureLayers(layers);
@@ -1202,6 +1204,102 @@ $('files-start').addEventListener('click', () => {
   const queue = [...state.library.unrecognized];
   if (queue.length) openAssignDialog(queue[0], queue.slice(1));
 });
+
+// ---------- look-alikes ----------
+
+state.lookalikes = []; // [{variant, other, result}], see lookalike.js
+
+/** Compares a pack's copies with their originals; hides exact duplicates unless you said not to. */
+async function checkLookalikes(packName) {
+  const pairs = lookalikePairs(state.library, packName);
+  if (!pairs.length) return;
+  await ensureLayers(pairs.flatMap(pairLayers));
+  const found = findLookalikes(state.library, packName);
+  const choices = state.settings.lookalikes || {};
+  let autoHidden = 0;
+  for (const f of found) {
+    const choice = choices[f.variant.id];
+    f.variant.hidden = choice === 'hide' || (choice !== 'show' && f.result.identical);
+    if (!choice && f.result.identical) autoHidden++;
+  }
+  state.lookalikes = [...state.lookalikes.filter((f) => f.variant.pack !== packName), ...found];
+  updateAlikesButton();
+  const undecided = found.filter((f) => !f.result.identical && f.result.ratio <= LOOKALIKE_RATIO && !choices[f.variant.id]);
+  if (autoHidden) renderEditor();
+  if (undecided.length && !document.querySelector('dialog[open]')) openAlikesDialog();
+  else if (undecided.length || autoHidden) {
+    const parts = [];
+    if (autoHidden) parts.push(`Hid ${autoHidden} exact duplicate${autoHidden > 1 ? 's' : ''}.`);
+    if (undecided.length) parts.push(`${undecided.length} near copies to look at.`);
+    toast(`${parts.join(' ')} See "Look-alikes…".`, 8000);
+  }
+}
+
+function updateAlikesButton() {
+  const listed = state.lookalikes.filter((f) => f.result.identical || f.result.ratio <= LOOKALIKE_RATIO);
+  $('open-alikes').hidden = !state.lookalikes.length;
+  $('open-alikes').textContent = listed.length ? `Look-alikes… (${listed.length})` : 'Look-alikes…';
+}
+
+function putPixels(canvas, pixels) {
+  if (!pixels) return;
+  canvas.width = pixels.width;
+  canvas.height = pixels.height;
+  canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pixels.data), pixels.width, pixels.height), 0, 0);
+}
+
+/** One copy next to the part it looks like, with a picture of where they differ. */
+function alikeCard(f) {
+  const { variant, other, result } = f;
+  const pic = (label) => {
+    const canvas = el('canvas', { width: 0, height: 0 });
+    return { canvas, figure: el('figure', {}, [canvas, el('figcaption', { textContent: label })]) };
+  };
+  const a = pic(`${other.pid} (original)`);
+  const b = pic(variant.pid);
+  const d = pic('differences');
+  const sheets = result.sheet ? [result.sheet] : undefined;
+  Promise.all([partThumbnail(variant.part, other, sheets), partThumbnail(variant.part, variant, sheets)]).then(([pa, pb]) => {
+    putPixels(a.canvas, pa);
+    putPixels(b.canvas, pb);
+    if (pa && pb) putPixels(d.canvas, differenceImage(pa, pb));
+  }).catch(() => {});
+  const pct = Math.round(result.ratio * 1000) / 10;
+  const verdict = result.identical ? `the same pixels as ${other.pid}` : `${pct}% of its pixels differ from ${other.pid}`;
+  const toggle = el('button', { type: 'button', className: 'small-button', textContent: variant.hidden ? 'Show it again' : `Hide ${variant.pid}` });
+  toggle.style.marginTop = '0';
+  toggle.addEventListener('click', () => {
+    variant.hidden = !variant.hidden;
+    (state.settings.lookalikes ||= {})[variant.id] = variant.hidden ? 'hide' : 'show';
+    saveSettings();
+    renderAlikes();
+    renderEditor();
+  });
+  const where = `${variant.bodyType} ${variant.part} ${variant.pid}${state.library.packs.length > 1 ? ` · ${variant.pack}` : ''}`;
+  return el('div', { className: 'alike-card' + (variant.hidden ? ' hidden-part' : '') }, [
+    el('div', { className: 'alike-head' }, [
+      el('span', {}, [el('b', { textContent: where }), `: ${verdict}${variant.hidden ? ' (hidden)' : ''}`]),
+      toggle,
+    ]),
+    el('div', { className: 'alike-pics' }, [a.figure, b.figure, d.figure]),
+  ]);
+}
+
+function renderAlikes() {
+  const all = $('alike-all').checked;
+  const list = state.lookalikes.filter((f) => all || f.result.identical || f.result.ratio <= LOOKALIKE_RATIO || f.variant.hidden);
+  $('alike-list').replaceChildren(...(list.length ? list.map(alikeCard)
+    : [el('p', { className: 'muted', textContent: 'No copy looks like another part. Tick the box above to compare them anyway.' })]));
+  updateAlikesButton();
+}
+
+function openAlikesDialog() {
+  renderAlikes();
+  if (!$('alike-dialog').open) $('alike-dialog').showModal();
+}
+$('open-alikes').addEventListener('click', openAlikesDialog);
+$('alike-all').addEventListener('change', renderAlikes);
+
 
 // ---------- animation ----------
 

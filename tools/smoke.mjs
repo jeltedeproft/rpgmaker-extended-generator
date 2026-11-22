@@ -373,6 +373,30 @@ try {
     check('body can be set to None', await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).querySelector('.value').textContent`) === 'none');
   }
 
+  // Optional: a pack with copies ("TV_Body_p01 (2).png", "(3)"), e.g. the official MV generator.
+  if (process.env.ALIKE_PACK) {
+    await evaluate(`localStorage.removeItem('xgen-settings')`);
+    await send('Page.navigate', { url: `${URL_UNDER_TEST}&pack=${encodeURIComponent(process.env.ALIKE_PACK)}` });
+    await sleep(9000);
+    check('look-alikes dialog opens for near copies', await evaluate(`document.getElementById('alike-dialog').open`));
+    const cards = await evaluate(`document.querySelectorAll('#alike-list .alike-card').length`);
+    check('look-alikes are listed', cards >= 2, `${cards} cards`);
+    check('exact duplicate is hidden', await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].some(c => c.textContent.includes('p01 (3)') && c.textContent.includes('same pixels') && c.classList.contains('hidden-part'))`));
+    await sleep(1500);
+    check('look-alikes have pictures and differences', await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].every(c => [...c.querySelectorAll('canvas')].every(x => x.width > 0))`));
+    await shot('5-lookalikes.png');
+    // Hide the near copy, then check the part list.
+    await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].find(c => c.textContent.startsWith('Male Body p01 (2)')).querySelector('button').click()`);
+    await sleep(500);
+    check('hiding is remembered', await evaluate(`JSON.parse(localStorage.getItem('xgen-settings')).lookalikes[[...Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).lookalikes)].find(k => k.endsWith('/Male/Body/p01 (2)'))] === 'hide'`));
+    await evaluate(`document.querySelector('#alike-dialog button[value="close"]').click()`);
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
+    await sleep(600);
+    const bodies = await evaluate(`[...document.querySelectorAll('#variants .variant span')].map(s => s.textContent).join(',')`);
+    check('hidden copies leave the part list', !bodies.includes('(2)') && !bodies.includes('(3)') && bodies.includes('p01'), bodies);
+    await evaluate(`localStorage.removeItem('xgen-settings')`);
+  }
+
   check('no uncaught errors', errors.length === 0, errors.join(' | '));
 } catch (e) {
   check('smoke run', false, e.stack);

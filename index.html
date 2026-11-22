@@ -18,6 +18,7 @@
       <span class="divider"></span>
       <button id="randomize" disabled>Randomize</button>
       <button id="random-rules" disabled title="Rules for Randomize">Rules…</button>
+      <button id="open-alikes" hidden title="Copies and alternates that look the same as another part: compare them and hide the ones you don't need">Look-alikes…</button>
       <button id="open-files" disabled title="Every file the generator read, and the ones it couldn't: assign, reassign or unassign them">Files…</button>
       <button id="save-character" disabled>Save character</button>
       <label class="button" id="load-character-label">Load character
@@ -282,6 +283,18 @@
       <p id="files-note" class="muted small"></p>
       <div id="files-list" class="files-list"></div>
       <button type="button" id="files-more" class="small-button" hidden>Show more</button>
+    </form>
+  </dialog>
+
+  <dialog id="alike-dialog" class="files-dialog">
+    <form method="dialog">
+      <div class="files-head">
+        <h3>Look-alikes</h3>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <p class="muted small">Copies ("p01 (2)") and alternates ("p17 (alt)") compared with the part they copy. Exact duplicates are hidden for you. Hidden parts leave the part list and the randomizer; a character already wearing one keeps it. Your choice is remembered for this folder.</p>
+      <label class="lock"><input type="checkbox" id="alike-all"> Also list copies that are clearly different</label>
+      <div id="alike-list" class="alike-list"></div>
     </form>
   </dialog>
 
