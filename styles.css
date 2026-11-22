@@ -85,6 +85,9 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .part-list button {
   display: flex; justify-content: space-between; gap: 8px; text-align: left; border: 0; background: transparent; padding: 6px 8px;
 }
+.part-list button { min-width: 0; }
+.part-list button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.part-list button .value { flex-shrink: 1; }
 .part-list button.active { background: var(--hover); font-weight: 600; }
 .part-list .value { color: var(--muted); font-weight: 400; font-size: 12px; }
 .packs { margin-top: 16px; font-size: 12px; color: var(--muted); }
@@ -95,7 +98,9 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .variant {
   display: grid; justify-items: center; gap: 4px; padding: 6px; border-radius: 8px; border: 2px solid transparent;
   background: var(--hover); font-size: 11px; color: var(--muted);
+  min-width: 0; overflow: hidden;
 }
+.variant > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .variant.selected { border-color: var(--accent); color: var(--text); }
 .variant canvas, .variant .placeholder { width: 64px; height: 64px; image-rendering: pixelated; }
 .variant .placeholder { display: grid; place-items: center; font-size: 18px; }
@@ -191,7 +196,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .sets-head { display: flex; justify-content: space-between; align-items: center; color: var(--muted); margin-bottom: 4px; }
 .sets-head .small-button, .sets-io .small-button { margin-top: 0; }
 .set { display: flex; gap: 4px; margin: 3px 0; }
-.set-apply { flex: 1; text-align: left; padding: 3px 8px; font-size: 12px; }
+.set-apply { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding: 3px 8px; font-size: 12px; }
 .set-remove { padding: 0 7px; font-size: 11px; color: var(--muted); }
 .sets-io { display: flex; gap: 6px; margin-top: 6px; }
 .set-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; margin-bottom: 10px; }

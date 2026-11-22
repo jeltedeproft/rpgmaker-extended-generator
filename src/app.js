@@ -208,7 +208,7 @@ function renderSidebar() {
     }
   }
   $('part-list').replaceChildren(...items.map(([key, label, value]) => {
-    const button = el('button', { className: (key === state.selectedPart ? 'active' : '') + (key.includes(' #') ? ' piece' : '') }, [
+    const button = el('button', { className: (key === state.selectedPart ? 'active' : '') + (key.includes(' #') ? ' piece' : ''), title: value ? `${label}: ${value}` : label }, [
       el('span', { textContent: label + (state.locked.has(key) ? ' 🔒' : '') }),
       el('span', { className: 'value', textContent: value }),
     ]);
@@ -273,9 +273,11 @@ async function renderEditor() {
 
 function variantTile(key, variant) {
   const selected = (state.character.parts[key] || null) === (variant?.id || null);
-  const tile = el('button', { className: 'variant' + (selected ? ' selected' : ''), title: variant ? variant.id : 'None' });
+  const label = variant ? variantLabel(state.library, variant, state.character.bodyType) : 'None';
+  const tile = el('button', { className: 'variant' + (selected ? ' selected' : ''), title: variant ? `${label}
+${variant.id}` : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
-  tile.append(thumb, el('span', { textContent: variant ? variantLabel(state.library, variant, state.character.bodyType) : 'None' }));
+  tile.append(thumb, el('span', { textContent: label }));
   if (variant) {
     // Drawn in the current colours, so tiles follow colour changes (RPG Maker's own Variation
     // icons have fixed colours; they're only used when the part can't be drawn).
