@@ -148,6 +148,10 @@ try {
   await sleep(400);
   await shot('3-random.png');
 
+  // Credits: the pack in use, with its credits file.
+  await evaluate(`document.getElementById('credits').open = true`);
+  check('credits list the pack and its credits file', await evaluate(`(() => { const t = document.getElementById('credit-list').textContent; return t.includes('Sample kit') && t.includes('credits.txt'); })()`));
+
   // Save/load round trip through the real (de)serializer.
   const roundTrip = await evaluate(`(async () => {
     const m = await import(new URL('src/character.js', location.href).href);

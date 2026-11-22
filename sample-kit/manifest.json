@@ -62,6 +62,7 @@
     "Generator/grad_common.png",
     "Generator/grad_eyes.png",
     "Generator/grad_hair.png",
-    "Generator/grad_skin.png"
+    "Generator/grad_skin.png",
+    "credits.txt"
   ]
 }

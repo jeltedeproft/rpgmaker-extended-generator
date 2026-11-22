@@ -53,7 +53,7 @@ mixing Male/Female/Kid · pixel offsets.
 - ✅ Rotate elements per tile/frame (face and sprites separately, each frame around its own centre).
 - [ ] Character sets / partial characters (save a group of parts + colours, apply on top).
 - [ ] Randomize with rules.
-- [ ] Credits: show which pack every used part came from, with a readme/credit text per pack.
+- ✅ Credits: show which pack every used part came from, with a readme/credit text per pack.
 Tester's own ideas:
 - ✅ Split an image into islands separated by transparent gaps (e.g. left/right eye) as separate
       layers: move/tilt/recolour/reorder each (heterochromia, eye spacing). All 29 MZ female eyes

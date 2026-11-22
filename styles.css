@@ -175,3 +175,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .part-list button.piece { padding-left: 22px; font-size: 12px; color: var(--muted); }
 .part-list button.piece.active { color: var(--text); }
 #split-gap { width: 52px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 5px; }
+.credit { border-top: 1px solid var(--line); padding: 8px 0; display: grid; gap: 4px; }
+.credit-pack { font-weight: 600; }
+.credit input { font: inherit; font-size: 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.credit-text { white-space: pre-wrap; max-height: 180px; overflow: auto; font-size: 11px; background: var(--hover); padding: 6px; border-radius: 6px; margin: 4px 0 0; }

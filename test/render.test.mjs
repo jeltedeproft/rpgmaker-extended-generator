@@ -5,7 +5,7 @@ import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/
 import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces } from '../src/compose.js';
 import { islandLabels } from '../src/islands.js';
 import { solidOf, insideOutline, applyClip } from '../src/clip.js';
-import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter } from '../src/character.js';
+import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter, creditsFor, creditsText } from '../src/character.js';
 import { createLibrary, addPack } from '../src/parse.js';
 
 function solid(w, h, [r, g, b, a]) {
@@ -331,4 +331,18 @@ test('a clipped item is cut by the other item at its drawn position', () => {
   const { image } = composeSheet('TV', character, lib, new Map(), settings);
   assert.deepEqual(px(image, 1, 1), [77, 77, 77, 255]);
   assert.equal(px(image, 0, 0)[3], 255);
+});
+
+test('credits list every pack a character uses, and readme files are kept with their pack', () => {
+  const lib = sampleLibrary();
+  addPack(lib, 'Hats by Ann', [
+    { path: 'Hats/TV/Male/TV_AccB_p01.png', src: 'acc' },
+    { path: 'Hats/credits.txt', src: 'c' },
+    { path: 'Hats/notes.md', src: 'n' },
+  ]);
+  assert.deepEqual(lib.packs[1].texts.map((t) => t.path), ['Hats/credits.txt', 'Hats/notes.md']);
+  const character = { bodyType: 'Male', parts: { Body: 'P/Male/Body/p01', AccB: 'Hats by Ann/Male/AccB/p01', Tail: null }, colors: { skin: 'Hats by Ann/gradients#0' } };
+  const credits = creditsFor(character, lib);
+  assert.deepEqual(credits.map((c) => [c.pack, c.parts, c.colours]), [['P', ['Body p01'], false], ['Hats by Ann', ['AccB p01'], true]]);
+  assert.equal(creditsText(credits, { 'Hats by Ann': 'CC-BY' }), 'P: Body p01\nHats by Ann (CC-BY): AccB p01; colours');
 });

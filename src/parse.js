@@ -8,6 +8,9 @@ const PART_FILE_RE = /^(FG|TVD|TV|SV|icon)_([A-Za-z]+?)(\d*)_p([A-Za-z0-9-]+)((?
 const COPY_SUFFIX_RE = /\s*\((\d+)\)(?=\.png$)/i;
 const CANONICAL_PART = new Map(PART_ORDER.map((p) => [p.toLowerCase(), p]));
 const GRADIENT_FILE_RE = /^(?:gradients|grad_([A-Za-z0-9]+))\.png$/i;
+/** Text files kept with a pack for the credits list. */
+export const TEXT_FILE_RE = /\.(txt|md)$/i;
+const CREDIT_NAME_RE = /credit|licen[cs]e|terms|readme|copyright|author|about/i;
 
 const SHEET_FOLDER_NAMES = new Set(
   [...Object.values(SHEETS).map((s) => s.folder), 'Variation', 'Generator'].map((n) => n.toLowerCase()),
@@ -139,10 +142,15 @@ export function addPack(library, packName, entries) {
   let name = packName || 'Pack';
   let n = 2;
   while (library.packs.some((p) => p.name === name)) name = `${packName} (${n++})`;
-  const pack = { name, fileCount: entries.length };
+  const pack = { name, fileCount: entries.length, texts: [] };
   library.packs.push(pack);
 
   for (const { path, src } of entries) {
+    // Readme, credits and licence files: shown in the credits list.
+    if (TEXT_FILE_RE.test(path)) {
+      pack.texts.push({ path, src });
+      continue;
+    }
     if (!/\.png$/i.test(path)) continue;
 
     const gradient = parseGradientPath(path);
@@ -186,6 +194,10 @@ export function addPack(library, packName, entries) {
       }
     }
   }
+
+  // Credit-like files first: "credits.txt" before "notes.txt".
+  const creditLike = (t) => (CREDIT_NAME_RE.test(t.path.split('/').pop()) ? 0 : 1);
+  pack.texts.sort((a, b) => creditLike(a) - creditLike(b) || a.path.localeCompare(b.path));
 
   // Masks without a base image can't be drawn.
   for (const body of library.bodyTypes.values()) {

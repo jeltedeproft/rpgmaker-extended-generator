@@ -3,7 +3,8 @@
 
 import { PART_ORDER, REQUIRED_PARTS, SLOTS } from './format.js';
 import { preferredCategory, createCustomGradient } from './gradients.js';
-import { partOfKey, pieceKeys } from './compose.js';
+import { partOfKey, pieceKeys, selectedItems, variantForSheet } from './compose.js';
+import { SHEET_KEYS } from './format.js';
 
 // v1: variant ids were "pack/pNN" (one body type per character).
 // v2: variant ids are "pack/bodyType/part/pNN" and characters may carry offsets.
@@ -135,6 +136,43 @@ export function resolveVariant(library, part, savedId, fallbackBodyType) {
     if (found) return found;
   }
   return null;
+}
+
+/**
+ * Which packs a character uses, for crediting: [{pack, parts: ["Eyes p03", ...], colours}].
+ * Includes packs that only lend a sheet (odd-eye bodies) or a colour.
+ */
+export function creditsFor(character, library) {
+  const byPack = new Map();
+  const entry = (pack) => {
+    if (!byPack.has(pack)) byPack.set(pack, { pack, parts: new Set(), colours: false });
+    return byPack.get(pack);
+  };
+  for (const { key, variant } of selectedItems(character, library)) {
+    for (const sheet of SHEET_KEYS) {
+      const source = variantForSheet(variant, sheet, library);
+      if (source) entry(source.pack).parts.add(`${key} ${source.pid}`);
+    }
+  }
+  const packNames = new Set(library.packs.map((p) => p.name));
+  const colourIds = [
+    ...Object.values(character.colors || {}),
+    ...Object.values(character.itemColors || {}).flatMap((c) => Object.values(c)),
+  ];
+  for (const id of colourIds) {
+    const pack = id?.split('/')[0];
+    if (packNames.has(pack)) entry(pack).colours = true;
+  }
+  return [...byPack.values()].map((c) => ({ ...c, parts: [...c.parts] }));
+}
+
+/** Plain-text credits, ready to paste into a game's credits. */
+export function creditsText(credits, notes = {}) {
+  return credits.map((c) => {
+    const what = [c.parts.length ? c.parts.join(', ') : '', c.colours ? 'colours' : ''].filter(Boolean).join('; ');
+    const note = notes[c.pack]?.trim();
+    return `${c.pack}${note ? ` (${note})` : ''}: ${what}`;
+  }).join('\n');
 }
 
 export function serializeCharacter(character, customGradients) {

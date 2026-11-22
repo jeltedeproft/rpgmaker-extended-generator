@@ -24,6 +24,8 @@ existing extended generator is, minus the bugs:
   earrings): move, turn, recolour and reorder each piece on its own.
 - **Regional transparency:** show a part only inside another part's outline (hair in a hood's
   opening), only where they overlap, or except where they overlap.
+- **Credits:** lists every pack the character uses (parts and colours), shows readme/credit
+  files found in the pack folder, lets you add an author line, and exports a `_credits.txt`.
 - **Editable draw order** per sheet (starts as RPG Maker's order).
 - **Randomize** with per-part locks.
 

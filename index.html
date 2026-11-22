@@ -126,6 +126,12 @@
           <figcaption>Damage</figcaption>
         </figure>
       </div>
+      <details id="credits" class="settings">
+        <summary>Credits</summary>
+        <p class="muted small">Packs this character uses. Readme and credit files found in a pack folder are shown here; add an author or licence line per pack if it has none.</p>
+        <div id="credit-list"></div>
+        <button id="copy-credits" class="small-button">Copy credits</button>
+      </details>
       <details id="layers" class="settings">
         <summary>Draw order</summary>
         <div class="layer-head">
@@ -148,6 +154,7 @@
         <button data-export="SV">Battler</button>
         <button data-export="all" class="primary">All</button>
       </div>
+      <p class="muted small">"All" also saves a <code>_credits.txt</code> listing the packs used.</p>
       <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>. Battlers go in <code>img/sv_actors</code> and faces in <code>img/faces</code>.</p>
       <details class="settings">
         <summary>Settings</summary>

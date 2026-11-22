@@ -51,6 +51,11 @@ async function toBlob(src) {
   return src;
 }
 
+/** Reads a text file (File, Blob or URL). */
+export async function readText(src) {
+  return (await toBlob(src)).text();
+}
+
 /** Decodes a PNG (File, Blob or URL) to {width, height, data}. Colours are not premultiplied/converted. */
 export async function decodeImage(src) {
   const bitmap = await createImageBitmap(await toBlob(src), {
@@ -158,7 +163,7 @@ export async function entriesFromHandle(handle, prefix = handle.name + '/') {
   const entries = [];
   for await (const [name, child] of handle.entries()) {
     if (child.kind === 'directory') entries.push(...(await entriesFromHandle(child, `${prefix}${name}/`)));
-    else if (/\.png$/i.test(name)) entries.push({ path: prefix + name, src: await child.getFile() });
+    else if (/\.(png|txt|md)$/i.test(name)) entries.push({ path: prefix + name, src: await child.getFile() });
   }
   return entries;
 }

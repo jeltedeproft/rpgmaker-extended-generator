@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS } from './format.js';
-import { createLibrary, addPack, variantLabel, variantsForPart } from './parse.js';
+import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -10,13 +10,13 @@ import {
 import { createImage } from './recolor.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
-  serializeCharacter, deserializeCharacter, itemKeys, addItem, removeItem,
+  serializeCharacter, deserializeCharacter, itemKeys, addItem, removeItem, creditsFor, creditsText,
 } from './character.js';
 import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage,
   ensureVariants, loadGradients, toCanvas, downloadBlob, downloadImage,
   canRememberFolders, pickFolder, entriesFromHandle, rememberFolder, forgetFolder, rememberedFolders,
-  ensureReadPermission,
+  ensureReadPermission, readText,
 } from './loader.js';
 
 const ALL_COLOURS = '__colours';
@@ -95,7 +95,16 @@ async function importEntries(entries, packName) {
   }
   const partsBefore = state.library.variants.size;
   const gradientFilesBefore = state.library.gradientFiles.length;
-  const pack = addPack(state.library, packName, pngs);
+  const texts = entries.filter((e) => TEXT_FILE_RE.test(e.path));
+  const pack = addPack(state.library, packName, [...pngs, ...texts]);
+  // Readme / credit files, shown in the credits list.
+  pack.textContents = await Promise.all(pack.texts.slice(0, 8).map(async (t) => {
+    try {
+      return { path: t.path, text: (await readText(t.src)).slice(0, 6000) };
+    } catch {
+      return { path: t.path, text: '(could not read this file)' };
+    }
+  }));
   const addedParts = state.library.variants.size - partsBefore;
   const addedGradientFiles = state.library.gradientFiles.length - gradientFilesBefore;
 
@@ -512,7 +521,50 @@ async function renderPreview() {
   dmgCtx.clearRect(0, 0, 144, 48);
   if (state.composites.TVD) dmgCtx.drawImage(state.composites.TVD.canvas, 0, 0);
   renderLayers();
+  renderCredits();
   renderProblems();
+}
+
+/** Credits: every pack the character uses, the parts taken from it, and the pack's readme. */
+let lastCredits = '';
+function renderCredits() {
+  const credits = creditsFor(state.character, state.library);
+  const notes = (state.settings.packCredits ||= {});
+  // Rebuild only when the list changes, so open readmes and half-typed notes survive redraws.
+  const signature = JSON.stringify(credits);
+  if (signature === lastCredits) return;
+  lastCredits = signature;
+  $('copy-credits').disabled = !credits.length;
+  if (!credits.length) {
+    $('credit-list').replaceChildren(el('p', { className: 'muted small', textContent: 'No parts selected.' }));
+    return;
+  }
+  $('credit-list').replaceChildren(...credits.map((c) => {
+    const pack = state.library.packs.find((p) => p.name === c.pack);
+    const note = el('input', { type: 'text', value: notes[c.pack] || '', placeholder: 'Author / licence, e.g. "by Someone, CC-BY 4.0"' });
+    note.addEventListener('change', () => {
+      notes[c.pack] = note.value;
+      saveSettings();
+    });
+    const what = [c.parts.join(', '), c.colours ? 'colours' : ''].filter(Boolean).join('; ');
+    const block = el('div', { className: 'credit' }, [
+      el('div', { className: 'credit-pack', textContent: c.pack }),
+      el('div', { className: 'muted small', textContent: what }),
+      note,
+    ]);
+    for (const t of pack?.textContents || []) {
+      block.append(el('details', { className: 'small' }, [
+        el('summary', { textContent: t.path.split('/').pop() }),
+        el('pre', { className: 'credit-text', textContent: t.text }),
+      ]));
+    }
+    if (!pack?.textContents?.length) block.append(el('div', { className: 'muted small', textContent: 'No readme or credits file in this pack.' }));
+    return block;
+  }));
+}
+
+function currentCreditsText() {
+  return creditsText(creditsFor(state.character, state.library), state.settings.packCredits || {});
 }
 
 /** The draw order list: every layer of the chosen sheet, top-most first, with up/down buttons. */
@@ -780,6 +832,15 @@ $('randomize').addEventListener('click', () => {
   renderAll();
 });
 
+$('copy-credits').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(currentCreditsText());
+    toast('Credits copied.');
+  } catch {
+    toast('Could not copy: your browser blocked the clipboard.');
+  }
+});
+
 $('layer-sheet').addEventListener('change', renderLayers);
 $('layer-reset').addEventListener('click', () => {
   delete state.character.drawOrder?.[$('layer-sheet').value];
@@ -821,6 +882,9 @@ document.querySelector('.export').addEventListener('click', async (e) => {
     if (!c) continue;
     await downloadImage(c.image, SHEET_FILE_NAMES[key](name));
     count++;
+  }
+  if (sheet === 'all') {
+    downloadBlob(new Blob([currentCreditsText() + '\n'], { type: 'text/plain' }), `${name}_credits.txt`);
   }
   if (sheet === 'all' && state.customGradients.length) {
     await downloadImage(gradientsToImage(state.customGradients), `${name}_custom_gradients.png`);
