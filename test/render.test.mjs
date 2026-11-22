@@ -173,12 +173,31 @@ test('a body or face set to None stays empty; new characters still get one', () 
   assert.equal(cleared.parts.Body, null);
 });
 
-test('scanMask lists slots and reports colours that match no slot', () => {
+test('near-miss mask colours join a slot the mask uses; far-off colours are reported', () => {
+  // MZ's TV_Body masks mark part of each eye #1380f8 next to the real eye colour #2c80cb.
   const mask = createImage(4, 1);
-  mask.data.set([0x2c, 0x80, 0xcb, 255, 0x13, 0x80, 0xf8, 255, 255, 255, 255, 255, 0x13, 0x80, 0xf8, 255]);
+  mask.data.set([0x2c, 0x80, 0xcb, 255, 0x13, 0x80, 0xf8, 255, 0xfe, 0xfe, 0xfe, 255, 0x00, 0xff, 0x00, 255]);
   const { slots, unknown } = scanMask(mask);
   assert.deepEqual([...slots], ['eyes']);
-  assert.deepEqual([...unknown], [[0x1380f8, 2]]);
+  assert.deepEqual([...unknown], [[0x00ff00, 1]]);
+
+  const base = solid(4, 1, [128, 128, 128, 255]);
+  const red = gradientFromStops([{ pos: 0, color: '#ff0000' }, { pos: 1, color: '#ff0000' }]);
+  const out = recolorLayer(base, mask, null, (id) => (id === 'eyes' ? red : null), { flipGradient: false });
+  assert.deepEqual([...out.data.slice(0, 8)], [255, 0, 0, 255, 255, 0, 0, 255]); // both eye pixels
+  assert.deepEqual([...out.data.slice(8, 16)], [128, 128, 128, 255, 128, 128, 128, 255]); // off-white, unknown: kept
+});
+
+test('a face cell used both fixed and recoloured gives two layers, recoloured on top', () => {
+  const lib = createLibrary();
+  addPack(lib, 'MZ', [
+    { path: 'g/Face/Male/FG_Beard_p07_c1_m003.png', src: 'coloured' },
+    { path: 'g/Face/Male/FG_Beard_p07_c1.png', src: 'fixed' },
+  ]);
+  assert.deepEqual(lib.warnings, []);
+  const v = [...lib.variants.values()][0];
+  const character = { bodyType: 'Male', parts: { Beard: v.id }, colors: {}, offsets: {} };
+  assert.deepEqual(layersForSheet('FG', character, lib).map((l) => l.base.src), ['fixed', 'coloured']);
 });
 
 test('a set variant (odd-eye body) borrows the sheets it lacks from the plain variant', () => {

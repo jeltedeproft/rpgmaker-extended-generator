@@ -37,23 +37,63 @@ export function matchSlot(rgb) {
   return best;
 }
 
+/** Unknown mask colours this close (max channel difference) to a slot the mask uses join it. */
+export const MASK_NEAR_DISTANCE = 64;
+const paletteCache = new WeakMap();
+
 /**
- * Which slots a mask uses, plus colours that match no slot (those pixels keep their original
- * colour, which shows up as e.g. stray blue in recoloured eyes).
- * @returns {{slots:Set<string>, unknown:Map<number,number>}} unknown: rgb -> pixel count
+ * Maps every colour in a mask to a slot id (or null = keep the original colour).
+ * Exact slot colours (with a small tolerance) come first. RPG Maker's own masks also contain
+ * near-misses, e.g. MZ's TV_Body masks mark part of each eye #1380f8 instead of #2c80cb. Those
+ * join the closest slot that this same mask already uses, or white (keep) when that is closer.
+ * @returns {Map<number,string|null>}
  */
-export function scanMask(mask) {
-  const slots = new Set();
-  const unknown = new Map();
-  const ids = new Map();
+export function maskPalette(mask) {
+  if (paletteCache.has(mask)) return paletteCache.get(mask);
+  const palette = new Map();
   const d = mask.data;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] === 0) continue;
     const rgb = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
-    if (!ids.has(rgb)) ids.set(rgb, matchSlot(rgb));
-    const id = ids.get(rgb);
-    if (id) slots.add(id);
-    else if (rgb !== MASK_IGNORE_RGB) unknown.set(rgb, (unknown.get(rgb) || 0) + 1);
+    if (!palette.has(rgb)) palette.set(rgb, matchSlot(rgb));
+  }
+  const used = new Set([...palette.values()].filter(Boolean));
+  const candidates = [{ id: null, rgb: MASK_IGNORE_RGB }, ...SLOTS.filter((s) => used.has(s.id))];
+  for (const [rgb, id] of palette) {
+    if (id || rgb === MASK_IGNORE_RGB) continue;
+    let best;
+    let bestDistance = MASK_NEAR_DISTANCE + 1;
+    for (const c of candidates) {
+      const dist = Math.max(
+        Math.abs(((c.rgb >> 16) & 255) - ((rgb >> 16) & 255)),
+        Math.abs(((c.rgb >> 8) & 255) - ((rgb >> 8) & 255)),
+        Math.abs((c.rgb & 255) - (rgb & 255)),
+      );
+      if (dist < bestDistance) {
+        best = c;
+        bestDistance = dist;
+      }
+    }
+    palette.set(rgb, best ? best.id : undefined);
+  }
+  paletteCache.set(mask, palette);
+  return palette;
+}
+
+/**
+ * Which slots a mask uses, plus colours that match no slot even approximately (those pixels keep
+ * their original colour).
+ * @returns {{slots:Set<string>, unknown:Map<number,number>}} unknown: rgb -> pixel count
+ */
+export function scanMask(mask) {
+  const palette = maskPalette(mask);
+  const slots = new Set([...palette.values()].filter(Boolean));
+  const unknown = new Map();
+  const d = mask.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const rgb = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+    if (palette.get(rgb) === undefined) unknown.set(rgb, (unknown.get(rgb) || 0) + 1);
   }
   return { slots, unknown };
 }
@@ -80,6 +120,7 @@ export function recolorLayer(base, mask, slotId, gradientFor, settings) {
   if (!mask && !wholeLayerGradient) return out;
 
   const maskUsable = mask && mask.width === base.width && mask.height === base.height;
+  const palette = maskUsable ? maskPalette(mask) : null;
   const perSlot = new Map();
 
   for (let i = 0; i < src.length; i += 4) {
@@ -88,7 +129,7 @@ export function recolorLayer(base, mask, slotId, gradientFor, settings) {
     if (maskUsable) {
       const m = mask.data;
       if (m[i + 3] === 0) continue;
-      const id = matchSlot((m[i] << 16) | (m[i + 1] << 8) | m[i + 2]);
+      const id = palette.get((m[i] << 16) | (m[i + 1] << 8) | m[i + 2]);
       if (!id) continue;
       if (!perSlot.has(id)) perSlot.set(id, gradientFor(id));
       gradient = perSlot.get(id);

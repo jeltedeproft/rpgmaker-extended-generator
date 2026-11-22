@@ -23,8 +23,7 @@
 - [ ] VX Ace generator folders: different format. Need a file listing to support it.
 - ✅ Odd-eyed bodies from "Basic Resources": open the DLC `generator` folder next to the normal
       one; bodies show up as `p01 (left_green)` etc. No file swapping.
-- [ ] Eyes: still need the **MZ** generator folder (the tester sent it; only MV + DLC were copied
-      over). MV's official eyes recolour cleanly, so the stray blue is MZ-specific.
+- ✅ Eyes: MZ's walk-sprite body masks use a second blue for part of the eye; now matched.
 
 ## Blocked on RPG Maker's own generator (trial: rpgmakerweb.com/free-trials, or the tester's files)
 - [ ] Settle the open questions in `docs/FORMAT.md` (brightness measure first).

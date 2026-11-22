@@ -1,0 +1,31 @@
+# Posts to Discord when GitHub Pages has published a new version of the site.
+# The webhook URL lives in the repository secret DISCORD_WEBHOOK (never in this file: the repo is public).
+# Put [skip notify] in a commit message to publish without a post.
+name: Discord update notice
+
+on:
+  page_build:
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    if: github.event.build.status == 'built'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post the update
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.build.commit }}
+          SITE: https://jeltedeproft.github.io/rpgmaker-extended-generator/
+        run: |
+          message=$(gh api "repos/${{ github.repository }}/commits/$SHA" --jq .commit.message)
+          if grep -qF '[skip notify]' <<< "$message"; then echo "skipped"; exit 0; fi
+          subject=$(head -n1 <<< "$message")
+          # Bullet lines (and their continuations) from the commit body, without the co-author trailer.
+          details=$(tail -n +2 <<< "$message" | grep -E '^(- |  )' | head -n 12 || true)
+          content=$(printf '**Generator updated:** %s\n%s\n%s' "$subject" "$details" "$SITE")
+          jq -n --arg content "$content" '{content: $content, allowed_mentions: {parse: []}}' \
+            | curl -fsS -H 'Content-Type: application/json' -d @- "$WEBHOOK"

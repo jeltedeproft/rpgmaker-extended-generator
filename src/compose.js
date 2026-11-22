@@ -76,7 +76,8 @@ export function layersForSheet(sheet, character, library) {
   }
   return layers
     .map((layer, i) => ({ layer, i, order: orderIndex(sheet, layer.key, layer.part) }))
-    .sort((a, b) => b.order - a.order || a.i - b.i)
+    // Same position: the recoloured layer goes above a fixed one (see FG_Beard_p07_c1 vs _c1_m003).
+    .sort((a, b) => b.order - a.order || !!a.layer.slotId - !!b.layer.slotId || a.i - b.i)
     .map((entry) => entry.layer);
 }
 

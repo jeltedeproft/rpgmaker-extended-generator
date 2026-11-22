@@ -9,7 +9,7 @@ import { decodePng } from '../tools/png.mjs';
 import { createLibrary, addPack } from '../src/parse.js';
 import { splitGradientImage } from '../src/gradients.js';
 import { composeSheet } from '../src/compose.js';
-import { matchSlot } from '../src/recolor.js';
+import { maskPalette } from '../src/recolor.js';
 
 const ASSETS = join(dirname(fileURLToPath(import.meta.url)), '..', 'test-assets');
 const packs = existsSync(ASSETS) ? readdirSync(ASSETS).filter((n) => statSync(join(ASSETS, n)).isDirectory()) : [];
@@ -46,7 +46,7 @@ for (const name of packs.length ? packs.filter((n) => !UNSUPPORTED.has(n)) : ['(
     const { lib } = loadPack(name);
     const unrecognised = lib.unrecognized.map((u) => u.path).filter((p) => /(^|\/)(Face|TV|TVD|SV|Variation)\//i.test(p))
       // Names without a part number (user files like "TV_ClothingEric.png") can't be placed by name.
-      .filter((p) => /_p[A-Za-z0-9-]+(_|\.| \()/i.test(p.split('/').pop()) && !/\.png\.png$/i.test(p));
+      .filter((p) => /_p[A-Za-z0-9-]+(_|\.| \()/i.test(p.split('/').pop()) && !/\.png\.png$|\]/i.test(p));
     assert.deepEqual(unrecognised, []);
     // RPG Maker's own masks have a few stray pixels (e.g. 148 of ~2 million in MV), so allow a
     // tiny share of unknown colours but nothing systematic.
@@ -56,12 +56,12 @@ for (const name of packs.length ? packs.filter((n) => !UNSUPPORTED.has(n)) : ['(
       for (const l of v.layers) {
         if (!l.mask) continue;
         const d = l.mask.pixels.data;
+        const palette = maskPalette(l.mask.pixels);
         for (let i = 0; i < d.length; i += 4) {
           if (!d[i + 3]) continue;
-          const rgb = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
-          if (rgb === 0xffffff) continue;
-          if (matchSlot(rgb)) known++;
-          else unknown++;
+          const id = palette.get((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+          if (id === undefined) unknown++;
+          else if (id) known++;
         }
       }
     }

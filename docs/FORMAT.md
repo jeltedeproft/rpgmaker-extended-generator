@@ -46,6 +46,16 @@ Generator/
   `<left_colour>` folder as a **set**: the variant is `Body p01 (left_green)`, and sheets it doesn't
   have (face, damage) come from the plain `Body p01`.
 
+- ✅ **RPG Maker MZ `generator`** (4735 files): every part parses except one typo'd official file
+  (`FG_FrontHair_p17_c1].png`). Findings:
+  - MZ's `TV_Body` masks mark part of each eye `#1380f8` instead of the eye colour `#2c80cb` (the
+    tester's "alien eyes"). Clothing masks contain off-whites (`#fffffd`, `#fbfdfe`...) and other
+    near-misses. Rule: an unknown mask colour joins the closest slot **that the same mask already
+    uses**, or white (keep), if within 64 per channel. RPG Maker's exact rule is unverified, but this
+    leaves 8 colours (about 10 pixels) unmatched across all 1375 masks.
+  - A face cell can exist twice: fixed (`FG_Beard_p07_c1`) and recoloured (`FG_Beard_p07_c1_m003`,
+    identical pixels). Both are kept; the recoloured one is drawn on top.
+
 ## Open questions (need RPG Maker's own generator to compare)
 1. **How brightness is measured.** 34–47% of pixels in recolourable areas are coloured, not grey.
    We use luminance (0.299R + 0.587G + 0.114B). RPG Maker might use a single channel or max(R,G,B).

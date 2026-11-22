@@ -167,7 +167,10 @@ export function addPack(library, packName, entries) {
     }
 
     const key = layerKey(parsed);
-    let layer = variant.layers.find((l) => l.sheet === parsed.sheet && l.key === key);
+    // Official MZ faces can use one cell twice: fixed (FG_Clothing1_p04_c1) and recoloured
+    // (FG_Clothing1_p04_c1_m010). Those are two layers, not duplicates.
+    const sameSlot = (l) => parsed.sheet !== 'FG' || !l.base || l.slotId === parsed.slotId;
+    let layer = variant.layers.find((l) => l.sheet === parsed.sheet && l.key === key && sameSlot(l));
     if (!layer) {
       layer = { sheet: parsed.sheet, key, layer: parsed.layer, part: parsed.part, slotId: null, base: null, mask: null };
       variant.layers.push(layer);
