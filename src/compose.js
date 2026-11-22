@@ -159,9 +159,12 @@ export function clipOf(character, key) {
 
 /** The colour a slot gets for an item or piece: its own choice, else its item's, else the character's. */
 export function itemColor(character, key, slotId) {
-  return character.itemColors?.[key]?.[slotId]
-    || character.itemColors?.[itemOfKey(key)]?.[slotId]
-    || character.colors[slotId];
+  // An item with its own colours can also pick the source colours (null) on its own.
+  for (const k of [key, itemOfKey(key)]) {
+    const own = character.itemColors?.[k];
+    if (own && slotId in own && own[slotId] !== undefined) return own[slotId];
+  }
+  return character.colors[slotId] || null;
 }
 
 /** Identifies one drawn layer in a custom draw order. */

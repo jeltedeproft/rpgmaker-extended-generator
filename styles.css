@@ -123,6 +123,12 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .swatch.selected { border-color: var(--accent); }
 .swatch.add { width: 58px; height: 18px; line-height: 1; font-size: 12px; display: grid; place-items: center; border: 1px dashed var(--line); }
 .swatch-group { font-size: 11px; color: var(--muted); margin: 6px 0 3px; }
+.swatch.source.selected { border: 2px solid var(--accent); }
+.sheet-parts { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; font-size: 13px; margin-top: 6px; }
+.sheet-parts select { min-width: 0; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }
+.sheet-parts .blank { color: var(--warn, #d9822b); font-size: 12px; }
+.part-list button.hidden-item > span:first-child { text-decoration: line-through; opacity: 0.7; }
+.source-reset { margin-bottom: 6px; }
 
 .preview-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 figure { margin: 0; display: grid; gap: 6px; justify-items: center; }

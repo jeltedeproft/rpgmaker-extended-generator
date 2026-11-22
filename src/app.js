@@ -157,9 +157,9 @@ async function importEntries(entries, packName) {
 function ensureCharacter() {
   if (!state.character) {
     const bodyType = state.library.bodyTypes.has('Male') ? 'Male' : [...state.library.bodyTypes.keys()][0];
+    // Parts start in the colours they are drawn in; gradients only once you pick one.
     state.character = applyDefaults(createCharacter(bodyType), state.library);
   }
-  assignDefaultColours();
 }
 
 /** Why a folder gave no parts, in words a user can act on. */
@@ -167,23 +167,6 @@ function unsupportedHint(gradientFiles) {
   if (gradientFiles) return `only colour sheets were found (${gradientFiles}); they've been added to the colour lists.`;
   return 'no files are named like MV/MZ generator parts (FG_..., TV_..., SV_...). '
     + 'VX Ace and older generator folders use a different format that is not supported yet.';
-}
-
-/** Gives every still-uncoloured slot the first suggested gradient. */
-function assignDefaultColours() {
-  const gradients = allGradients();
-  if (!gradients.length) return;
-  for (const slot of SLOTS) {
-    if (state.character.colors[slot.id]) continue;
-    const preferred = gradients.filter((g) => g.category === preferredCategory(slot.id));
-    // Row 0 of RPG Maker's sheets can be plain white; prefer a row with some colour in it.
-    const pool = preferred.length ? preferred : gradients;
-    state.character.colors[slot.id] = (pool.find((g) => !isFlat(g)) || pool[0]).id;
-  }
-}
-function isFlat(gradient) {
-  const c = gradient.colors;
-  return c[0] === c[128 * 4] && c[1] === c[128 * 4 + 1] && c[2] === c[128 * 4 + 2];
 }
 
 function showApp() {
@@ -568,10 +551,12 @@ function slotColour(slotId) {
   const key = ownColourItem();
   return key ? itemColor(state.character, key, slotId) : state.character.colors[slotId];
 }
+/** gradientId null = the source colours (the picture as drawn, no gradient). */
 function setSlotColour(slotId, gradientId) {
   const key = ownColourItem();
   if (key) state.character.itemColors[key][slotId] = gradientId;
-  else state.character.colors[slotId] = gradientId;
+  else if (gradientId) state.character.colors[slotId] = gradientId;
+  else delete state.character.colors[slotId];
 }
 
 function slotsForEditor() {
@@ -619,6 +604,18 @@ function renderSlots() {
       renderPreview();
     });
     head.push(el('label', { className: 'lock own-colours' }, [own, ' Own colours for this item (other parts keep the shared colours)']));
+  } else {
+    const coloured = Object.keys(state.character.colors).length || Object.keys(state.character.itemColors || {}).length;
+    const reset = el('button', { className: 'small-button', textContent: 'Back to source colours', disabled: !coloured,
+      title: 'Remove every gradient: all parts show the colours they are drawn in' });
+    reset.addEventListener('click', () => {
+      state.character.colors = {};
+      state.character.itemColors = {};
+      renderSlots();
+      renderPreview();
+      refreshTiles();
+    });
+    head.push(el('div', { className: 'source-reset' }, [reset]));
   }
   box.replaceChildren(...head, ...slots.map((slot) => {
     const preferred = preferredCategory(slot.id);
@@ -636,6 +633,15 @@ function renderSlots() {
         el('span', { textContent: slot.label }),
       ]),
     ]);
+    const source = el('button', { className: 'swatch add source' + (slotColour(slot.id) ? '' : ' selected'), textContent: 'Source',
+      title: 'The colours the part is drawn in, no gradient' });
+    source.addEventListener('click', () => {
+      setSlotColour(slot.id, null);
+      renderSlots();
+      renderPreview();
+      refreshTiles();
+    });
+    wrap.append(el('div', { className: 'swatches', style: 'margin-bottom:5px' }, [source]));
     for (const key of ordered) {
       const swatches = el('div', { className: 'swatches' }, groups.get(key).map((g) => swatchButton(slot, g)));
       if (key === 'Other') {
