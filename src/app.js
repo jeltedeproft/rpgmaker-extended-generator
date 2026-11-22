@@ -319,7 +319,8 @@ function refreshTiles() {
 
 /**
  * A tile picture: the part alone, in the current colours. Uses the face if it has one, else the
- * middle walk frame facing down, else the first battler frame. Only that sheet is decoded.
+ * middle walk frame facing down, else the first battler frame, else the first damage frame (some
+ * packs only add a damage sprite). Only that sheet is decoded.
  */
 function partThumbnail(key, variant) {
   const alone = {
@@ -330,7 +331,7 @@ function partThumbnail(key, variant) {
   if (!thumbCache.has(cacheKey)) {
     if (thumbCache.size > 600) thumbCache.clear();
     thumbCache.set(cacheKey, (async () => {
-      for (const sheet of ['FG', 'TV', 'SV']) {
+      for (const sheet of ['FG', 'TV', 'SV', 'TVD']) {
         const layers = sheetLayers(variant, sheet, state.library);
         if (!layers.length) continue;
         await ensureLayers(layers);

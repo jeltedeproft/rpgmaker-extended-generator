@@ -478,3 +478,17 @@ test('reads RPG Maker MZ generator presets (CharacterGeneratorSettings)', () => 
   assert.deepEqual(character.offsets.Nose.face, { x: -3, y: -1, rot: 0 });
   assert.deepEqual(missing, ['Beard p09']);
 });
+
+test('a renamed copy "p07 (2)" does not borrow the damage sprite of p07', () => {
+  const lib = createLibrary();
+  addPack(lib, 'MV', [
+    { path: 'G/TV/Female/TV_AccB_p07.png', src: 'jester' },
+    { path: 'G/TVD/Female/TVD_AccB_p07.png', src: 'jesterDamage' },
+    { path: 'G/TV/Female/TV_AccB_p07 (2).png', src: 'horns' },
+  ]);
+  const img = createImage(144, 48);
+  for (const v of lib.variants.values()) for (const l of v.layers) l.base.pixels = img;
+  const draw = (sheet) => layersForSheet(sheet, { bodyType: 'Female', parts: { AccB: 'MV/Female/AccB/p07 (2)' }, colors: {} }, lib).map((d) => d.layer.base.src);
+  assert.deepEqual(draw('TV'), ['horns']);
+  assert.deepEqual(draw('TVD'), []);
+});

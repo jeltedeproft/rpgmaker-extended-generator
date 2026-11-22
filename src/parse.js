@@ -51,8 +51,12 @@ export function parsePartPath(path) {
     part: name,
     layer: name + layerNumber,
     pid: 'p' + pid + (tags.length ? ` (${tags.join(', ')})` : ''),
-    /** The plain part number, without set or copy tags. */
-    basePid: 'p' + pid,
+    /**
+     * The variant this one borrows missing sheets from: the plain part number for a set
+     * ("p01 (left_green)"). A renamed copy ("p07 (2)", RPG Maker's fix for clashing DLC names) is a
+     * different item, so it borrows nothing.
+     */
+    basePid: copy ? 'p' + pid + (tags.length ? ` (${tags.join(', ')})` : '') : 'p' + pid,
     bodyType,
     isMask: false,
     cell: null,
