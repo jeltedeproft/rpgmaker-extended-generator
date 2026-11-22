@@ -5,7 +5,7 @@ import { createLibrary, addPack, variantLabel, variantsForPart } from './parse.j
 import { createCustomGradient, gradientsToImage, preferredCategory } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
-  layersForSheet, drawId, moveLayer,
+  layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces,
 } from './compose.js';
 import { createImage } from './recolor.js';
 import {
@@ -176,10 +176,11 @@ function renderSidebar() {
     for (const key of [part, ...itemKeys(state.character, part)]) {
       const variant = lib.variants.get(state.character.parts[key]);
       items.push([key, key, variant ? variantLabel(lib, variant, state.character.bodyType) : 'none']);
+      for (const piece of pieceKeys(state.character, key)) items.push([piece, `↳ piece ${piece.split('#').pop()}`, '']);
     }
   }
   $('part-list').replaceChildren(...items.map(([key, label, value]) => {
-    const button = el('button', { className: key === state.selectedPart ? 'active' : '' }, [
+    const button = el('button', { className: (key === state.selectedPart ? 'active' : '') + (key.includes(' #') ? ' piece' : '') }, [
       el('span', { textContent: label + (state.locked.has(key) ? ' 🔒' : '') }),
       el('span', { className: 'value', textContent: value }),
     ]);
@@ -201,19 +202,26 @@ async function renderEditor() {
   const key = state.selectedPart;
   const isColours = key === ALL_COLOURS;
   const part = isColours ? null : partOfKey(key);
-  const isExtra = !isColours && key !== part;
-  $('editor-title').textContent = isColours ? 'All colours' : key;
+  const isPiece = !isColours && itemOfKey(key) !== key;
+  const isExtra = !isColours && !isPiece && key !== part;
+  const worn = !isColours && !!state.character.parts[itemOfKey(key)];
+  $('editor-title').textContent = isColours ? 'All colours' : isPiece ? `${itemOfKey(key)}, piece ${key.split('#').pop()}` : key;
   $('lock-part').checked = state.locked.has(key);
-  $('lock-part').parentElement.hidden = isColours;
-  $('offsets').hidden = isColours || !state.character.parts[key];
-  $('add-item').hidden = isColours || isExtra || !state.character.parts[key];
+  $('lock-part').parentElement.hidden = isColours || isPiece;
+  $('offsets').hidden = !worn;
+  $('add-item').hidden = isColours || isExtra || isPiece || !worn;
   $('add-item').textContent = `+ Another ${part}`;
   $('remove-item').hidden = !isExtra;
+  $('pieces').hidden = !worn || isPiece;
+  $('piece-note').hidden = !isPiece;
 
   $('variants').replaceChildren();
   $('other-variants').replaceChildren();
   $('other-bodies').hidden = true;
-  if (!isColours) {
+  if (isPiece) {
+    renderOffsets();
+  } else if (!isColours) {
+    renderPieces();
     const { own, others } = variantsForPart(state.library, part, state.character.bodyType);
     for (const variant of [null, ...own]) $('variants').append(variantTile(key, variant));
     if (others.length) {
@@ -272,9 +280,45 @@ async function partThumbnail(part, variant) {
   return null;
 }
 
+/** The "Pieces" box: split an item into islands (e.g. left and right eye), or join them again. */
+function renderPieces() {
+  const key = state.selectedPart;
+  const split = state.character.split?.[key];
+  $('split-item').hidden = !!split;
+  $('unsplit-item').hidden = !split;
+  $('split-gap').value = split?.gap ?? $('split-gap').value ?? 0;
+  $('pieces-status').textContent = split
+    ? `Split into ${split.count} pieces, listed under ${key} on the left. Each can be moved, turned, recoloured and reordered on its own.`
+    : '';
+}
+
+async function splitSelected(gap) {
+  const key = state.selectedPart;
+  await ensureVariants(variantsToDecode(state.character, state.library));
+  const count = countPieces(state.character, state.library, key, gap);
+  if (count < 2) {
+    toast(gap > 0
+      ? `${key} stays one piece with a gap of ${gap}px. Try a smaller gap.`
+      : `${key} is one piece: no transparent gap separates its parts.`);
+    return;
+  }
+  (state.character.split ||= {})[key] = { gap, count };
+  renderAll();
+}
+
+function unsplitSelected() {
+  const key = state.selectedPart;
+  for (const piece of pieceKeys(state.character, key)) {
+    delete state.character.offsets?.[piece];
+    delete state.character.itemColors?.[piece];
+  }
+  delete state.character.split[key];
+  renderAll();
+}
+
 function renderOffsets() {
   const o = state.character.offsets?.[state.selectedPart] || {};
-  const variant = state.library.variants.get(state.character.parts[state.selectedPart]);
+  const variant = state.library.variants.get(state.character.parts[itemOfKey(state.selectedPart)]);
   const sheets = new Set(variant ? SHEET_KEYS.filter((s) => variantForSheet(variant, s, state.library)) : []);
   const hasFace = sheets.has('FG');
   const hasSprite = ['TV', 'TVD', 'SV'].some((s) => sheets.has(s));
@@ -321,7 +365,7 @@ function setSlotColour(slotId, gradientId) {
 
 function slotsForEditor() {
   if (state.selectedPart === ALL_COLOURS) return usedSlots(state.character, state.library);
-  const variant = state.library.variants.get(state.character.parts[state.selectedPart]);
+  const variant = state.library.variants.get(state.character.parts[itemOfKey(state.selectedPart)]);
   if (!variant) return [];
   const ids = new Set();
   for (const layer of variant.layers) {
@@ -358,7 +402,7 @@ function renderSlots() {
     const own = el('input', { type: 'checkbox', id: 'own-colours', checked: !!ownColourItem() });
     own.addEventListener('change', () => {
       const itemColors = (state.character.itemColors ||= {});
-      if (own.checked) itemColors[state.selectedPart] = Object.fromEntries(slots.map((sl) => [sl.id, state.character.colors[sl.id]]));
+      if (own.checked) itemColors[state.selectedPart] = Object.fromEntries(slots.map((sl) => [sl.id, itemColor(state.character, state.selectedPart, sl.id)]));
       else delete itemColors[state.selectedPart];
       renderSlots();
       renderPreview();
@@ -683,6 +727,12 @@ $('remove-item').addEventListener('click', () => {
   state.locked.delete(state.selectedPart);
   state.selectedPart = partOfKey(state.selectedPart);
   renderAll();
+});
+
+$('split-item').addEventListener('click', () => splitSelected(Math.max(0, Math.min(8, Number($('split-gap').value) || 0))));
+$('unsplit-item').addEventListener('click', unsplitSelected);
+$('split-gap').addEventListener('change', () => {
+  if (state.character.split?.[state.selectedPart]) splitSelected(Math.max(0, Math.min(8, Number($('split-gap').value) || 0)));
 });
 
 $('lock-part').addEventListener('change', (e) => {

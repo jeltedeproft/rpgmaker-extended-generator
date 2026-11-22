@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { recolorLayer, blendOver, createImage, matchSlot, scanMask, rotateFrames } from '../src/recolor.js';
 import { gradientFromStops, splitGradientImage, gradientsToImage } from '../src/gradients.js';
-import { composeSheet, layersForSheet, orderIndex, moveLayer } from '../src/compose.js';
+import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces } from '../src/compose.js';
+import { islandLabels } from '../src/islands.js';
 import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter } from '../src/character.js';
 import { createLibrary, addPack } from '../src/parse.js';
 
@@ -272,4 +273,35 @@ test('all layers of a rotated item turn around one shared centre', () => {
   // shared centre (0.5, 0.5) moves it to (1,1). Around its own centre it would stay put.
   const { image } = composeSheet('TV', character, lib, new Map(), settings);
   assert.deepEqual(px(image, 1, 1), [10, 20, 30, 255]);
+});
+
+test('islands: two eyes become two pieces, left to right; a gap setting can join them', () => {
+  const img = createImage(9, 3);
+  for (const x of [0, 1, 2, 6, 7, 8]) img.data.set([50, 50, 50, 255], (1 * 9 + x) * 4);
+  img.data.set([50, 50, 50, 255], (0 * 9 + 4) * 4 + 0); // a 1px speck: joins the nearest eye
+  const { labels, count } = islandLabels([img], null, 0);
+  assert.equal(count, 2);
+  assert.equal(labels[1 * 9 + 1], 1);
+  assert.equal(labels[1 * 9 + 7], 2);
+  assert.equal(islandLabels([img], null, 3).count, 1); // 3px gap bridged
+});
+
+test('a split item draws each piece with its own offset and colours', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', [{ path: 'Face/Male/FG_Eyes_p01_c1_m002.png', src: 'eyes' }]);
+  const eyes = createImage(144, 144);
+  for (const x of [40, 41, 100, 101]) eyes.data.set([128, 128, 128, 255], (70 * 144 + x) * 4);
+  lib.variants.get('P/Male/Eyes/p01').layers[0].base.pixels = eyes;
+  const character = { bodyType: 'Male', parts: { Eyes: 'P/Male/Eyes/p01' }, colors: { eyes: 'blue' }, offsets: {}, itemColors: {} };
+  assert.equal(countPieces(character, lib, 'Eyes', 0), 2);
+  character.split = { Eyes: { gap: 0, count: 2 } };
+  character.offsets['Eyes #2'] = { face: { x: 3, y: 0 } };
+  character.itemColors['Eyes #2'] = { eyes: 'red' };
+  const solidGradient = (hex) => ({ colors: gradientFromStops([{ pos: 0, color: hex }, { pos: 1, color: hex }]) });
+  const byId = new Map([['red', solidGradient('#ff0000')], ['blue', solidGradient('#0000ff')]]);
+  assert.deepEqual(layersForSheet('FG', character, lib).map((d) => d.item), ['Eyes #1', 'Eyes #2']);
+  const { image } = composeSheet('FG', character, lib, byId, settings);
+  assert.deepEqual(px(image, 40, 70), [0, 0, 255, 255]); // left eye: shared colour, in place
+  assert.equal(px(image, 100, 70)[3], 0); // right eye moved...
+  assert.deepEqual(px(image, 103, 70), [255, 0, 0, 255]); // ...3px right, in its own colour
 });

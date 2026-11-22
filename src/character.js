@@ -3,7 +3,7 @@
 
 import { PART_ORDER, REQUIRED_PARTS, SLOTS } from './format.js';
 import { preferredCategory, createCustomGradient } from './gradients.js';
-import { partOfKey } from './compose.js';
+import { partOfKey, pieceKeys } from './compose.js';
 
 // v1: variant ids were "pack/pNN" (one body type per character).
 // v2: variant ids are "pack/bodyType/part/pNN" and characters may carry offsets.
@@ -11,7 +11,7 @@ import { partOfKey } from './compose.js';
 export const CHARACTER_FILE_VERSION = 3;
 
 export function createCharacter(bodyType) {
-  return { name: 'New character', bodyType, parts: {}, colors: {}, offsets: {}, itemColors: {} };
+  return { name: 'New character', bodyType, parts: {}, colors: {}, offsets: {}, itemColors: {}, split: {} };
 }
 
 /** Item keys worn for a part, first item first: ["AccA", "AccA 2", ...]. */
@@ -30,11 +30,14 @@ export function addItem(character, part) {
   return key;
 }
 
-/** Removes an extra item and everything stored for it. */
+/** Removes an extra item and everything stored for it and its pieces. */
 export function removeItem(character, key) {
   delete character.parts[key];
-  delete character.offsets?.[key];
-  delete character.itemColors?.[key];
+  for (const k of [key, ...pieceKeys(character, key)]) {
+    delete character.offsets?.[k];
+    delete character.itemColors?.[k];
+  }
+  delete character.split?.[key];
 }
 
 /** Part names for the editor: known parts first, then custom part names found in any pack. */
@@ -173,6 +176,7 @@ export function deserializeCharacter(json, library) {
     offsets: structuredClone(saved.offsets || {}),
     itemColors: structuredClone(saved.itemColors || {}),
     drawOrder: structuredClone(saved.drawOrder || {}),
+    split: structuredClone(saved.split || {}),
   };
   for (const [part, id] of Object.entries(saved.parts || {})) {
     if (!id) {

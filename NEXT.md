@@ -55,6 +55,7 @@ mixing Male/Female/Kid · pixel offsets.
 - [ ] Randomize with rules.
 - [ ] Credits: show which pack every used part came from, with a readme/credit text per pack.
 Tester's own ideas:
-- [ ] Split an image into islands separated by transparent gaps (e.g. left/right eye) as separate
-      layers: move/tilt/recolour each (heterochromia, eye spacing).
+- ✅ Split an image into islands separated by transparent gaps (e.g. left/right eye) as separate
+      layers: move/tilt/recolour/reorder each (heterochromia, eye spacing). All 29 MZ female eyes
+      split into exactly 2 pieces.
 - [ ] Regional transparency: clip one layer by another (hair only visible inside a hood opening).

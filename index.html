@@ -55,6 +55,7 @@
           <label class="lock"><input type="checkbox" id="lock-part"> Lock when randomizing</label>
         </div>
       </div>
+      <p id="piece-note" class="muted small" hidden>A piece of a split part. Move, turn or recolour it here; pick the part itself on the left to change it.</p>
       <div id="variants" class="variants"></div>
       <details id="other-bodies" class="other-bodies" hidden>
         <summary>Parts from other body types</summary>
@@ -75,6 +76,15 @@
         <button id="off-reset" class="small-button">Reset position</button>
         <p id="offsets-note" class="note small"></p>
         <p class="muted small">Moves this part in pixels, and turns it (degrees, clockwise). On sprites every walk, damage and battler frame is moved and turned on its own, around its own centre.</p>
+      </div>
+      <div id="pieces" class="offsets" hidden>
+        <h3>Pieces</h3>
+        <div class="layer-head">
+          <button id="split-item" class="small-button" title="Cut this part where transparent gaps separate it, e.g. into a left and a right eye">Split into pieces</button>
+          <button id="unsplit-item" class="small-button" hidden>Join the pieces again</button>
+          <label class="small">bridge gaps up to <input type="number" id="split-gap" min="0" max="8" step="1" value="0"> px</label>
+        </div>
+        <p id="pieces-status" class="note small"></p>
       </div>
       <div id="slots" class="slots"></div>
     </section>

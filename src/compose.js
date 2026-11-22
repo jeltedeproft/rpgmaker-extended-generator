@@ -2,6 +2,7 @@
 
 import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
 import { createImage, recolorLayer, blendOver, rotateFrames, frameCentres } from './recolor.js';
+import { islandLabels, keepIsland } from './islands.js';
 
 /**
  * Position in the draw order, 0 = top-most. Unknown layers fall back to the first entry for the
@@ -21,10 +22,27 @@ export function orderIndex(sheet, key, part) {
 
 /**
  * An item is one worn part. The first item of a part is keyed by the part name ("AccA"), extra
- * items get a number ("AccA 2"). Offsets, own colours and draw order are stored per item key.
+ * items get a number ("AccA 2"). An item split into pieces has piece keys "Eyes #1", "Eyes #2".
+ * Offsets, own colours and draw order are stored per key.
  */
 export function partOfKey(key) {
-  return key.replace(/ \d+$/, '');
+  return itemOfKey(key).replace(/ \d+$/, '');
+}
+
+/** The item a key belongs to: "Eyes #2" -> "Eyes"; item keys map to themselves. */
+export function itemOfKey(key) {
+  return key.replace(/ #\d+$/, '');
+}
+
+/** Number of pieces an item is split into (0 = not split). */
+export function pieceCountOf(character, key) {
+  const split = character.split?.[key];
+  return split?.count > 1 ? split.count : 0;
+}
+
+/** Piece keys of an item: ["Eyes #1", "Eyes #2"], or [] when it isn't split. */
+export function pieceKeys(character, key) {
+  return Array.from({ length: pieceCountOf(character, key) }, (_, i) => `${key} #${i + 1}`);
 }
 
 /** The items a character currently wears: [{key, part, variant}], in a stable order. */
@@ -61,7 +79,11 @@ export function variantsToDecode(character, library) {
  */
 export function partOffset(character, key, sheet) {
   const o = character.offsets?.[key]?.[sheet === 'FG' ? 'face' : 'sprite'];
-  return { x: o?.x || 0, y: o?.y || 0, rot: o?.rot || 0 };
+  const own = { x: o?.x || 0, y: o?.y || 0, rot: o?.rot || 0 };
+  if (itemOfKey(key) === key) return own;
+  // A piece moves with its item, plus its own offset.
+  const item = partOffset(character, itemOfKey(key), sheet);
+  return { x: item.x + own.x, y: item.y + own.y, rot: item.rot + own.rot };
 }
 
 /**
@@ -81,9 +103,11 @@ export function variantForSheet(variant, sheet, library) {
   return sheetFallback(variant, sheet, library);
 }
 
-/** The colour a slot gets for one item: the item's own choice, else the character's. */
+/** The colour a slot gets for an item or piece: its own choice, else its item's, else the character's. */
 export function itemColor(character, key, slotId) {
-  return character.itemColors?.[key]?.[slotId] || character.colors[slotId];
+  return character.itemColors?.[key]?.[slotId]
+    || character.itemColors?.[itemOfKey(key)]?.[slotId]
+    || character.colors[slotId];
 }
 
 /** Identifies one drawn layer in a custom draw order. */
@@ -121,8 +145,12 @@ export function layersForSheet(sheet, character, library) {
   const draws = [];
   for (const { key, variant: selected } of selectedItems(character, library)) {
     const variant = variantForSheet(selected, sheet, library);
+    const pieces = pieceKeys(character, key);
     for (const layer of variant?.layers || []) {
-      if (layer.sheet === sheet) draws.push({ layer, item: key });
+      if (layer.sheet !== sheet) continue;
+      if (!pieces.length) draws.push({ layer, item: key });
+      // A split item draws each piece as its own layer (own position, colours and draw order).
+      pieces.forEach((piece, i) => draws.push({ layer, item: piece, piece: { of: key, n: i + 1 } }));
     }
   }
   const sorted = draws
@@ -171,6 +199,34 @@ export function frameFor(sheet, size) {
 }
 
 /**
+ * How many pieces an item falls apart into with a given gap: the most islands found in one frame,
+ * looking at the face first (that's where eyes, earrings and ornaments are easiest to tell
+ * apart), then the sprites. Layers must be decoded.
+ */
+export function countPieces(character, library, key, gap) {
+  const variant = library.variants.get(character.parts[key]);
+  if (!variant) return 0;
+  for (const sheet of ['FG', 'TV', 'SV', 'TVD']) {
+    const source = variantForSheet(variant, sheet, library);
+    const own = (source?.layers || []).filter((l) => l.sheet === sheet && l.base.pixels);
+    if (!own.length) continue;
+    const draws = layersForSheet(sheet, { ...character, parts: { [key]: character.parts[key] }, split: {} }, library);
+    const size = sheetSize(sheet, draws);
+    const frame = frameFor(sheet, size);
+    const images = own.map((l) => {
+      const img = l.base.pixels;
+      if (img.width === size.w && img.height === size.h) return img;
+      const o = createImage(size.w, size.h);
+      blendOver(o, img, Math.round((size.w - img.width) / 2), Math.round((size.h - img.height) / 2));
+      return o;
+    });
+    const tiled = frame && own[0].base.pixels.width === size.w && own[0].base.pixels.height === size.h;
+    return islandLabels(images, tiled ? frame : null, gap).count;
+  }
+  return 0;
+}
+
+/**
  * Renders one sheet. All layer pixels must be decoded first (see loader.ensureVariants).
  * @param {Map<string,{colors:Uint8ClampedArray}>} gradientsById
  * @returns {{image:object|null, problems:string[]}}
@@ -183,9 +239,30 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
   const size = sheetSize(sheet, layers);
   const out = createImage(size.w, size.h);
   const frame = frameFor(sheet, size);
-  // 1. Recolour every layer and bring it to sheet size.
+  const tiled = (img) => !!frame && img.width === size.w && img.height === size.h;
+  // Parts of a different size (e.g. 160px MZ faces vs 144px) are centred.
+  const fit = (img) => {
+    if (img.width === size.w && img.height === size.h) return img;
+    const o = createImage(size.w, size.h);
+    blendOver(o, img, Math.round((size.w - img.width) / 2), Math.round((size.h - img.height) / 2));
+    return o;
+  };
+  const islands = new Map();
+  const islandsOf = (itemKey) => {
+    if (!islands.has(itemKey)) {
+      const own = [...new Set(layers.filter((d) => d.piece?.of === itemKey && d.layer.base.pixels).map((d) => d.layer))];
+      const images = own.map((l) => fit(l.base.pixels));
+      const cacheKey = `${sheet}|${size.w}x${size.h}|` + own.map((l) => l.base.path).join(',');
+      islands.set(itemKey, images.length
+        ? islandLabels(images, tiled(own[0].base.pixels) ? frame : null, character.split[itemKey].gap, cacheKey).labels
+        : null);
+    }
+    return islands.get(itemKey);
+  };
+
+  // 1. Recolour every layer, bring it to sheet size and cut out pieces.
   const placed = [];
-  for (const { layer, item } of layers) {
+  for (const { layer, item, piece } of layers) {
     const gradientFor = (slotId) => {
       const id = itemColor(character, item, slotId);
       return id ? gradientsById.get(id)?.colors ?? null : null;
@@ -199,19 +276,13 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     if (mask && (mask.width !== base.width || mask.height !== base.height)) {
       problems.push(`${layer.mask.path}: mask is ${mask.width}x${mask.height}, image is ${base.width}x${base.height}`);
     }
-    const colored = recolorLayer(base, mask, layer.slotId, gradientFor, settings);
-    const offset = partOffset(character, item, sheet);
-    if (frame && base.width === size.w && base.height === size.h) {
-      // Sprite sheets: shifted later, inside each animation frame.
-      placed.push({ item, image: colored, offset, frame });
-    } else {
-      // Parts of a different size (e.g. 160px MZ faces vs 144px) are centred, then shifted.
-      const image = createImage(size.w, size.h);
-      const ox = Math.round((size.w - base.width) / 2) + offset.x;
-      const oy = Math.round((size.h - base.height) / 2) + offset.y;
-      blendOver(image, colored, ox, oy);
-      placed.push({ item, image, offset: { ...offset, x: 0, y: 0 }, frame: null });
+    let image = fit(recolorLayer(base, mask, layer.slotId, gradientFor, settings));
+    if (piece) {
+      const labels = islandsOf(piece.of);
+      if (labels) image = keepIsland(image, labels, piece.n);
     }
+    // Sprite sheets are shifted inside each animation frame, so nothing bleeds into the next one.
+    placed.push({ item, image, offset: partOffset(character, item, sheet), frame: tiled(base) ? frame : null });
   }
 
   // 2. Rotate: all layers of an item turn around one shared centre per frame.

@@ -169,12 +169,34 @@ try {
     check('face rotation turns the part', (await evaluate(faceSig)) !== beforeTurn);
     await shot('4-real-pack.png');
 
+    // Take the accessory off again (it's a mask that hides the eyes).
+    await click('#variants .variant:first-child');
+    await sleep(600);
     // Parts that only exist on the face can't be moved on sprites (and say so).
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Eyes')).click()`);
     await sleep(500);
     await click('#variants .variant:nth-child(2)');
     await sleep(900);
     check('face-only part disables sprite offsets', await evaluate(`document.getElementById('off-sprite-x').disabled && !document.getElementById('off-face-x').disabled && document.getElementById('offsets-note').textContent.length > 0`));
+    // Split the eyes into a left and a right eye and move one of them.
+    await click('#split-item');
+    await sleep(1500);
+    const pieces = await evaluate(`[...document.querySelectorAll('#part-list button.piece')].length`);
+    check('eyes split into pieces', pieces >= 2, `${pieces} pieces`);
+    if (pieces >= 2) {
+      const beforePiece = await evaluate(faceSig);
+      await evaluate(`document.querySelectorAll('#part-list button.piece')[1].click()`);
+      await sleep(500);
+      await evaluate(`(() => { const i = document.getElementById('off-face-x'); i.value = 4; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(900);
+      check('one piece moves on its own', (await evaluate(faceSig)) !== beforePiece);
+      await shot('4b-split-eyes.png');
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Eyes')).click()`);
+      await sleep(500);
+      await click('#unsplit-item');
+      await sleep(900);
+      check('pieces join again', (await evaluate(`document.querySelectorAll('#part-list button.piece').length`)) === 0);
+    }
     // "Other colours" stays open after picking from it.
     const picked = await evaluate(`(() => { const d = document.querySelector('.slot details'); if (!d) return 'no list'; d.open = true; d.dispatchEvent(new Event('toggle')); d.querySelector('.swatch').click(); return 'ok'; })()`);
     await sleep(600);
