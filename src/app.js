@@ -1,6 +1,6 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
-import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, DEFAULT_SIZE, SHEETS, SLOT_BY_ID } from './format.js';
+import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, DEFAULT_SIZE, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
 import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
 import {
@@ -182,7 +182,7 @@ function showApp() {
   $('app').classList.remove('empty');
   $('welcome').hidden = true;
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = false;
-  for (const id of ['randomize', 'random-rules', 'save-character', 'load-character', 'open-files']) $(id).disabled = false;
+  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files']) $(id).disabled = false;
 }
 
 // ---------- rendering ----------
@@ -1729,6 +1729,42 @@ $('rules-reset').addEventListener('click', () => {
   saveSettings();
   $('rules-dialog').close('cancel');
   openRulesDialog();
+});
+
+// Clear all: every part to None except Body and Face (and locked parts); one click undoes it.
+let beforeClear = null;
+let clearTimer;
+$('clear-all').addEventListener('click', () => {
+  clearTimeout(clearTimer);
+  if (beforeClear) {
+    state.character = beforeClear;
+    beforeClear = null;
+    $('clear-all').textContent = 'Clear all';
+    renderAll();
+    return;
+  }
+  const before = structuredClone(state.character);
+  let cleared = 0;
+  for (const key of Object.keys(state.character.parts)) {
+    const part = partOfKey(key);
+    if (REQUIRED_PARTS.has(part) || state.locked.has(key) || !state.character.parts[key]) continue;
+    removeItem(state.character, key); // extra items ("AccA 2") go away completely
+    if (key === part) state.character.parts[key] = null; // "None", not "pick a default"
+    cleared++;
+  }
+  if (!cleared) {
+    toast('Nothing to clear: only Body, Face and locked parts are worn.');
+    return;
+  }
+  if (state.selectedPart !== ALL_COLOURS && !(itemOfKey(state.selectedPart) in state.character.parts)) state.selectedPart = partOfKey(state.selectedPart);
+  beforeClear = before;
+  $('clear-all').textContent = 'Undo clear';
+  clearTimer = setTimeout(() => {
+    beforeClear = null;
+    $('clear-all').textContent = 'Clear all';
+  }, 10000);
+  renderAll();
+  toast(`Took off ${cleared} part${cleared > 1 ? 's' : ''}. Body, Face and locked parts stay.`);
 });
 
 $('randomize').addEventListener('click', () => {
