@@ -1,7 +1,7 @@
 // Composites a character's selected parts into one sheet image.
 
 import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
-import { createImage, recolorLayer, blendOver, blendFrames, rotateFrames, frameCentres } from './recolor.js';
+import { createImage, recolorLayer, blendOver, blendFrames, transformFrames, frameCentres, gridCentres, isTransformed, swapFrameRows } from './recolor.js';
 import { islandLabels, keepIsland } from './islands.js';
 import { solidOf, insideOutline, applyClip } from './clip.js';
 
@@ -100,16 +100,33 @@ export function itemOnSheet(character, key, variant, sheet, library) {
 }
 
 /**
- * Offset and rotation (degrees, clockwise) of an item on a sheet: "face" for FG, "sprite" for
- * walk/damage/battler.
+ * Position and shape of an item on a sheet: "face" for FG, "sprite" for walk/damage/battler.
+ * {x, y, rot (degrees, clockwise), scale (percent), flipX (mirrored), flipY (upside down)}.
  */
 export function partOffset(character, key, sheet) {
   const o = character.offsets?.[key]?.[sheet === 'FG' ? 'face' : 'sprite'];
-  const own = { x: o?.x || 0, y: o?.y || 0, rot: o?.rot || 0 };
+  const own = { x: o?.x || 0, y: o?.y || 0, rot: o?.rot || 0, scale: o?.scale || 100, flipX: !!o?.flipX, flipY: !!o?.flipY };
   if (itemOfKey(key) === key) return own;
   // A piece moves with its item, plus its own offset.
   const item = partOffset(character, itemOfKey(key), sheet);
-  return { x: item.x + own.x, y: item.y + own.y, rot: item.rot + own.rot };
+  return {
+    x: item.x + own.x, y: item.y + own.y, rot: item.rot + own.rot,
+    scale: Math.round((item.scale * own.scale) / 100), flipX: item.flipX !== own.flipX, flipY: item.flipY !== own.flipY,
+  };
+}
+
+/**
+ * Mirroring a walk sheet also swaps its left- and right-facing rows (RPG Maker's 4-row walk
+ * sheet), so the mirrored sprite still faces the way each row says.
+ */
+function mirrorRows(sheet, image, frame) {
+  return sheet === 'TV' && frame?.rows === 4 ? swapFrameRows(image, frame, 1, 2) : image;
+}
+
+/** The whole-image transform of a sheet (character.sheetTransform), applied before exporting. */
+export function sheetTransformOf(character, sheet) {
+  const t = character.sheetTransform?.[sheet];
+  return { x: t?.x || 0, y: t?.y || 0, rot: t?.rot || 0, scale: t?.scale || 100, flipX: !!t?.flipX, flipY: !!t?.flipY };
 }
 
 /**
@@ -422,20 +439,22 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     placed.push({ item, image, offset: partOffset(character, item, sheet), frame: tiled, cells });
   }
 
-  // 2. Rotate: all layers of an item turn around one shared centre per frame.
+  // 2. Mirror, flip, resize and turn: all layers of an item change around one shared centre per
+  // frame.
+  for (const p of placed) if (p.offset.flipX && p.frame) p.image = mirrorRows(sheet, p.image, frame);
   const centres = new Map();
   for (const p of placed) {
     const cellTurns = [...p.cells.values()].some((c) => c.rot);
-    if (!p.offset.rot && !cellTurns) continue;
+    if (!isTransformed(p.offset) && !cellTurns) continue;
     const key = `${p.item}|${!!p.frame}`;
     if (!centres.has(key)) {
       const own = placed.filter((q) => q.item === p.item && q.frame === p.frame);
       centres.set(key, frameCentres(own.map((q) => q.image), p.frame));
     }
-    const angle = cellTurns
-      ? (fx, fy) => p.offset.rot + (p.cells.get(`${fx / p.frame.w},${fy / p.frame.h}`)?.rot || 0)
-      : p.offset.rot;
-    p.image = rotateFrames(p.image, angle, p.frame, centres.get(key));
+    const transform = cellTurns
+      ? (fx, fy) => ({ ...p.offset, rot: p.offset.rot + (p.cells.get(`${fx / p.frame.w},${fy / p.frame.h}`)?.rot || 0) })
+      : p.offset;
+    p.image = transformFrames(p.image, transform, p.frame, centres.get(key));
   }
   const draw = (target, p) => {
     if (!p.cells.size) return blendOver(target, p.image, p.offset.x, p.offset.y, p.frame);
@@ -471,5 +490,17 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     const moved = draw(createImage(size.w, size.h), p);
     blendOver(out, applyClip(moved, region, clip.mode));
   }
-  return { image: out, problems, frame };
+  return { image: transformSheet(out, sheet, frame, sheetTransformOf(character, sheet)), problems, frame };
+}
+
+/**
+ * The whole-image transform: every frame (the whole face) is mirrored, flipped, resized and
+ * turned around the frame's middle, then moved. Nothing moves into a neighbouring frame.
+ */
+export function transformSheet(image, sheet, frame, t) {
+  if (!isTransformed(t) && !t.x && !t.y) return image;
+  let result = t.flipX ? mirrorRows(sheet, image, frame) : image;
+  result = transformFrames(result, t, frame, gridCentres(result.width, result.height, frame));
+  if (!t.x && !t.y) return result;
+  return blendOver(createImage(result.width, result.height), result, t.x, t.y, frame);
 }

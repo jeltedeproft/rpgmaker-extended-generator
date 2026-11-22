@@ -97,10 +97,18 @@
           <label>x <input type="number" id="off-face-x" step="1" value="0"></label>
           <label>y <input type="number" id="off-face-y" step="1" value="0"></label>
           <label>turn <input type="number" id="off-face-rot" step="5" value="0" title="Degrees, clockwise"></label>
+          <span></span>
+          <label>size <input type="number" id="off-face-scale" min="10" max="400" step="5" value="100" title="Percent of the original size"> %</label>
+          <label title="Mirror left to right"><input type="checkbox" id="off-face-flipx"> mirror</label>
+          <label title="Upside down"><input type="checkbox" id="off-face-flipy"> flip</label>
           <span>Sprites</span>
           <label>x <input type="number" id="off-sprite-x" step="1" value="0"></label>
           <label>y <input type="number" id="off-sprite-y" step="1" value="0"></label>
           <label>turn <input type="number" id="off-sprite-rot" step="5" value="0" title="Degrees, clockwise"></label>
+          <span></span>
+          <label>size <input type="number" id="off-sprite-scale" min="10" max="400" step="5" value="100" title="Percent of the original size"> %</label>
+          <label title="Mirror left to right"><input type="checkbox" id="off-sprite-flipx"> mirror</label>
+          <label title="Upside down"><input type="checkbox" id="off-sprite-flipy"> flip</label>
         </div>
         <div id="cell-box" class="cell-box">
           <div class="layer-head">
@@ -123,7 +131,7 @@
         </div>
         <button id="off-reset" class="small-button">Reset position</button>
         <p id="offsets-note" class="note small"></p>
-        <p class="muted small">Moves this part in pixels, and turns it (degrees, clockwise). On sprites every walk, damage and battler frame is moved and turned on its own, around its own centre.</p>
+        <p class="muted small">Moves this part in pixels, turns it (degrees, clockwise), resizes, mirrors or flips it. On sprites every walk, damage and battler frame is changed on its own, around its own centre; mirroring a walk sprite also swaps its left- and right-facing rows.</p>
       </div>
       <div id="clip-box" class="offsets" hidden>
         <h3>Visibility</h3>
@@ -192,6 +200,29 @@
           <option value="FG">Face</option>
         </select>
         <div class="sheet-box"><canvas id="sheet-canvas" width="0" height="0"></canvas></div>
+      </details>
+      <details id="image-transform" class="settings">
+        <summary>Whole image <span id="image-transform-mark" class="muted small"></span></summary>
+        <p class="muted small">Move, resize, turn, mirror or flip a whole image. Sprites change frame by frame, around each frame's middle. The export uses it too.</p>
+        <div class="layer-head">
+          <select id="image-sheet">
+            <option value="FG">Face</option>
+            <option value="TV">Walk</option>
+            <option value="TVD">Damage</option>
+            <option value="SV">Battler</option>
+          </select>
+          <button id="image-reset" class="small-button">Reset this image</button>
+        </div>
+        <div class="offset-grid">
+          <span></span>
+          <label>x <input type="number" id="image-x" step="1" value="0"></label>
+          <label>y <input type="number" id="image-y" step="1" value="0"></label>
+          <label>turn <input type="number" id="image-rot" step="5" value="0" title="Degrees, clockwise"></label>
+          <span></span>
+          <label>size <input type="number" id="image-scale" min="10" max="400" step="5" value="100" title="Percent of the original size"> %</label>
+          <label title="Mirror left to right"><input type="checkbox" id="image-flipx"> mirror</label>
+          <label title="Upside down"><input type="checkbox" id="image-flipy"> flip</label>
+        </div>
       </details>
       <details id="credits" class="settings">
         <summary>Credits</summary>

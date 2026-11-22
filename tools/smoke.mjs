@@ -382,6 +382,26 @@ try {
     await evaluate(`(() => { const i = document.getElementById('off-face-rot'); i.value = 25; i.dispatchEvent(new Event('input')); })()`);
     await sleep(900);
     check('face rotation turns the part', (await evaluate(faceSig)) !== beforeTurn);
+    const beforeSize = await evaluate(faceSig);
+    await evaluate(`(() => { const i = document.getElementById('off-face-scale'); i.value = 150; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(900);
+    check('face size resizes the part', (await evaluate(faceSig)) !== beforeSize);
+    const beforeMirror = await evaluate(faceSig);
+    await evaluate(`(() => { const i = document.getElementById('off-face-flipy'); i.checked = true; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(900);
+    check('flip turns the part upside down', (await evaluate(faceSig)) !== beforeMirror);
+    // Whole image: mirror the whole face, then reset it.
+    {
+      await evaluate(`document.getElementById('image-transform').open = true`);
+      const beforeWhole = await evaluate(faceSig);
+      await evaluate(`(() => { const s = document.getElementById('image-sheet'); s.value = 'FG'; s.dispatchEvent(new Event('change')); const i = document.getElementById('image-flipx'); i.checked = true; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(900);
+      check('whole face can be mirrored', (await evaluate(faceSig)) !== beforeWhole && (await evaluate(`document.getElementById('image-transform-mark').textContent`)).includes('Face'));
+      await click('#image-reset');
+      await sleep(900);
+      check('whole image resets', (await evaluate(faceSig)) === beforeWhole && !(await evaluate(`document.getElementById('image-flipx').checked`)));
+      await evaluate(`document.getElementById('image-transform').open = false`);
+    }
     await shot('4-real-pack.png');
 
     // Per-frame position: move the accessory only in the walk frames facing left.

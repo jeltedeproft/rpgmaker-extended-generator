@@ -180,6 +180,7 @@ function showApp() {
 // ---------- rendering ----------
 
 function renderAll() {
+  renderImageTransform();
   renderSidebar();
   renderEditor();
   renderPreview();
@@ -327,7 +328,7 @@ function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source 
   // source: the picture as drawn in the file, no gradients (to compare files, not colours).
   const alone = {
     ...state.character, parts: { [key]: variant.id }, offsets: {}, split: {}, clip: {}, drawOrder: {},
-    sheetParts: {}, hidden: {}, ...(source ? { colors: {}, itemColors: {} } : {}),
+    sheetParts: {}, hidden: {}, sheetTransform: {}, ...(source ? { colors: {}, itemColors: {} } : {}),
   };
   const colours = source ? 'source' : JSON.stringify([state.character.colors, state.character.itemColors?.[key], state.settings.templates]);
   const cacheKey = `${key}|${variant.id}|${sheets}|${colours}`;
@@ -485,8 +486,8 @@ function renderOffsets() {
   const sheets = new Set(variant ? SHEET_KEYS.filter((s) => variantForSheet(variant, s, state.library)) : []);
   const hasFace = sheets.has('FG');
   const hasSprite = ['TV', 'TVD', 'SV'].some((s) => sheets.has(s));
-  for (const id of ['off-face-x', 'off-face-y', 'off-face-rot']) $(id).disabled = !hasFace;
-  for (const id of ['off-sprite-x', 'off-sprite-y', 'off-sprite-rot']) $(id).disabled = !hasSprite;
+  for (const id of SHAPE_FIELDS.map((f) => `off-face-${f}`)) $(id).disabled = !hasFace;
+  for (const id of SHAPE_FIELDS.map((f) => `off-sprite-${f}`)) $(id).disabled = !hasSprite;
   $('offsets-note').textContent = !hasSprite
     ? 'This part only appears on the face, so it has no sprite position.'
     : !hasFace
@@ -498,9 +499,61 @@ function renderOffsets() {
   $('off-sprite-y').value = o.sprite?.y || 0;
   $('off-face-rot').value = o.face?.rot || 0;
   $('off-sprite-rot').value = o.sprite?.rot || 0;
+  for (const p of ['face', 'sprite']) {
+    $(`off-${p}-scale`).value = o[p]?.scale || 100;
+    $(`off-${p}-flipx`).checked = !!o[p]?.flipX;
+    $(`off-${p}-flipy`).checked = !!o[p]?.flipY;
+  }
   $('cell-box').hidden = !hasSprite;
   if (hasSprite) renderCellOptions();
 }
+
+const SHAPE_FIELDS = ['x', 'y', 'rot', 'scale', 'flipx', 'flipy'];
+
+/** Reads one row of position fields (prefix "off-face", "off-sprite" or "image"). */
+function readShape(prefix, range = 64) {
+  const num = (f, lo, hi, fallback) => Math.max(lo, Math.min(hi, Math.round(Number($(`${prefix}-${f}`).value) || fallback)));
+  return {
+    x: num('x', -range, range, 0), y: num('y', -range, range, 0), rot: num('rot', -180, 180, 0),
+    scale: num('scale', 10, 400, 100), flipX: $(`${prefix}-flipx`).checked, flipY: $(`${prefix}-flipy`).checked,
+  };
+}
+
+// ---------- whole image: move, resize, turn, mirror or flip a whole sheet ----------
+
+function renderImageTransform() {
+  if (!state.character) return;
+  const t = state.character.sheetTransform?.[$('image-sheet').value] || {};
+  $('image-x').value = t.x || 0;
+  $('image-y').value = t.y || 0;
+  $('image-rot').value = t.rot || 0;
+  $('image-scale').value = t.scale || 100;
+  $('image-flipx').checked = !!t.flipX;
+  $('image-flipy').checked = !!t.flipY;
+  markImageTransform();
+}
+
+function markImageTransform() {
+  const changed = Object.keys(state.character.sheetTransform || {}).map((s) => SHEET_NAMES[s]);
+  $('image-transform-mark').textContent = changed.length ? `(changed: ${changed.join(', ')})` : '';
+}
+
+function updateImageTransform() {
+  const sheet = $('image-sheet').value;
+  const t = readShape('image', 400);
+  const all = (state.character.sheetTransform ||= {});
+  if (t.x || t.y || t.rot || t.scale !== 100 || t.flipX || t.flipY) all[sheet] = t;
+  else delete all[sheet];
+  markImageTransform();
+  renderPreview();
+}
+for (const f of SHAPE_FIELDS) $(`image-${f}`).addEventListener('input', updateImageTransform);
+$('image-sheet').addEventListener('change', renderImageTransform);
+$('image-reset').addEventListener('click', () => {
+  delete state.character.sheetTransform?.[$('image-sheet').value];
+  renderImageTransform();
+  renderPreview();
+});
 
 // ---------- per-frame positions (one walk direction, battler motion or damage frame) ----------
 
@@ -595,14 +648,8 @@ function updateCellOffset() {
 }
 
 function updateOffset() {
-  const read = (id) => Math.max(-64, Math.min(64, Math.round(Number($(id).value) || 0)));
-  const angle = (id) => Math.max(-180, Math.min(180, Math.round(Number($(id).value) || 0)));
   const offsets = (state.character.offsets ||= {});
-  offsets[state.selectedPart] = {
-    ...offsets[state.selectedPart],
-    face: { x: read('off-face-x'), y: read('off-face-y'), rot: angle('off-face-rot') },
-    sprite: { x: read('off-sprite-x'), y: read('off-sprite-y'), rot: angle('off-sprite-rot') },
-  };
+  offsets[state.selectedPart] = { ...offsets[state.selectedPart], face: readShape('off-face'), sprite: readShape('off-sprite') };
   renderPreview();
 }
 
@@ -1927,7 +1974,7 @@ $('lock-part').addEventListener('change', (e) => {
   renderSidebar();
 });
 
-for (const id of ['off-face-x', 'off-face-y', 'off-face-rot', 'off-sprite-x', 'off-sprite-y', 'off-sprite-rot']) $(id).addEventListener('input', updateOffset);
+for (const f of SHAPE_FIELDS) for (const p of ['face', 'sprite']) $(`off-${p}-${f}`).addEventListener('input', updateOffset);
 for (const id of ['cell-x', 'cell-y', 'cell-rot']) $(id).addEventListener('input', updateCellOffset);
 $('cell-sheet').addEventListener('change', () => {
   $('cell-group').value = 0;

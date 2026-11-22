@@ -224,16 +224,39 @@ export function frameCentres(images, frame = null) {
   return centres;
 }
 
+/** A transform that changes nothing. */
+export const NO_TRANSFORM = Object.freeze({ rot: 0, scale: 100, flipX: false, flipY: false });
+
+/** True when a transform ({rot, scale (%), flipX, flipY}) changes the picture. */
+export function isTransformed(t) {
+  return !!t && (!!t.rot || (t.scale ?? 100) !== 100 || !!t.flipX || !!t.flipY);
+}
+
 /**
- * Rotates the content of every frame (tile) around its centre, by `degrees` clockwise.
- * Nearest-neighbour sampling keeps pixel art crisp. Nothing moves into a neighbouring frame.
- * @param {{w:number,h:number}|null} frame null = the whole image is one frame
- * @param {number|((fx:number, fy:number)=>number)} degrees one angle, or one per frame (by the
- *   frame's top-left pixel)
- * @param {Map} [centres] from frameCentres; defaults to this image's own pixels
+ * Geometric frame centres (the middle of each frame, whatever is drawn in it), keyed like
+ * frameCentres. Used to transform a whole image, so an animation doesn't wobble.
  */
-export function rotateFrames(image, degrees, frame = null, centres = frameCentres([image], frame)) {
-  if (!degrees) return image;
+export function gridCentres(width, height, frame = null) {
+  const centres = new Map();
+  const fw = frame?.w || width;
+  const fh = frame?.h || height;
+  for (let fy = 0; fy + fh <= height; fy += fh) {
+    for (let fx = 0; fx + fw <= width; fx += fw) centres.set(`${fx},${fy}`, { cx: fx + (fw - 1) / 2, cy: fy + (fh - 1) / 2 });
+  }
+  return centres;
+}
+
+/**
+ * Transforms the content of every frame (tile) around its centre: mirrored (flipX), flipped
+ * upside down (flipY), resized (scale, percent) and turned (rot, degrees clockwise), in that
+ * order. Nearest-neighbour sampling keeps pixel art crisp. Nothing moves into a neighbouring frame.
+ * @param {{w:number,h:number}|null} frame null = the whole image is one frame
+ * @param {object|((fx:number, fy:number)=>object)} transform one for all frames, or one per frame
+ *   (by the frame's top-left pixel)
+ * @param {Map} [centres] from frameCentres or gridCentres; defaults to this image's own pixels
+ */
+export function transformFrames(image, transform, frame = null, centres = frameCentres([image], frame)) {
+  if (typeof transform !== 'function' && !isTransformed(transform)) return image;
   const fw = frame?.w || image.width;
   const fh = frame?.h || image.height;
   const out = createImage(image.width, image.height);
@@ -242,9 +265,9 @@ export function rotateFrames(image, degrees, frame = null, centres = frameCentre
     for (let fx = 0; fx + fw <= image.width; fx += fw) {
       const centre = centres.get(`${fx},${fy}`);
       if (!centre) continue;
-      const deg = typeof degrees === 'function' ? degrees(fx, fy) : degrees;
-      if (!deg) {
-        // This frame isn't turned: copy it as it is.
+      const t = typeof transform === 'function' ? transform(fx, fy) : transform;
+      if (!isTransformed(t)) {
+        // This frame isn't changed: copy it as it is.
         for (let y = fy; y < fy + fh; y++) {
           const start = (y * image.width + fx) * 4;
           out.data.set(s.subarray(start, start + fw * 4), start);
@@ -252,16 +275,19 @@ export function rotateFrames(image, degrees, frame = null, centres = frameCentre
         continue;
       }
       const { cx, cy } = centre;
-      const rad = (deg * Math.PI) / 180;
+      const rad = ((t.rot || 0) * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
+      const k = 100 / Math.max(1, t.scale ?? 100);
+      const mx = t.flipX ? -1 : 1;
+      const my = t.flipY ? -1 : 1;
       for (let y = fy; y < fy + fh; y++) {
         for (let x = fx; x < fx + fw; x++) {
-          // Inverse mapping: which source pixel lands here.
+          // Inverse mapping: which source pixel lands here (turn back, shrink back, flip back).
           const dx = x - cx;
           const dy = y - cy;
-          const sx = Math.round(cx + dx * cos + dy * sin);
-          const sy = Math.round(cy - dx * sin + dy * cos);
+          const sx = Math.round(cx + (dx * cos + dy * sin) * k * mx);
+          const sy = Math.round(cy + (-dx * sin + dy * cos) * k * my);
           if (sx < fx || sx >= fx + fw || sy < fy || sy >= fy + fh) continue;
           const si = (sy * image.width + sx) * 4;
           if (!s[si + 3]) continue;
@@ -273,6 +299,35 @@ export function rotateFrames(image, degrees, frame = null, centres = frameCentre
         }
       }
     }
+  }
+  return out;
+}
+
+/**
+ * Rotates the content of every frame around its centre, by `degrees` clockwise (see
+ * transformFrames).
+ * @param {number|((fx:number, fy:number)=>number)} degrees one angle, or one per frame
+ */
+export function rotateFrames(image, degrees, frame = null, centres = frameCentres([image], frame)) {
+  if (!degrees) return image;
+  const t = typeof degrees === 'function' ? (fx, fy) => ({ rot: degrees(fx, fy) }) : { rot: degrees };
+  return transformFrames(image, t, frame, centres);
+}
+
+/**
+ * Swaps two rows of frames, e.g. the walk sheet's left- and right-facing rows: a mirrored walk
+ * sprite facing left is the right-facing one.
+ */
+export function swapFrameRows(image, frame, a, b) {
+  const out = createImage(image.width, image.height);
+  out.data.set(image.data);
+  const rowBytes = image.width * 4;
+  for (let y = 0; y < frame.h; y++) {
+    const ya = (a * frame.h + y) * rowBytes;
+    const yb = (b * frame.h + y) * rowBytes;
+    if (ya + rowBytes > image.data.length || yb + rowBytes > image.data.length) continue;
+    out.data.set(image.data.subarray(yb, yb + rowBytes), ya);
+    out.data.set(image.data.subarray(ya, ya + rowBytes), yb);
   }
   return out;
 }
