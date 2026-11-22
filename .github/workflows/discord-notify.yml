@@ -1,6 +1,8 @@
 # Posts to Discord when GitHub Pages has published a new version of the site.
+# One post per publish, listing every commit since the previous publish (a push of several commits
+# gives one post with all of them).
 # The webhook URL lives in the repository secret DISCORD_WEBHOOK (never in this file: the repo is public).
-# Put [skip notify] in a commit message to publish without a post.
+# Put [skip notify] in a commit message to leave that commit out of the post.
 name: Discord update notice
 
 on:
@@ -8,24 +10,34 @@ on:
 
 permissions:
   contents: read
+  pages: read
 
 jobs:
   notify:
     if: github.event.build.status == 'built'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/workflows/discord-message.jq
+          sparse-checkout-cone-mode: false
       - name: Post the update
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
           SHA: ${{ github.event.build.commit }}
           SITE: https://jeltedeproft.github.io/rpgmaker-extended-generator/
         run: |
-          message=$(gh api "repos/${{ github.repository }}/commits/$SHA" --jq .commit.message)
-          if grep -qF '[skip notify]' <<< "$message"; then echo "skipped"; exit 0; fi
-          subject=$(head -n1 <<< "$message")
-          # Bullet lines (and their continuations) from the commit body, without the co-author trailer.
-          details=$(tail -n +2 <<< "$message" | grep -E '^(- |  )' | head -n 12 || true)
-          content=$(printf '**Generator updated:** %s\n%s\n%s' "$subject" "$details" "$SITE")
+          # The commit the previous successful publish was made from.
+          prev=$(gh api "repos/$REPO/pages/builds" \
+            --jq "[.[] | select(.status == \"built\" and .commit != \"$SHA\")][0].commit // empty" || true)
+          if [ -n "$prev" ] && gh api "repos/$REPO/compare/$prev...$SHA" --jq '[.commits[].commit.message]' > messages.json; then
+            echo "Commits since $prev: $(jq length messages.json)"
+          else
+            gh api "repos/$REPO/commits/$SHA" --jq '[.commit.message]' > messages.json
+          fi
+          content=$(jq -r -f .github/workflows/discord-message.jq --arg site "$SITE" messages.json)
+          if [ -z "$content" ]; then echo "Nothing to announce"; exit 0; fi
           jq -n --arg content "$content" '{content: $content, allowed_mentions: {parse: []}}' \
             | curl -fsS -H 'Content-Type: application/json' -d @- "$WEBHOOK"
