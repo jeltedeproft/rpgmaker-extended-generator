@@ -33,7 +33,8 @@ existing extended generator is, minus the bugs:
 - **Editable draw order** per sheet (starts as RPG Maker's order).
 - **Character sets:** save some parts with their colours and positions ("Knight armour") and put
   them on any character; export/import sets to share them.
-- **Randomize** with per-part locks.
+- **Randomize** with per-part locks and rules: how often each part is worn, colour links (hair
+  and eyebrows match), parts that never go together, other body types, random saved sets.
 
 ## Develop
 No dependencies. Needs Node 20+.

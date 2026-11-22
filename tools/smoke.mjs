@@ -144,6 +144,26 @@ try {
     await sleep(500);
   }
   check('still renders after randomize', (await evaluate(facePixels)) > 1000);
+
+  // Randomize rules: FrontHair never worn.
+  await click('#random-rules');
+  await sleep(300);
+  await evaluate(`(() => { const row = [...document.querySelectorAll('.rule-chance')].find(r => r.textContent.startsWith('FrontHair')); const i = row.querySelector('input'); i.value = 0; i.dispatchEvent(new Event('change')); document.querySelector('#rules-dialog button[value="ok"]').click(); })()`);
+  await sleep(300);
+  let hairless = true;
+  for (let i = 0; i < 4; i++) {
+    await click('#randomize');
+    await sleep(400);
+    hairless &&= (await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).querySelector('.value').textContent`)) === 'none';
+  }
+  check('randomize follows the rules', hairless);
+  await click('#random-rules');
+  await sleep(300);
+  await click('#rule-add-link');
+  await shot('3c-rules.png');
+  await click('#rules-reset');
+  await sleep(300);
+  await evaluate(`document.querySelector('#rules-dialog button[value="ok"]').click()`);
   await evaluate(`document.querySelector('#dir-buttons [data-dir="2"]').click()`);
   await sleep(400);
   await shot('3-random.png');

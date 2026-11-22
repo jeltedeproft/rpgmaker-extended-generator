@@ -195,3 +195,9 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .set-remove { padding: 0 7px; font-size: 11px; color: var(--muted); }
 .sets-io { display: flex; gap: 6px; margin-top: 6px; }
 .set-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; margin-bottom: 10px; }
+.rule-chances { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; margin-bottom: 10px; font-size: 12px; }
+.rule-chance { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.rule-chance input, #rule-set-chance { width: 58px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 5px; }
+.rule-row { display: flex; gap: 6px; align-items: center; margin: 4px 0; font-size: 12px; }
+.rule-row select { padding: 2px 6px; font-size: 12px; }
+#rules-dialog .small-button { margin-top: 2px; }

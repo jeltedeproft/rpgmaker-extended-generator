@@ -87,27 +87,64 @@ function pick(list, rng) {
 }
 
 /**
- * Randomises parts (from the character's own body type) and colours.
- * @param {object} options.locked set of part names / slot ids that must not change
- * @param {number} options.optionalChance chance an optional part is worn
+ * Rules for randomizing. All optional:
+ * - chances: {part: 0..100} chance a part is worn (default 50, Body/Face 100)
+ * - mixBodyTypes: also pick parts made for other body types
+ * - anyColour: any gradient for any slot (default: the slot's suggested colours)
+ * - links: [{slot, follows}] a slot always gets the same colour as another (eyebrows = hair)
+ * - apart: [[partA, partB]] never worn together (the second one is dropped)
+ * - setChance: 0..100 chance to put a random saved set on top, from `sets`
  */
-export function randomize(character, library, gradients, { rng = Math.random, locked = new Set(), optionalChance = 0.5 } = {}) {
-  const next = { ...character, parts: { ...character.parts }, colors: { ...character.colors } };
-  const body = library.bodyTypes.get(character.bodyType);
-  if (body) {
-    for (const [part, variants] of body.parts) {
-      if (locked.has(part)) continue;
-      const ids = [...variants.keys()];
-      if (!REQUIRED_PARTS.has(part) && rng() > optionalChance) next.parts[part] = null;
-      else next.parts[part] = pick(ids, rng);
-    }
+export const DEFAULT_RULES = { chances: {}, mixBodyTypes: false, anyColour: false, links: [], apart: [], setChance: 0 };
+
+/** Chance (0..1) that a part is worn under the rules. */
+export function wearChance(part, rules = DEFAULT_RULES) {
+  const c = rules.chances?.[part];
+  if (c != null && c !== '') return Math.max(0, Math.min(100, Number(c))) / 100;
+  return REQUIRED_PARTS.has(part) ? 1 : 0.5;
+}
+
+/**
+ * Randomises parts and colours.
+ * @param {object} options.locked set of part names / slot ids that must not change
+ * @param {object} options.rules see DEFAULT_RULES
+ * @param {object[]} options.sets saved character sets, for rules.setChance
+ */
+export function randomize(character, library, gradients, { rng = Math.random, locked = new Set(), rules = DEFAULT_RULES, sets = [] } = {}) {
+  let next = { ...character, parts: { ...character.parts }, colors: { ...character.colors }, split: { ...(character.split || {}) } };
+  const changed = (part, id) => {
+    if (next.parts[part] !== id) delete next.split[part]; // pieces belong to the old variant
+    next.parts[part] = id;
+  };
+  const own = library.bodyTypes.get(character.bodyType);
+  const parts = new Set(own ? own.parts.keys() : []);
+  if (rules.mixBodyTypes) for (const b of library.bodyTypes.values()) b.parts.forEach((_, p) => parts.add(p));
+  for (const part of parts) {
+    if (locked.has(part)) continue;
+    const pool = rules.mixBodyTypes
+      ? [...library.bodyTypes.values()].flatMap((b) => [...(b.parts.get(part)?.keys() || [])])
+      : [...(own?.parts.get(part)?.keys() || [])];
+    if (!pool.length) continue;
+    changed(part, rng() < wearChance(part, rules) ? pick(pool, rng) : null);
   }
+  for (const [a, b] of rules.apart || []) {
+    if (next.parts[a] && next.parts[b] && !locked.has(b)) changed(b, null);
+  }
+
   if (gradients.length) {
     for (const slot of SLOTS) {
       if (locked.has(slot.id)) continue;
-      const preferred = gradients.filter((g) => g.category === preferredCategory(slot.id));
+      const preferred = rules.anyColour ? [] : gradients.filter((g) => g.category === preferredCategory(slot.id));
       next.colors[slot.id] = pick(preferred.length ? preferred : gradients, rng).id;
     }
+  }
+
+  if (sets.length && rng() < (rules.setChance || 0) / 100) {
+    next = applySet(next, pick(sets, rng), library).character;
+  }
+  // Links last, so they also follow colours that came from a set.
+  for (const { slot, follows } of rules.links || []) {
+    if (slot && follows && !locked.has(slot) && next.colors[follows]) next.colors[slot] = next.colors[follows];
   }
   return next;
 }

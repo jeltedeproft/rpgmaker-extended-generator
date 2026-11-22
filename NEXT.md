@@ -5,8 +5,8 @@
 - ✅ Mix male and female parts in one character.
 - ✅ More control over placement (per-part offsets).
 - ✅ "Imports official parts automatically" → remembered folders (Chrome/Edge).
-- [~] More control over colour use: ✅ own colours per item. Still open: colour
-      linking (eyebrows follow hair).
+- ✅ More control over colour use: own colours per item, and colour links when randomizing.
+- [ ] Live colour linking while editing (eyebrows follow hair when you change the hair).
 
 ## Tester feedback, round 2 (2026-11-21)
 - ✅ Body and Face can be set to None.
@@ -42,8 +42,8 @@
 - [ ] Follow the itch launch rules: go public only on a day we post in the forum thread.
 
 ## Tester wish list (2026-11-21, mostly from the original Extended Generator's feature list)
-Done: own naming (any pid, copies, set folders) · all gradients for any item + custom ones ·
-mixing Male/Female/Kid · pixel offsets.
+All done (2026-11-22). Earlier: own naming (any pid, copies, set folders) · all gradients for any
+item + custom ones · mixing Male/Female/Kid · pixel offsets.
 - ✅ Manually assign unrecognised files ("Assign…" in the import report, remembered per pack).
       Names without a part number (`TV_ClothingEric.png`) and typos (`.png.png`, `]`) are read
       automatically.
@@ -56,7 +56,8 @@ mixing Male/Female/Kid · pixel offsets.
 - ✅ Rotate elements per tile/frame (face and sprites separately, each frame around its own centre).
 - ✅ Character sets / partial characters (save a group of parts + colours, apply on top;
       export/import as a file).
-- [ ] Randomize with rules.
+- ✅ Randomize with rules (chance per part, other body types, any colour, colour links, parts
+      that never go together, random saved sets).
 - ✅ Credits: show which pack every used part came from, with a readme/credit text per pack.
 Tester's own ideas:
 - ✅ Split an image into islands separated by transparent gaps (e.g. left/right eye) as separate

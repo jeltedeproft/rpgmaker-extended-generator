@@ -17,6 +17,7 @@
       <button id="sample-kit">Load sample kit</button>
       <span class="divider"></span>
       <button id="randomize" disabled>Randomize</button>
+      <button id="random-rules" disabled title="Rules for Randomize">Rules…</button>
       <button id="save-character" disabled>Save character</button>
       <label class="button" id="load-character-label">Load character
         <input id="load-character" type="file" accept=".json,application/json" hidden disabled>
@@ -181,6 +182,28 @@
       </details>
     </section>
   </main>
+
+  <dialog id="rules-dialog">
+    <form method="dialog" class="assign-form">
+      <h3>Randomize rules</h3>
+      <p class="muted small">Chance that each part is worn:</p>
+      <div id="rule-chances" class="rule-chances"></div>
+      <label class="lock"><input type="checkbox" id="rule-mix"> Also use parts made for other body types</label>
+      <label class="lock"><input type="checkbox" id="rule-any-colour"> Any colour for any slot (not only the suggested ones)</label>
+      <p class="muted small">Colour links (e.g. Hair (sub) same colour as Hair):</p>
+      <div id="rule-links"></div>
+      <button type="button" id="rule-add-link" class="small-button">+ Colour link</button>
+      <p class="muted small">Parts that never go together (the second one is left off):</p>
+      <div id="rule-apart"></div>
+      <button type="button" id="rule-add-apart" class="small-button">+ Rule</button>
+      <p class="small">Put on a random saved set: <input type="number" id="rule-set-chance" min="0" max="100" step="5" value="0"> % of the time</p>
+      <div class="dialog-actions">
+        <button type="button" id="rules-reset">Reset</button>
+        <button value="cancel">Cancel</button>
+        <button value="ok" class="primary">Save rules</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="set-dialog">
     <form method="dialog" class="assign-form">

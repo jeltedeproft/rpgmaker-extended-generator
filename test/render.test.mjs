@@ -377,3 +377,24 @@ test('character sets: save some items with their colours, put them on another ch
   assert.deepEqual(character.offsets.FrontHair, { face: { x: 1, y: 0 } });
   assert.equal(target.parts.FrontHair, undefined); // the original isn't changed
 });
+
+test('randomize rules: wear chances, parts that never go together, colour links, sets', () => {
+  const lib = sampleLibrary();
+  let seed = 7;
+  const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const gradients = [{ id: 'a', category: 'hair' }, { id: 'b', category: 'hair' }, { id: 'c', category: 'common' }];
+  const base = { bodyType: 'Male', parts: {}, colors: {} };
+  for (let i = 0; i < 20; i++) {
+    const never = randomize(base, lib, gradients, { rng, rules: { chances: { FrontHair: 0 } } });
+    assert.equal(never.parts.FrontHair, null);
+    const always = randomize(base, lib, gradients, { rng, rules: { chances: { FrontHair: 100 }, apart: [['FrontHair', 'Body']], links: [{ slot: 'accA', follows: 'hair' }] } });
+    assert.equal(always.parts.FrontHair, 'P/Male/FrontHair/p01');
+    assert.equal(always.parts.Body, null); // never together with FrontHair
+    assert.equal(always.colors.accA, always.colors.hair);
+    const mixed = randomize(base, lib, gradients, { rng, rules: { mixBodyTypes: true, chances: { AccA: 100 } } });
+    assert.equal(mixed.parts.AccA, 'P/Female/AccA/p07'); // only the Female body type has one
+  }
+  const set = { name: 'Hat', parts: { AccA: 'P/Female/AccA/p07' }, colors: {} };
+  const withSet = randomize(base, lib, gradients, { rng, rules: { setChance: 100 }, sets: [set] });
+  assert.equal(withSet.parts.AccA, 'P/Female/AccA/p07');
+});

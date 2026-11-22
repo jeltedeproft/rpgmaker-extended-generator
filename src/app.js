@@ -11,7 +11,7 @@ import { createImage } from './recolor.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, itemKeys, addItem, removeItem, creditsFor, creditsText,
-  makeSet, applySet,
+  makeSet, applySet, DEFAULT_RULES, wearChance,
 } from './character.js';
 import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage,
@@ -168,7 +168,7 @@ function showApp() {
   $('app').classList.remove('empty');
   $('welcome').hidden = true;
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = false;
-  for (const id of ['randomize', 'save-character', 'load-character']) $(id).disabled = false;
+  for (const id of ['randomize', 'random-rules', 'save-character', 'load-character']) $(id).disabled = false;
 }
 
 // ---------- rendering ----------
@@ -269,8 +269,16 @@ function variantTile(key, variant) {
     const thumbnail = variant.icon ? ensureImage(variant.icon) : partThumbnail(part, variant);
     thumbnail.then((pixels) => pixels && thumb.replaceWith(toCanvas(pixels))).catch(() => {});
   }
-  tile.addEventListener('click', () => {
+  tile.addEventListener('click', async () => {
     state.character.parts[key] = variant?.id || null;
+    // A split part keeps its pieces if the new variant falls apart the same way.
+    const split = state.character.split?.[key];
+    if (split) {
+      await ensureVariants(variantsToDecode(state.character, state.library));
+      const count = variant ? countPieces(state.character, state.library, key, split.gap, state.settings) : 0;
+      if (count > 1) split.count = count;
+      else delete state.character.split[key];
+    }
     renderSidebar();
     renderEditor();
     renderPreview();
@@ -1042,8 +1050,89 @@ $('off-reset').addEventListener('click', () => {
   renderPreview();
 });
 
+// ---------- randomize rules ----------
+
+function rules() {
+  return { ...DEFAULT_RULES, ...(state.settings.randomRules || {}) };
+}
+
+/** A small editable list of pairs: [select a] word [select b] ✕, plus an add button. */
+function pairList(box, pairs, options, word, toPair, fromPair) {
+  const render = () => {
+    box.replaceChildren(...pairs.map((pair, i) => {
+      const [a, b] = fromPair(pair);
+      const select = (value) => {
+        const s = el('select', {}, options.map(([v, label]) => el('option', { value: v, textContent: label })));
+        s.value = value;
+        return s;
+      };
+      const sa = select(a);
+      const sb = select(b);
+      const update = () => (pairs[i] = toPair(sa.value, sb.value));
+      sa.addEventListener('change', update);
+      sb.addEventListener('change', update);
+      const remove = el('button', { className: 'set-remove', textContent: '✕', type: 'button' });
+      remove.addEventListener('click', () => {
+        pairs.splice(i, 1);
+        render();
+      });
+      return el('div', { className: 'rule-row' }, [sa, el('span', { textContent: word }), sb, remove]);
+    }));
+  };
+  render();
+  return () => {
+    pairs.push(toPair(options[0]?.[0], options[1]?.[0] ?? options[0]?.[0]));
+    render();
+  };
+}
+
+let ruleDraft = null;
+function openRulesDialog() {
+  ruleDraft = structuredClone(rules());
+  const parts = partNames(state.library, state.character.bodyType);
+  $('rule-chances').replaceChildren(...parts.map((part) => {
+    const input = el('input', { type: 'number', min: 0, max: 100, step: 5, value: Math.round(wearChance(part, ruleDraft) * 100) });
+    input.addEventListener('change', () => (ruleDraft.chances[part] = Math.max(0, Math.min(100, Number(input.value) || 0))));
+    return el('label', { className: 'rule-chance' }, [el('span', { textContent: part }), input, '%']);
+  }));
+  $('rule-mix').checked = !!ruleDraft.mixBodyTypes;
+  $('rule-any-colour').checked = !!ruleDraft.anyColour;
+  $('rule-set-chance').value = ruleDraft.setChance || 0;
+  const slotOptions = SLOTS.map((s) => [s.id, s.label]);
+  const partOptions = parts.map((p) => [p, p]);
+  $('rule-add-link').onclick = pairList($('rule-links'), ruleDraft.links, slotOptions, 'same colour as',
+    (slot, follows) => ({ slot, follows }), (l) => [l.slot, l.follows]);
+  $('rule-add-apart').onclick = pairList($('rule-apart'), ruleDraft.apart, partOptions, 'never with',
+    (a, b) => [a, b], (p) => p);
+  $('rules-dialog').showModal();
+}
+
+$('random-rules').addEventListener('click', openRulesDialog);
+$('rules-dialog').addEventListener('close', () => {
+  if ($('rules-dialog').returnValue !== 'ok' || !ruleDraft) return;
+  ruleDraft.mixBodyTypes = $('rule-mix').checked;
+  ruleDraft.anyColour = $('rule-any-colour').checked;
+  ruleDraft.setChance = Math.max(0, Math.min(100, Number($('rule-set-chance').value) || 0));
+  state.settings.randomRules = ruleDraft;
+  saveSettings();
+  toast('Randomize rules saved.');
+});
+$('rules-reset').addEventListener('click', () => {
+  state.settings.randomRules = structuredClone(DEFAULT_RULES);
+  saveSettings();
+  $('rules-dialog').close('cancel');
+  openRulesDialog();
+});
+
 $('randomize').addEventListener('click', () => {
-  state.character = randomize(state.character, state.library, allGradients(), { locked: state.locked });
+  for (const set of state.settings.sets || []) {
+    for (const g of set.customGradients || []) {
+      if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(createCustomGradient(g.id, g.label, g.stops));
+    }
+  }
+  state.character = randomize(state.character, state.library, allGradients(), {
+    locked: state.locked, rules: rules(), sets: state.settings.sets || [],
+  });
   renderAll();
 });
 
