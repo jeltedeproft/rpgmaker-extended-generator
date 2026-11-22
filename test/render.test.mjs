@@ -440,3 +440,13 @@ test('per-frame positions: one walk direction moves, the others stay', () => {
   assert.equal(alpha(4, 7), 255);
   assert.equal(alpha(2, 6), 255); // frame (1,3) untouched
 });
+
+test('mask pixels copied from the image are not reported as unknown colours', () => {
+  const base = createImage(3, 1);
+  const mask = createImage(3, 1);
+  base.data.set([90, 90, 90, 255, 32, 29, 26, 255, 10, 10, 10, 255]);
+  // Skin slot, a dark outline copied from the image, and a colour that matches neither.
+  mask.data.set([0xf9, 0xc1, 0x9d, 255, 32, 29, 26, 255, 200, 0, 200, 255]);
+  assert.deepEqual([...scanMask(mask).unknown.keys()].length, 2);
+  assert.deepEqual([...scanMask(mask, base).unknown.keys()], [0xc800c8]);
+});

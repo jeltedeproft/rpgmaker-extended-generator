@@ -7,7 +7,7 @@ import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
   layersForSheet, drawId, moveLayer, itemOfKey, pieceKeys, countPieces, selectedItems, sheetLayers,
 } from './compose.js';
-import { createImage } from './recolor.js';
+import { createImage, scanMask } from './recolor.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, itemKeys, addItem, removeItem, creditsFor, creditsText,
@@ -760,11 +760,14 @@ function unknownMaskColours() {
   const lines = [];
   for (const variant of selectedVariants(state.character, state.library)) {
     for (const layer of variant.layers) {
-      const unknown = layer.mask?.unknownColors;
-      if (!unknown?.size) continue;
+      if (!layer.mask?.unknownColors?.size || !layer.base?.pixels) continue;
+      // Pixels painted in the image's own colour are "keep as drawn", not a problem.
+      layer.mask.realUnknown ||= scanMask(layer.mask.pixels, layer.base.pixels).unknown;
+      const unknown = layer.mask.realUnknown;
+      if (!unknown.size) continue;
       const colours = [...unknown].sort((a, b) => b[1] - a[1])
         .map(([rgb, n]) => `#${rgb.toString(16).padStart(6, '0')} (${n} px)`).join(', ');
-      lines.push(`${layer.mask.path}: mask colour(s) not tied to any colour slot, left unrecoloured: ${colours}`);
+      lines.push(`${layer.mask.path}: mask colour(s) that match no colour slot and not the image either (drawn as is): ${colours}`);
     }
   }
   return lines;

@@ -82,10 +82,15 @@ export function maskPalette(mask) {
 
 /**
  * Which slots a mask uses, plus colours that match no slot even approximately (those pixels keep
- * their original colour).
+ * their original colour). With `base`, a mask pixel painted in the image's own colour at that spot
+ * counts as "keep as drawn" and isn't reported: some packs copy outlines and fixed details
+ * (buckles, highlights) from the image into the mask.
  * @returns {{slots:Set<string>, unknown:Map<number,number>}} unknown: rgb -> pixel count
  */
-export function scanMask(mask) {
+export function scanMask(mask, base = null) {
+  const sameAsBase = (i) => base && base.width === mask.width && base.height === mask.height
+    && Math.abs(base.data[i] - mask.data[i]) <= 24 && Math.abs(base.data[i + 1] - mask.data[i + 1]) <= 24
+    && Math.abs(base.data[i + 2] - mask.data[i + 2]) <= 24;
   const palette = maskPalette(mask);
   const slots = new Set([...palette.values()].filter(Boolean));
   const unknown = new Map();
@@ -93,7 +98,7 @@ export function scanMask(mask) {
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] === 0) continue;
     const rgb = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
-    if (palette.get(rgb) === undefined) unknown.set(rgb, (unknown.get(rgb) || 0) + 1);
+    if (palette.get(rgb) === undefined && !sameAsBase(i)) unknown.set(rgb, (unknown.get(rgb) || 0) + 1);
   }
   return { slots, unknown };
 }
