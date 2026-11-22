@@ -113,6 +113,11 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .small-button { margin-top: 8px; padding: 3px 9px; font-size: 12px; }
 .recent { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; }
 .recent .forget { padding: 2px 7px; font-size: 12px; color: var(--muted); }
+.recent .folder { display: inline-flex; gap: 0; }
+.recent-side { justify-content: flex-start; margin-top: 10px; font-size: 12px; }
+.recent-side button { padding: 3px 8px; font-size: 12px; }
+.recent .folder > button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.recent .folder > .forget { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 0; }
 .slots { margin-top: 6px; }
 .slot { margin-top: 14px; }
 .slot-head { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 6px; }

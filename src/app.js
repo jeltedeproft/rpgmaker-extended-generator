@@ -18,7 +18,7 @@ import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage,
   ensureVariants, loadGradients, toCanvas, downloadBlob, downloadImage,
   canRememberFolders, pickFolder, entriesFromHandle, rememberFolder, forgetFolder, rememberedFolders,
-  ensureReadPermission, readText, ensureLayers,
+  ensureReadPermission, readText, ensureLayers, hasReadPermission, dropFolderHandles,
 } from './loader.js';
 
 const ALL_COLOURS = '__colours';
@@ -93,14 +93,14 @@ async function importEntries(entries, packName) {
   const pngs = entries.filter((e) => /\.png$/i.test(e.path));
   if (!pngs.length) {
     toast('No PNG files found in that folder.');
-    return;
+    return 0;
   }
   // The same folder opened twice (or a copy of it) would add every part again.
   const keys = folderKeys(pngs);
   const twin = sameFolder(state.library.packs, keys);
   if (twin && !(await askOpenAgain(packName, twin))) {
     toast(`Skipped "${packName}": it has the same files as "${twin.pack.name}".`);
-    return;
+    return 0;
   }
   const partsBefore = state.library.variants.size;
   const gradientFilesBefore = state.library.gradientFiles.length;
@@ -144,13 +144,14 @@ async function importEntries(entries, packName) {
       showApp();
       renderProblems();
     }
-    return;
+    return addedGradientFiles; // colour sheets alone still count as a usable folder
   }
   ensureCharacter();
   checkLookalikes(pack.name).catch((e) => console.error(e));
   toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.`);
   showApp();
   renderAll();
+  return addedParts;
 }
 
 /** Makes a first character once there are parts, and gives it colours. */
@@ -1594,38 +1595,74 @@ $('adjust-dialog').addEventListener('close', () => {
 
 // ---------- folders ----------
 
+/** Opens a folder and, when it gave something usable, remembers it for next time. */
 async function importHandle(handle) {
-  await importEntries(await entriesFromHandle(handle), handle.name);
+  const added = await importEntries(await entriesFromHandle(handle), handle.name);
+  if (added && canRememberFolders) {
+    await rememberFolder(handle);
+    renderRecentFolders();
+  }
+  return added;
+}
+
+/** Opens remembered folders; asks for access where needed (only inside a click). */
+async function reopenFolders(folders, ask) {
+  let reopened = 0;
+  for (const { handle } of folders) {
+    const allowed = ask ? await ensureReadPermission(handle) : await hasReadPermission(handle);
+    if (allowed && (await importHandle(handle))) reopened++;
+  }
+  return reopened;
+}
+
+/** On start: folders the browser still allows come back without a click. */
+async function reopenGrantedFolders() {
+  if (!canRememberFolders) return;
+  const folders = await rememberedFolders();
+  if (!folders.length) return;
+  const reopened = await reopenFolders(folders, false);
+  if (reopened) toast(`Reopened ${reopened} folder${reopened > 1 ? 's' : ''} from last time.`);
 }
 
 async function renderRecentFolders() {
-  const box = $('recent-folders');
-  if (!canRememberFolders) return;
-  const handles = await rememberedFolders();
-  box.hidden = !handles.length;
-  if (!handles.length) return;
-  const openAll = el('button', { className: 'primary', textContent: handles.length > 1 ? 'Reopen all' : `Reopen ${handles[0].name}` });
-  openAll.addEventListener('click', async () => {
-    for (const h of handles) {
-      if (await ensureReadPermission(h)) await importHandle(h);
-    }
-  });
+  await renderRecentInto($('recent-folders'), $('recent-note'));
+  await renderRecentInto($('recent-folders-side'), null);
+}
+
+/** "Last time" folder buttons; on the welcome screen and, once the app is open, in the sidebar. */
+async function renderRecentInto(box, note) {
+  note ||= { hidden: true, textContent: '' };
+  if (!canRememberFolders) {
+    note.hidden = false;
+    note.textContent = 'This browser cannot remember folders, so you pick them again after a reload. Chrome and Edge can remember them.';
+    return;
+  }
+  const folders = await rememberedFolders();
+  box.hidden = !folders.length;
+  note.hidden = !folders.length;
+  note.textContent = 'Opened folders are remembered. When the browser asks, choose "Allow on every visit" and they reopen by themselves after a reload.';
+  if (!folders.length) return;
+  const openAll = el('button', { className: 'primary', textContent: folders.length > 1 ? `Reopen all ${folders.length}` : `Reopen ${folders[0].key}` });
+  openAll.addEventListener('click', () => reopenFolders(folders, true));
   box.replaceChildren(el('span', { className: 'muted small', textContent: 'Last time:' }), openAll);
-  if (handles.length > 1) {
-    for (const h of handles) {
-      const b = el('button', { textContent: h.name });
-      b.addEventListener('click', async () => {
-        if (await ensureReadPermission(h)) await importHandle(h);
+  if (folders.length > 1) {
+    for (const f of folders) {
+      const open = el('button', { type: 'button', textContent: f.key, title: `Open only ${f.key}` });
+      open.addEventListener('click', () => reopenFolders([f], true));
+      const forget = el('button', { type: 'button', className: 'forget', textContent: '×', title: `Forget ${f.key}` });
+      forget.addEventListener('click', async () => {
+        await forgetFolder(f.key);
+        renderRecentFolders();
       });
-      box.append(b);
+      box.append(el('span', { className: 'folder' }, [open, forget]));
     }
   }
-  const forget = el('button', { className: 'forget', textContent: 'Forget', title: 'Forget these folders' });
-  forget.addEventListener('click', async () => {
-    for (const h of handles) await forgetFolder(h.name);
+  const forgetAll = el('button', { className: 'forget', textContent: folders.length > 1 ? 'Forget all' : 'Forget', title: 'Forget these folders' });
+  forgetAll.addEventListener('click', async () => {
+    for (const f of folders) await forgetFolder(f.key);
     renderRecentFolders();
   });
-  box.append(forget);
+  box.append(forgetAll);
 }
 
 // With the File System Access API the chosen folder is remembered for next time.
@@ -1633,9 +1670,7 @@ $('folder-input').parentElement.addEventListener('click', async (e) => {
   if (!canRememberFolders) return; // fall through to the plain <input webkitdirectory>
   e.preventDefault();
   try {
-    const handle = await pickFolder();
-    await rememberFolder(handle);
-    await importHandle(handle);
+    await importHandle(await pickFolder());
   } catch (err) {
     if (err.name !== 'AbortError') toast(`Could not open the folder: ${err.message}`);
   }
@@ -1659,6 +1694,8 @@ $('sample-kit').addEventListener('click', loadSampleKit);
 // Dev: ?pack=<folder> loads a folder that has a manifest.json (see tools/make-manifest.mjs).
 (async () => {
   const params = new URLSearchParams(location.search);
+  // Folders opened last time come back by themselves when the browser still allows it.
+  if (!params.has('sample') && !params.has('pack')) await reopenGrantedFolders();
   if (params.has('sample')) await loadSampleKit();
   for (const folder of params.getAll('pack')) {
     try {
@@ -1681,10 +1718,19 @@ document.addEventListener('dragleave', (e) => {
 document.addEventListener('drop', async (e) => {
   e.preventDefault();
   $('app').classList.remove('dragging');
+  // Both reads must start before the first await: the drop data is gone after that.
+  const handles = dropFolderHandles(e.dataTransfer);
   const entries = await entriesFromDrop(e.dataTransfer);
   const json = entries.find((x) => /\.json$/i.test(x.path));
-  if (json && entries.length === 1) await loadCharacterFile(json.src);
-  else await importEntries(entries, packNameFromEntries(entries, 'Dropped files'));
+  if (json && entries.length === 1) {
+    await loadCharacterFile(json.src);
+    return;
+  }
+  const folders = await handles;
+  // Dropped folders open like picked ones, so they are remembered for next time too.
+  if (folders.length && entries.every((x) => folders.some((h) => x.path.startsWith(h.name + '/')))) {
+    for (const h of folders) await importHandle(h);
+  } else await importEntries(entries, packNameFromEntries(entries, 'Dropped files'));
 });
 
 // ---------- editor events ----------

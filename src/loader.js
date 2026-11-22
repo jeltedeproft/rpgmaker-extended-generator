@@ -197,25 +197,72 @@ async function withStore(mode, fn) {
   });
 }
 
+/**
+ * Remembers a folder for next time. The same folder is stored once; two different folders with
+ * the same name ("Generator") both stay, as "Generator" and "Generator (2)".
+ */
 export async function rememberFolder(handle) {
   try {
-    await withStore('readwrite', (s) => s.put(handle, handle.name));
-  } catch { /* storage blocked: the folder just won't be remembered */ }
+    const known = await rememberedFolders();
+    for (const { key, handle: h } of known) {
+      if (await h.isSameEntry(handle)) return key;
+    }
+    let key = handle.name;
+    for (let n = 2; known.some((k) => k.key === key); n++) key = `${handle.name} (${n})`;
+    await withStore('readwrite', (s) => s.put(handle, key));
+    return key;
+  } catch {
+    return null; // storage blocked: the folder just won't be remembered
+  }
 }
 
-export async function forgetFolder(name) {
+export async function forgetFolder(key) {
   try {
-    await withStore('readwrite', (s) => s.delete(name));
+    await withStore('readwrite', (s) => s.delete(key));
   } catch { /* ignore */ }
 }
 
-/** @returns {Promise<FileSystemDirectoryHandle[]>} */
+/** @returns {Promise<{key:string, handle:FileSystemDirectoryHandle}[]>} in the order they were added */
 export async function rememberedFolders() {
   try {
-    return (await withStore('readonly', (s) => s.getAll())) || [];
+    const db = await openDb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('folders', 'readonly');
+      const result = [];
+      const req = tx.objectStore('folders').openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return;
+        result.push({ key: String(cursor.key), handle: cursor.value });
+        cursor.continue();
+      };
+      tx.oncomplete = () => resolve(result);
+      tx.onerror = () => reject(tx.error);
+    });
   } catch {
     return [];
   }
+}
+
+/** Without asking: is read access to a remembered folder still granted? */
+export async function hasReadPermission(handle) {
+  try {
+    return (await handle.queryPermission({ mode: 'read' })) === 'granted';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Folder handles of a drop (Chrome/Edge), so dropped folders can be remembered too. Must be
+ * called right away in the drop event, before anything is awaited.
+ * @returns {Promise<FileSystemDirectoryHandle[]>}
+ */
+export function dropFolderHandles(dataTransfer) {
+  if (!canRememberFolders) return Promise.resolve([]);
+  const pending = [...dataTransfer.items].filter((i) => i.kind === 'file').map((i) => i.getAsFileSystemHandle?.());
+  return Promise.all(pending.map((p) => Promise.resolve(p).catch(() => null)))
+    .then((handles) => handles.filter((h) => h?.kind === 'directory'));
 }
 
 /** Asks for read access again (must run inside a click handler). */

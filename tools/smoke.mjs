@@ -248,6 +248,40 @@ try {
     check('skipped folder is not added', (await evaluate(`document.querySelectorAll('#packs div').length`)) === packsBefore);
   }
 
+  // Remembered folders: a folder handle (the browser's private storage stands in for a picked
+  // folder) is stored once, and after a reload it comes back without a click.
+  {
+    const keys = await evaluate(`(async () => {
+      const root = await navigator.storage.getDirectory();
+      const dir = await root.getDirectoryHandle('Remembered kit', { create: true });
+      const m = await (await fetch('sample-kit/manifest.json')).json();
+      for (const path of m.files) {
+        const parts = path.split('/');
+        let d = dir;
+        for (const part of parts.slice(0, -1)) d = await d.getDirectoryHandle(part, { create: true });
+        const w = await (await d.getFileHandle(parts.at(-1), { create: true })).createWritable();
+        await w.write(await (await fetch('sample-kit/' + path)).blob());
+        await w.close();
+      }
+      const L = await import(new URL('src/loader.js', location.href).href);
+      await L.rememberFolder(dir);
+      await L.rememberFolder(dir);
+      return (await L.rememberedFolders()).map((f) => f.key).join(',');
+    })()`);
+    check('a folder is remembered once', keys === 'Remembered kit', keys);
+    await send('Page.navigate', { url: URL_UNDER_TEST.replace(/\?.*$/, '') });
+    await sleep(4000);
+    check('remembered folder reopens after a reload', await evaluate(`[...document.querySelectorAll('#packs div')].some((d) => d.textContent.includes('Remembered kit'))`));
+    check('remembered folders listed in the sidebar', await evaluate(`!document.getElementById('recent-folders-side').hidden && document.getElementById('recent-folders-side').textContent.includes('Remembered kit')`));
+    await evaluate(`(async () => {
+      const L = await import(new URL('src/loader.js', location.href).href);
+      for (const f of await L.rememberedFolders()) await L.forgetFolder(f.key);
+      await (await navigator.storage.getDirectory()).removeEntry('Remembered kit', { recursive: true });
+    })()`);
+    await send('Page.navigate', { url: URL_UNDER_TEST });
+    await sleep(2500);
+  }
+
   // Save/load round trip through the real (de)serializer.
   const roundTrip = await evaluate(`(async () => {
     const m = await import(new URL('src/character.js', location.href).href);
