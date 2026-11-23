@@ -3138,8 +3138,13 @@ $('clear-all').addEventListener('click', () => {
     if (key === part) state.character.parts[key] = null; // "None", not "pick a default"
     cleared++;
   }
-  if (!cleared) {
-    toast('Nothing to clear: only Body, Face and locked parts are worn.');
+  // Colours back to Source: the parts as drawn, no gradients.
+  const coloured = Object.keys(state.character.colors || {}).length
+    + Object.values(state.character.itemColors || {}).reduce((n, c) => n + Object.values(c).filter(Boolean).length, 0);
+  state.character.colors = {};
+  for (const c of Object.values(state.character.itemColors || {})) for (const slot of Object.keys(c)) c[slot] = null;
+  if (!cleared && !coloured) {
+    toast('Nothing to clear: only Body, Face and locked parts are worn, all in their source colours.');
     return;
   }
   if (state.selectedPart !== ALL_COLOURS && !(itemOfKey(state.selectedPart) in state.character.parts)) state.selectedPart = partOfKey(state.selectedPart);
@@ -3150,7 +3155,7 @@ $('clear-all').addEventListener('click', () => {
     $('clear-all').textContent = 'Clear all';
   }, 10000);
   renderAll();
-  toast(`Took off ${cleared} part${cleared > 1 ? 's' : ''}. Body, Face and locked parts stay.`);
+  toast(`Took off ${cleared} part${cleared === 1 ? '' : 's'} and set every colour back to Source. Body, Face and locked parts stay.`);
 });
 
 $('randomize').addEventListener('click', () => {

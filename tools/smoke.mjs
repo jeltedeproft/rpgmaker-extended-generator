@@ -264,6 +264,9 @@ try {
     await sleep(900);
     const after = await evaluate(worn);
     check('clear all leaves only body and face', after.every(k => k === 'Body' || k === 'Face') && before.length > after.length, `${before.length} -> ${after.join(',')}`);
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
+    await sleep(500);
+    check('clear all sets every colour back to source', await evaluate(`(() => { const s = document.querySelectorAll('#slots .slot').length; return s > 0 && document.querySelectorAll('#slots .swatch.source.selected').length === s; })()`));
     await click('#clear-all');
     await sleep(900);
     check('undo clear puts the parts back', (await evaluate(worn)).length === before.length);
