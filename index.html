@@ -353,9 +353,12 @@
         <h3>Look-alikes</h3>
         <button value="close" class="small-button">Close</button>
       </div>
-      <p class="muted small">Copies ("p01 (2)") and alternates ("p17 (alt)") compared with the part they copy. Exact duplicates are hidden for you. Hidden parts leave the part list and the randomizer; a character already wearing one keeps it. Your choice is remembered for this folder.</p>
+      <p class="muted small">Copies ("p01 (2)") and alternates ("p17 (alt)") compared with the part they copy, and parts made of the same files as another part under another number or in another folder. Exact duplicates are hidden for you. Hidden parts leave the part list and the randomizer; a character already wearing one keeps it. Your choice is remembered for this folder.</p>
       <label class="lock"><input type="checkbox" id="alike-all"> Also list copies that are clearly different</label>
-      <div class="files-tools"><button type="button" id="alike-hide-all" class="small-button" title="Hide every copy listed below at once">Hide all listed copies</button></div>
+      <div class="files-tools">
+        <button type="button" id="alike-find" class="small-button" title="Compare the files of every part, whatever their names: finds the same part under another number or in another folder">Look for duplicates everywhere</button>
+        <button type="button" id="alike-hide-all" class="small-button" title="Hide every copy listed below at once">Hide all listed copies</button>
+      </div>
       <label class="lock"><input type="checkbox" id="alike-hide-decided"> Hide the ones already decided (<span id="alike-decided-count">0</span>): hidden or shown by you, or exact duplicates hidden for you</label>
       <div id="alike-list" class="alike-list"></div>
     </form>

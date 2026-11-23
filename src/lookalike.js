@@ -138,6 +138,57 @@ export function findLookalikes(library, packName = null) {
   return [...best.values()].sort((a, b) => a.result.ratio - b.result.ratio);
 }
 
+/** A short fingerprint of a file's bytes (FNV-1a and the length): equal files, equal prints. */
+export function digestBytes(bytes) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < bytes.length; i++) {
+    h ^= bytes[i];
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return `${bytes.length}:${h.toString(16)}`;
+}
+
+/**
+ * Parts made of the very same files as another part of the same body type and part, whatever
+ * their names, numbers or folders: "p12" that is "p05" again, or the same part in two opened
+ * folders. Needs `digest` (digestBytes) on the layers' base and mask refs; parts with a file
+ * without one, and VX Ace parts, are left out. The part kept is a plain one (not a "(2)" copy),
+ * from the folder opened first, with the lowest number.
+ * @returns {{variant:object, other:object}[]} variant: the duplicate, other: the part it repeats
+ */
+export function sameFileDuplicates(library, packName = null) {
+  const packOrder = library.packs.map((p) => p.name);
+  const groups = new Map();
+  for (const v of library.variants.values()) {
+    if (v.removed || !v.layers.length) continue;
+    const prints = [];
+    let complete = true;
+    for (const l of v.layers) {
+      const mask = l.mask && !l.mask.auto ? l.mask : null;
+      if (l.base?.cells || (l.base && !l.base.digest) || (mask && !mask.digest)) {
+        complete = false;
+        break;
+      }
+      prints.push(`${l.sheet}|${l.key}|${l.slotId || ''}|${l.base?.digest || ''}|${mask?.digest || ''}`);
+    }
+    if (!complete) continue;
+    const key = `${v.bodyType}|${v.part}|${prints.sort().join(',')}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(v);
+  }
+  const order = (a, b) => (copyBase(a.pid) ? 1 : 0) - (copyBase(b.pid) ? 1 : 0)
+    || packOrder.indexOf(a.pack) - packOrder.indexOf(b.pack)
+    || a.pid.localeCompare(b.pid, undefined, { numeric: true });
+  const pairs = [];
+  for (const list of groups.values()) {
+    if (list.length < 2) continue;
+    list.sort(order);
+    const [keep, ...rest] = list;
+    for (const variant of rest) if (!packName || variant.pack === packName || keep.pack === packName) pairs.push({ variant, other: keep });
+  }
+  return pairs;
+}
+
 /** A picture of where two same-size images differ: matching pixels faded, differences magenta. */
 export function differenceImage(a, b) {
   const w = Math.max(a.width, b.width);

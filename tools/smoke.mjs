@@ -720,6 +720,10 @@ try {
         await sleep(300);
       }
     }
+    // Duplicates by their files: on demand, for every opened folder.
+    await evaluate(`document.getElementById('alike-find').click()`);
+    await sleep(6000);
+    check('duplicates can be looked for by their files', await evaluate(`/duplicate/.test(document.getElementById('toast').textContent)`), await evaluate(`document.getElementById('toast').textContent`));
     check('hiding is remembered', await evaluate(`JSON.parse(localStorage.getItem('xgen-settings')).lookalikes[[...Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).lookalikes)].find(k => k.endsWith('/Male/Body/p01 (2)'))] === 'hide'`));
     await evaluate(`document.querySelector('#alike-dialog button[value="close"]').click()`);
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);

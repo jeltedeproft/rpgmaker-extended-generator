@@ -11,14 +11,14 @@ import { createImage, scanMask, matchSlot, recolorLayer } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
 import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask } from './automask.js';
-import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
+import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, isGeneratorSettings, itemKeys, addItem, removeItem, creditsFor, creditsText,
   makeSet, applySet, DEFAULT_RULES, wearChance,
 } from './character.js';
 import {
-  entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage, pngSize,
+  entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage, pngSize, fileBytes,
   ensureVariants, loadGradients, toCanvas, downloadBlob, downloadImage,
   canRememberFolders, pickFolder, entriesFromHandle, rememberFolder, forgetFolder, rememberedFolders,
   ensureReadPermission, readText, ensureLayers, hasReadPermission, dropFolderHandles,
@@ -250,7 +250,7 @@ async function importEntriesNow(entries, packName) {
   for (const v of state.library.variants.values()) if (v.pack === pack.name) applyAutoMask(v);
   busyStep(`Opening "${packName}": drawing the character`);
   ensureCharacter();
-  checkLookalikes(pack.name).catch((e) => console.error(e));
+  checkLookalikes(pack.name).then(() => findSameFiles(pack.name, true)).catch((e) => console.error(e));
   toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.${assignNote}`, toAssign ? 8000 : 4000);
   showApp();
   renderAll();
@@ -2342,6 +2342,55 @@ function askOpenAgain(packName, twin) {
 
 state.lookalikes = []; // [{variant, other, result}], see lookalike.js
 
+/**
+ * Duplicates by their files, not their names: parts of a body type made of the very same files as
+ * another part (other number, other folder, other opened folder). They are listed in Look-alikes
+ * and hidden, unless you said to show them. packName: only duplicates involving that folder.
+ * @returns {Promise<number>} how many were hidden now
+ */
+async function findSameFiles(packName = null, quiet = false) {
+  const lib = state.library;
+  const refs = [];
+  for (const f of libraryFiles(lib)) {
+    if (f.role === 'icon' || f.layer.base?.cells) continue;
+    const ref = f.role === 'mask' ? f.layer.mask : f.layer.base;
+    if (!ref.digest) refs.push(ref);
+  }
+  await Promise.all(refs.map(async (ref) => {
+    ref.digest = await fileBytes(ref.src).then(digestBytes).catch(() => null);
+  }));
+  const pairs = sameFileDuplicates(lib, packName);
+  const listed = new Set(state.lookalikes.map((f) => f.variant.id));
+  const choices = state.settings.lookalikes || {};
+  let hidden = 0;
+  for (const pair of pairs) {
+    const sheet = SHEET_KEYS.find((s) => pair.variant.layers.some((l) => l.sheet === s)) || null;
+    const result = { identical: true, sameFiles: true, differ: 0, visible: 0, ratio: 0, maskDiffer: 0, sheet };
+    if (listed.has(pair.variant.id)) {
+      // Listed as a copy already: known to be the same files now, unless known to be identical.
+      const known = state.lookalikes.find((f) => f.variant.id === pair.variant.id);
+      if (!known.result.identical) Object.assign(known, { other: pair.other, result });
+    } else {
+      state.lookalikes.push({ ...pair, result });
+    }
+    const choice = choices[pair.variant.id];
+    const hide = pair.variant.removed || choice !== 'show';
+    if (hide && !pair.variant.hidden) hidden++;
+    pair.variant.hidden = hide;
+  }
+  updateAlikesButton();
+  if (hidden) renderEditor();
+  if ($('alike-dialog').open) renderAlikes();
+  if (hidden || !quiet) {
+    toast(hidden
+      ? `Hid ${hidden} duplicate${hidden === 1 ? '' : 's'}: parts made of the same files as another part (other number or folder). See "Look-alikes…".`
+      : pairs.length
+        ? `${pairs.length} duplicate${pairs.length === 1 ? '' : 's'} found (parts made of the same files as another), all hidden already. See "Look-alikes…".`
+        : 'No duplicates: no part is made of the same files as another.', 8000);
+  }
+  return hidden;
+}
+
 /** Compares a pack's copies with their originals; hides exact duplicates unless you said not to. */
 function checkLookalikes(packName) {
   if (!lookalikePairs(state.library, packName).length) return Promise.resolve();
@@ -2406,7 +2455,9 @@ function alikeCard(f) {
     if (pa && pb) putPixels(d.canvas, differenceImage(pa, pb));
   }).catch(() => {});
   const pct = Math.round(result.ratio * 1000) / 10;
-  const verdict = result.identical ? `the same pixels as ${otherName}`
+  const otherWhere = `${other.bodyType !== variant.bodyType ? `${other.bodyType} ` : ''}${otherName}`;
+  const verdict = result.sameFiles ? `the same files as ${otherWhere}${other.pid !== variant.pid ? ' (another number)' : ''}`
+    : result.identical ? `the same pixels as ${otherName}`
     : !result.differ ? `the same picture as ${otherName}; only its colour areas (mask) differ, in ${result.maskDiffer} pixels, so it recolours differently`
       : `${pct >= 1 ? `${pct}% of its pixels` : `${result.differ} pixel${result.differ > 1 ? 's' : ''}`} differ from ${otherName}${result.maskDiffer ? ', and its colour areas differ too' : ''}`;
   const toggle = el('button', { type: 'button', className: 'small-button', textContent: variant.hidden ? 'Show it again' : `Hide ${variant.pid}` });
@@ -2459,6 +2510,7 @@ function openAlikesDialog() {
 }
 $('open-alikes').addEventListener('click', openAlikesDialog);
 $('alike-all').addEventListener('change', renderAlikes);
+$('alike-find').addEventListener('click', () => withBusy('Looking for duplicates', () => findSameFiles(null, false)));
 // Hide all listed copies: every copy in the list (as filtered now) is hidden, remembered per part.
 $('alike-hide-all').addEventListener('click', () => {
   const all = $('alike-all').checked;

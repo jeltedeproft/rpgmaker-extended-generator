@@ -72,6 +72,12 @@ export async function pngSize(src) {
   return { w: v.getUint32(16), h: v.getUint32(20) };
 }
 
+/** The bytes of a file (File, Blob or URL), without decoding it. */
+export async function fileBytes(src) {
+  const buffer = typeof src === 'string' ? await (await fetch(src)).arrayBuffer() : await src.arrayBuffer();
+  return new Uint8Array(buffer);
+}
+
 /** Decodes a PNG (File, Blob or URL) to {width, height, data}. Colours are not premultiplied/converted. */
 export async function decodeImage(src) {
   const bitmap = await createImageBitmap(await toBlob(src), {
