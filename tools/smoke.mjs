@@ -323,6 +323,8 @@ try {
       return (await L.rememberedFolders()).map((f) => f.key).join(',');
     })()`);
     check('a folder is remembered once', keys === 'Remembered kit', keys);
+    // Something assigned by hand in that folder, to be forgotten with it.
+    await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('xgen-settings') || '{}'); (s.assignments ||= {})['Remembered kit|odd.png'] = { readAs: 'TV_Hat_p01.png', bodyType: 'Male' }; (s.assignments)['Other|odd.png'] = { readAs: null }; localStorage.setItem('xgen-settings', JSON.stringify(s)); })()`);
     await send('Page.navigate', { url: URL_UNDER_TEST.replace(/\?.*$/, '') });
     await sleep(4000);
     check('remembered folder reopens after a reload', await evaluate(`[...document.querySelectorAll('#packs div')].some((d) => d.textContent.includes('Remembered kit'))`));
@@ -330,6 +332,8 @@ try {
     await evaluate(`[...document.querySelectorAll('#recent-folders-side .forget')].at(-1).click()`);
     await sleep(1200);
     check('forgetting a folder takes its parts out', await evaluate(`![...document.querySelectorAll('#packs div')].some((d) => d.textContent.includes('Remembered kit')) && !document.getElementById('welcome').hidden`));
+    const kept = await evaluate(`Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).assignments || {}).join(',')`);
+    check('forgetting a folder forgets what was assigned in it', !kept.includes('Remembered kit|') && kept.includes('Other|odd.png'), kept);
     await evaluate(`(async () => {
       const L = await import(new URL('src/loader.js', location.href).href);
       for (const f of await L.rememberedFolders()) await L.forgetFolder(f.key);

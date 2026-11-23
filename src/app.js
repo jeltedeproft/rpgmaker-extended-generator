@@ -2547,11 +2547,31 @@ function unloadPack(name) {
   if ($('files-dialog').open) renderFiles();
 }
 
-/** Forgets a remembered folder and takes its pack out straight away. */
+/**
+ * Forgets what was saved for a pack: files assigned, unassigned or removed by hand, parts removed
+ * and look-alike choices. Opened again, the folder is read from scratch.
+ */
+function forgetPackSettings(name) {
+  const s = state.settings;
+  const drop = (map, prefix) => {
+    for (const key of Object.keys(map || {})) if (key.startsWith(prefix)) delete map[key];
+  };
+  drop(s.assignments, `${name}|`);
+  drop(s.removedParts, `${name}/`);
+  drop(s.lookalikes, `${name}/`);
+  saveSettings();
+}
+
+/** Forgets a remembered folder, and what was saved for it, and takes its pack out straight away. */
 async function forgetAndUnload(key) {
   await forgetFolder(key);
   const packs = state.library.packs.filter((p) => p.folderKey === key);
-  for (const p of packs) unloadPack(p.name);
+  for (const p of packs) {
+    forgetPackSettings(p.name);
+    unloadPack(p.name);
+  }
+  // Not open now: its pack had the folder's name.
+  if (!packs.length) forgetPackSettings(key);
   return packs.length;
 }
 
@@ -2603,17 +2623,18 @@ async function renderRecentInto(box, note) {
       forget.addEventListener('click', async () => {
         const removed = await forgetAndUnload(f.key);
         renderRecentFolders();
-        toast(removed ? `Forgot "${f.key}" and took its parts out.` : `Forgot "${f.key}".`);
+        toast(removed ? `Forgot "${f.key}" and what you assigned in it, and took its parts out.` : `Forgot "${f.key}" and what you assigned in it.`);
       });
       box.append(el('span', { className: 'folder' }, [open, forget]));
     }
   }
-  const forgetAll = el('button', { className: 'forget', textContent: folders.length > 1 ? 'Forget all' : 'Forget', title: 'Forget these folders' });
+  const forgetAll = el('button', { className: 'forget', textContent: folders.length > 1 ? 'Forget all' : 'Forget',
+    title: 'Forget these folders, and what you assigned, removed or decided about look-alikes in them' });
   forgetAll.addEventListener('click', async () => {
     let removed = 0;
     for (const f of folders) removed += await forgetAndUnload(f.key);
     renderRecentFolders();
-    toast(removed ? `Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and took their parts out.` : 'Forgot the folders.');
+    toast(removed ? `Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and what you assigned in them, and took their parts out.` : 'Forgot the folders and what you assigned in them.');
   });
   box.append(forgetAll);
 }
