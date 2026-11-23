@@ -28,6 +28,8 @@ export async function entriesFromDrop(dataTransfer) {
     }
   }
   for (const root of roots) await walk(root, '');
+  // Files without an entry (e.g. made by a script): take the plain file list.
+  if (!roots.length) for (const file of dataTransfer.files || []) entries.push({ path: file.name, src: file });
   return entries;
 }
 

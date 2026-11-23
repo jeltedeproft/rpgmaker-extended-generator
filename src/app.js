@@ -2009,25 +2009,191 @@ function galleryPicture(text, fileName) {
     galleryPictures.set(cacheKey, (async () => {
       const { character, customGradients, missing } = deserializeCharacter(text, state.library, allGradients(), fileName);
       applyDefaults(character, state.library);
-      await ensureVariants(variantsToDecode(character, state.library));
-      const byId = new Map([...gradientsById(), ...customGradients.map((g) => [g.id, g])]);
-      const face = composeSheet('FG', character, state.library, byId, state.settings).image;
-      const walk = composeSheet('TV', character, state.library, byId, state.settings);
-      let sprite = null;
-      if (walk.image) {
-        const f = frameOf('TV', walk.image, walk.frame);
-        const x = f.cols === 3 ? f.w : 0;
-        sprite = createImage(f.w, f.h);
-        for (let y = 0; y < f.h; y++) {
-          const start = (y * walk.image.width + x) * 4;
-          sprite.data.set(walk.image.data.subarray(start, start + f.w * 4), y * f.w * 4);
-        }
-      }
-      return { face, sprite, missing, name: character.name };
+      return { ...(await characterPicture(character, customGradients)), missing, name: character.name };
     })());
   }
   return galleryPictures.get(cacheKey);
 }
+
+/** Face and standing walk frame of a character. */
+async function characterPicture(character, customGradients = []) {
+  await ensureVariants(variantsToDecode(character, state.library));
+  const byId = new Map([...gradientsById(), ...customGradients.map((g) => [g.id, g])]);
+  const face = composeSheet('FG', character, state.library, byId, state.settings).image;
+  const walk = composeSheet('TV', character, state.library, byId, state.settings);
+  let sprite = null;
+  if (walk.image) {
+    const f = frameOf('TV', walk.image, walk.frame);
+    const x = f.cols === 3 ? f.w : 0;
+    sprite = createImage(f.w, f.h);
+    for (let y = 0; y < f.h; y++) {
+      const start = (y * walk.image.width + x) * 4;
+      sprite.data.set(walk.image.data.subarray(start, start + f.w * 4), y * f.w * 4);
+    }
+  }
+  return { face, sprite };
+}
+
+// ---------- importing many JSON files at once ----------
+
+/** What a JSON file is: a sets file, a character (ours or RPG Maker MZ's), or something else. */
+function jsonKind(text) {
+  try {
+    const data = JSON.parse(text);
+    if (data?.format === 'rpgmaker-xgen-sets' && Array.isArray(data.sets)) return { kind: 'sets', sets: data.sets };
+    if (data?.format === 'rpgmaker-xgen-character' || isGeneratorSettings(data)) return { kind: 'character' };
+  } catch { /* not JSON */ }
+  return { kind: 'unknown' };
+}
+
+/** A character file as a set: all its worn items, with their colours and positions. */
+function setFromCharacterFile(file) {
+  const { character, customGradients } = deserializeCharacter(file.text, state.library, allGradients(), file.name);
+  const keys = Object.keys(character.parts).filter((k) => character.parts[k]);
+  const set = makeSet(character, state.library, character.name || file.name.replace(/\.json$/i, ''), keys, true);
+  set.customGradients = customGradients.map(customGradientToJson);
+  return { set, customGradients };
+}
+
+/**
+ * JSON files dropped or picked together. Sets files are imported; each character file can be
+ * loaded as the character (several go to the Gallery) or put on the current character as a set,
+ * with a picture of both so the user picks.
+ * @param {{name:string, text:string}[]} files
+ */
+async function importJsonFiles(files) {
+  const items = files.map((f) => ({ ...f, ...jsonKind(f.text) }));
+  const characters = items.filter((i) => i.kind === 'character');
+  if (!state.library.variants.size) {
+    for (const c of characters) addToGallery(c.text, c.name.replace(/\.json$/i, ''), 'loaded');
+    importSetsFrom(items);
+    toast(`${characters.length ? `${characters.length} character file(s) kept in the Gallery; open a generator folder to see them. ` : ''}${summaryOfOthers(items)}`, 8000);
+    return;
+  }
+  if (!characters.length) {
+    importSetsFrom(items);
+    toast(summaryOfOthers(items) || 'No JSON files to import.', 8000);
+    return;
+  }
+  openJsonDialog(items);
+}
+
+function importSetsFrom(items) {
+  const sets = items.filter((i) => i.kind === 'sets').flatMap((i) => i.sets);
+  if (!sets.length) return 0;
+  (state.settings.sets ||= []).push(...sets);
+  saveSettings();
+  renderSets();
+  return sets.length;
+}
+
+function summaryOfOthers(items) {
+  const sets = items.filter((i) => i.kind === 'sets').reduce((n, i) => n + i.sets.length, 0);
+  const unknown = items.filter((i) => i.kind === 'unknown');
+  return [
+    sets ? `Imported ${sets} set(s).` : '',
+    unknown.length ? `Skipped ${unknown.length} file(s) that are not characters or sets: ${unknown.map((u) => u.name).join(', ')}.` : '',
+  ].filter(Boolean).join(' ');
+}
+
+let jsonItems = [];
+function openJsonDialog(items) {
+  jsonItems = items;
+  const characters = items.filter((i) => i.kind === 'character');
+  for (const c of characters) c.choice = 'character';
+  const picture = (promise) => {
+    const face = el('canvas', { width: 0, height: 0, className: 'gallery-face' });
+    const sprite = el('canvas', { width: 0, height: 0, className: 'gallery-sprite' });
+    promise.then(({ face: f, sprite: s }) => {
+      putPixels(face, f);
+      putPixels(sprite, s);
+    }).catch(() => {});
+    return el('div', { className: 'gallery-pics' }, [face, sprite]);
+  };
+  const rows = items.map((item, n) => {
+    if (item.kind !== 'character') {
+      const text = item.kind === 'sets' ? `Sets file: its ${item.sets.length} set(s) are added to your Sets.` : 'Not a character or sets file: skipped.';
+      return el('div', { className: 'json-row' }, [el('h4', { textContent: item.name }), el('span', { className: 'muted small', textContent: text })]);
+    }
+    let asSet = null;
+    try {
+      asSet = setFromCharacterFile(item);
+    } catch (err) {
+      item.choice = 'skip';
+      return el('div', { className: 'json-row' }, [el('h4', { textContent: item.name }), el('span', { className: 'muted small', textContent: `Can't be read: ${err.message}` })]);
+    }
+    item.asSet = asSet;
+    const option = (value, title, note, pic) => {
+      const radio = el('input', { type: 'radio', name: `json-${n}`, value, checked: item.choice === value });
+      radio.addEventListener('change', () => {
+        item.choice = value;
+        updateJsonSummary();
+      });
+      return el('label', { className: `json-option${value === 'skip' ? ' skip' : ''}` }, [
+        el('span', {}, [radio, ` ${title}`]), ...(pic ? [pic] : []), ...(note ? [el('span', { className: 'muted', textContent: note })] : []),
+      ]);
+    };
+    const asCharacter = galleryPicture(item.text, item.name);
+    const onYours = characterPicture(applySet(state.character, asSet.set, state.library).character, asSet.customGradients);
+    return el('div', { className: 'json-row' }, [
+      el('h4', { textContent: item.name }),
+      el('div', { className: 'json-options' }, [
+        option('character', 'As a character', 'Replaces the current character (with several, they go to the Gallery).', picture(asCharacter)),
+        option('set', 'As a set on your character', `${(n2 => `Its ${n2} part${n2 === 1 ? '' : 's'}`)(Object.keys(asSet.set.parts).length)} go${Object.keys(asSet.set.parts).length === 1 ? 'es' : ''} on your character; body type and name stay. Also saved under Sets.`, picture(onYours)),
+        option('skip', 'Skip'),
+      ]),
+    ]);
+  });
+  $('json-list').replaceChildren(...rows);
+  updateJsonSummary();
+  $('json-dialog').showModal();
+}
+
+function updateJsonSummary() {
+  const count = (c) => jsonItems.filter((i) => i.kind === 'character' && i.choice === c).length;
+  const chars = count('character');
+  const parts = [
+    chars === 1 ? '1 loaded as the character' : chars ? `${chars} put in the Gallery` : '',
+    count('set') ? `${count('set')} put on as sets` : '',
+    count('skip') ? `${count('skip')} skipped` : '',
+  ].filter(Boolean);
+  $('json-summary').textContent = parts.join(', ');
+}
+
+for (const b of document.querySelectorAll('[data-json-all]')) {
+  b.addEventListener('click', () => {
+    for (const item of jsonItems) if (item.kind === 'character' && (item.asSet || b.dataset.jsonAll === 'skip' || b.dataset.jsonAll === 'character')) item.choice = b.dataset.jsonAll;
+    for (const r of $('json-list').querySelectorAll('input[type="radio"]')) r.checked = r.value === b.dataset.jsonAll;
+    updateJsonSummary();
+  });
+}
+
+$('json-apply').addEventListener('click', async () => {
+  $('json-dialog').close();
+  const chosen = (c) => jsonItems.filter((i) => i.kind === 'character' && i.choice === c);
+  const characters = chosen('character');
+  for (const c of characters) addToGallery(c.text, c.name.replace(/\.json$/i, ''), 'loaded');
+  if (characters.length === 1) await loadCharacterText(characters[0].text, characters[0].name, false);
+  const missing = [];
+  for (const item of chosen('set')) {
+    (state.settings.sets ||= []).push(item.asSet.set);
+    for (const g of item.asSet.customGradients) if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(g);
+    const result = applySet(state.character, item.asSet.set, state.library);
+    state.character = result.character;
+    missing.push(...result.missing);
+  }
+  importSetsFrom(jsonItems);
+  saveSettings();
+  renderSets();
+  renderAll();
+  const done = [
+    characters.length === 1 ? `Loaded ${characters[0].name}.` : characters.length ? `${characters.length} characters are in the Gallery.` : '',
+    chosen('set').length ? `Put on ${chosen('set').length} set(s).` : '',
+    missing.length ? `Missing: ${missing.join(', ')}.` : '',
+    summaryOfOthers(jsonItems),
+  ].filter(Boolean).join(' ');
+  toast(`✓ ${done || 'Nothing imported.'}`, 8000);
+});
 
 function galleryCard(item, observer) {
   const face = el('canvas', { width: 0, height: 0, className: 'gallery-face' });
@@ -2479,9 +2645,11 @@ document.addEventListener('drop', async (e) => {
   // Both reads must start before the first await: the drop data is gone after that.
   const handles = dropFolderHandles(e.dataTransfer);
   const entries = await entriesFromDrop(e.dataTransfer);
-  const json = entries.find((x) => /\.json$/i.test(x.path));
-  if (json && entries.length === 1) {
-    await loadCharacterFile(json.src);
+  // Only JSON files: characters and sets, all at once.
+  if (entries.length && entries.every((x) => /\.json$/i.test(x.path))) {
+    await withBusy(`Reading ${entries.length} JSON file(s)`, async () => {
+      await importJsonFiles(await Promise.all(entries.map(async (x) => ({ name: x.path.split('/').pop(), text: await readText(x.src) }))));
+    });
     return;
   }
   const folders = await handles;
@@ -2791,7 +2959,8 @@ async function loadCharacterText(text, fileName, keep = false) {
 }
 
 $('load-character').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
+  const files = [...e.target.files];
   e.target.value = '';
-  if (file) await loadCharacterFile(file);
+  if (files.length === 1) await loadCharacterFile(files[0]);
+  else if (files.length) await importJsonFiles(await Promise.all(files.map(async (f) => ({ name: f.name, text: await f.text() }))));
 });

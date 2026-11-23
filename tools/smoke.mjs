@@ -126,6 +126,24 @@ try {
   await click('#remove-item');
   await sleep(600);
   check('second item removed', await evaluate(`![...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('FrontHair 2'))`));
+  // Several JSON files at once: per file, a picture of each way to use it, then import as chosen.
+  {
+    const charFile = (name, pid) => JSON.stringify({ format: 'rpgmaker-xgen-character', version: 3, character: { name, bodyType: 'Male', parts: { FrontHair: `Sample kit/Male/FrontHair/${pid}` }, colors: {} } });
+    const files = [['json-a.json', charFile('Json A', 'p01')], ['json-b.json', charFile('Json B', 'p02')],
+      ['json-sets.json', JSON.stringify({ format: 'rpgmaker-xgen-sets', version: 1, sets: [{ name: 'Json set', parts: {}, colors: {} }] })]];
+    for (const [n, t] of files) writeFileSync(join(OUT, n), t);
+    const root = (await send('DOM.getDocument')).result.root.nodeId;
+    const input = (await send('DOM.querySelector', { nodeId: root, selector: '#load-character' })).result.nodeId;
+    await send('DOM.setFileInputFiles', { nodeId: input, files: files.map(([n]) => join(OUT, n)) });
+    await sleep(2500);
+    check('several JSON files: a choice with pictures', await evaluate(`document.getElementById('json-dialog').open && document.querySelectorAll('#json-list .json-row').length === 3 && [...document.querySelectorAll('#json-list canvas')].filter(c => c.width > 0).length >= 4`));
+    await shot('2b-json-import.png');
+    await evaluate(`document.querySelector('#json-list input[value="set"]').click()`);
+    await evaluate(`document.getElementById('json-apply').click()`);
+    await sleep(1500);
+    const sets = await evaluate(`[...document.querySelectorAll('#set-list .set-apply')].map(b => b.textContent).join('|')`);
+    check('JSON files imported as chosen', (await evaluate(`document.getElementById('character-name').value`)) === 'Json B' && sets.includes('Json A') && sets.includes('Json set'), sets);
+  }
   // Remove one part (not its folder), then undo.
   {
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);

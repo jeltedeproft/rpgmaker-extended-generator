@@ -24,7 +24,7 @@
       <button id="open-files" disabled title="Every file the generator read, and the ones it couldn't: assign, reassign or unassign them">Files…</button>
       <button id="save-character" disabled>Save character</button>
       <label class="button" id="load-character-label">Load character
-        <input id="load-character" type="file" accept=".json,application/json" hidden disabled>
+        <input id="load-character" type="file" accept=".json,application/json" multiple hidden disabled>
       </label>
     </div>
   </header>
@@ -366,6 +366,27 @@
       <div class="dialog-actions">
         <button value="open">Open anyway</button>
         <button value="skip" class="primary">Skip it</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="json-dialog" class="files-dialog">
+    <form method="dialog">
+      <div class="files-head">
+        <h3>Import JSON files</h3>
+        <button value="close" class="small-button">Cancel</button>
+      </div>
+      <p class="muted small">A character file can be used in two ways. Each picture shows what you get: pick one per file, then Import.</p>
+      <div class="files-tools">
+        <span class="muted small">All files:</span>
+        <button type="button" class="small-button" data-json-all="character">As characters</button>
+        <button type="button" class="small-button" data-json-all="set">As sets</button>
+        <button type="button" class="small-button" data-json-all="skip">Skip all</button>
+      </div>
+      <div id="json-list" class="json-list"></div>
+      <div class="files-tools">
+        <button type="button" id="json-apply" class="primary">Import</button>
+        <span id="json-summary" class="muted small"></span>
       </div>
     </form>
   </dialog>
