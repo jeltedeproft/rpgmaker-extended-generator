@@ -359,12 +359,30 @@ async function renderEditor() {
   } else if (!isColours) {
     renderPieces();
     const { own, others } = variantsForPart(state.library, part, state.character.bodyType, state.character.parts[key]);
-    for (const variant of [null, ...own]) $('variants').append(variantTile(key, variant));
-    if (others.length) {
+    // Sections per image (portrait, walk, damage, battler): the parts that have a picture for it,
+    // drawn as that picture. A part with only a damage sprite shows up under Damage.
+    const imagesOf = new Map([...own, ...others].map((v) => [v, SHEET_KEYS.filter((s) => sheetLayers(v, s, state.library).length)]));
+    const counts = Object.fromEntries(SHEET_KEYS.map((s) => [s, [...imagesOf.values()].filter((list) => list.includes(s)).length]));
+    const tab = counts[state.tileSheet] ? state.tileSheet : '';
+    const shown = (v) => !tab || imagesOf.get(v).includes(tab);
+    const tabs = [['', `All (${imagesOf.size})`], ...SHEET_KEYS.filter((s) => counts[s]).map((s) => [s, `${SHEET_NAMES[s]} (${counts[s]})`])];
+    $('variant-tabs').hidden = tabs.length < 3;
+    $('variant-tabs').replaceChildren(...tabs.map(([s, label]) => {
+      const b = el('button', { type: 'button', className: s === tab ? 'active' : '', textContent: label,
+        title: s ? `Only the ${part} parts that have a ${SHEET_NAMES[s].toLowerCase()} picture, shown as that picture` : `Every ${part} part` });
+      b.addEventListener('click', () => {
+        state.tileSheet = s;
+        renderEditor();
+      });
+      return b;
+    }));
+    const sheets = tab ? [tab] : undefined;
+    for (const variant of [null, ...own.filter(shown)]) $('variants').append(variantTile(key, variant, sheets));
+    if (others.some(shown)) {
       $('other-bodies').hidden = false;
       // Keep it open when the current choice comes from another body type.
       if (others.some((v) => v.id === state.character.parts[key])) $('other-bodies').open = true;
-      for (const variant of others) $('other-variants').append(variantTile(key, variant));
+      for (const variant of others.filter(shown)) $('other-variants').append(variantTile(key, variant, sheets));
     }
     renderOffsets();
   }
@@ -376,7 +394,8 @@ async function renderEditor() {
   renderSlots();
 }
 
-function variantTile(key, variant) {
+/** sheets: the images to draw the tile from, best first (default: portrait, walk, battler, damage). */
+function variantTile(key, variant, sheets = undefined) {
   const selected = (state.character.parts[key] || null) === (variant?.id || null);
   const label = variant ? variantLabel(state.library, variant, state.character.bodyType) : 'None';
   const tile = el('button', { className: 'variant' + (selected ? ' selected' : ''), title: variant ? `${label}
@@ -387,7 +406,7 @@ ${variant.id}` : 'None' });
     // Drawn in the current colours, so tiles follow colour changes (RPG Maker's own Variation
     // icons have fixed colours; they're only used when the part can't be drawn).
     let shown = thumb;
-    tile.refresh = () => partThumbnail(key, variant)
+    tile.refresh = () => partThumbnail(key, variant, sheets)
       .then((pixels) => pixels || (variant.icon ? ensureImage(variant.icon) : null))
       .then((pixels) => {
         if (!pixels) return;

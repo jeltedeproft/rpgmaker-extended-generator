@@ -703,6 +703,22 @@ try {
       const empty = await evaluate(`[...document.querySelectorAll('#variants .variant canvas')].filter(c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 16) n++; return n < 12; }).length`);
       check('every part tile shows something', empty === 0, `${empty} empty tiles`);
     }
+    // Sections per image: the damage section lists the parts with a damage picture, drawn as it.
+    {
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Clothing')).click()`);
+      await sleep(800);
+      const tabs = await evaluate(`[...document.querySelectorAll('#variant-tabs button')].map(b => b.textContent).join(',')`);
+      check('parts are split into sections per image', tabs.startsWith('All (') && ['Walk (', 'Damage (', 'Battler ('].every((t) => tabs.includes(t)), tabs);
+      const all = await evaluate(`document.querySelectorAll('#variants .variant, #other-variants .variant').length`);
+      await evaluate(`[...document.querySelectorAll('#variant-tabs button')].find(b => b.textContent.startsWith('Damage')).click()`);
+      await sleep(2500);
+      const damage = await evaluate(`[...document.querySelectorAll('#variants .variant, #other-variants .variant')].map(b => b.title.split(String.fromCharCode(10)).pop())`);
+      check('the damage section lists only parts with a damage picture', damage.length < all && damage.some((t) => t.endsWith('/Clothing/pMAGE')) && damage.some((t) => t.endsWith('/Clothing/pMAGE (2)')), `${all} -> ${damage.length}`);
+      check('damage tiles are drawn as the damage picture', await evaluate(`(() => { const c = [...document.querySelectorAll('#variants .variant')].find(b => b.title.endsWith('/Clothing/pMAGE'))?.querySelector('canvas'); return !!c && c.width === 48 && c.height === 48; })()`));
+      await shot('5d-damage-section.png');
+      await evaluate(`[...document.querySelectorAll('#variant-tabs button')].find(b => b.textContent.startsWith('All')).click()`);
+      await sleep(500);
+    }
     // TV_Clothing2_pXX_c.png is the mask of TV_Clothing2_pXX.png.png (the alternate), not of TV_Clothing2_pXX.png.
     await evaluate(`document.getElementById('open-files').click()`);
     await sleep(500);
