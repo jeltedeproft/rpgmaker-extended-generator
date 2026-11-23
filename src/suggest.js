@@ -2,7 +2,7 @@
 // is from its size and frame grid, and which part from where its pixels sit compared with the
 // parts already loaded (hair sits on top of the head, glasses over the eyes, a cloak behind it).
 
-import { DEFAULT_SIZE, SHEETS, PART_ORDER } from './format.js';
+import { DEFAULT_SIZE, SHEETS, PART_ORDER, MAIN_SLOT, SLOTS } from './format.js';
 
 /** Side of the coarse grid a shape is compared on. */
 export const PROFILE_SIZE = 12;
@@ -170,6 +170,22 @@ export function partsInWords(words, partNames = [], synonyms = true) {
     && ows.size > ws.size && [...ws].every((w) => ows.has(w))));
   for (const [part] of beaten) found.delete(part);
   return found;
+}
+
+/**
+ * The colour slot a part's pictures most likely use: the one RPG Maker uses for that part, or for
+ * the part its name is like ("LongHair" is hair, "Skirt" clothing), or the slot named like it.
+ * @returns {{slotId:string, like:string}|null} like: the part or slot name it went by
+ */
+export function slotForPart(part) {
+  if (!part) return null;
+  if (MAIN_SLOT[part]) return { slotId: MAIN_SLOT[part], like: part };
+  const words = nameWords(part);
+  const known = [...partsInName(part)].find((p) => MAIN_SLOT[p]);
+  if (known) return { slotId: MAIN_SLOT[known], like: known };
+  const have = new Set(words.map(singular));
+  const slot = SLOTS.find((s) => s.m && nameWords(s.label).some((w) => w.length > 2 && have.has(singular(w))));
+  return slot ? { slotId: slot.id, like: slot.label } : null;
 }
 
 /** Parts a file name names ("beard", "Cloak2", "cape", "hair_rear"), from known words and the given part names. */

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createImage, matchSlot } from '../src/recolor.js';
-import { guessSheet, shapeProfile, shapeSimilarity, rankParts, sampleRegion, nameWords, partsInName, maskColourShare, rankWithName, NAME_BONUS } from '../src/suggest.js';
+import { guessSheet, shapeProfile, shapeSimilarity, rankParts, sampleRegion, nameWords, partsInName, maskColourShare, rankWithName, NAME_BONUS, slotForPart } from '../src/suggest.js';
 
 const dot = (img, x, y, rgba = [200, 0, 0, 255]) => img.data.set(rgba, (y * img.width + x) * 4);
 
@@ -56,6 +56,18 @@ test('part names are found however they are written: apart, in one piece, in any
   assert.deepEqual(partsInName('Eye_Brow_thick.png'), ['Eyebrows']);
   assert.deepEqual(partsInName('mark_facial.png'), ['FacialMark']);
   assert.deepEqual(partsInName('acc_b_ribbon.png'), ['AccB']);
+});
+
+test('a part suggests the colour slot RPG Maker uses for it, or for the part it is named like', () => {
+  const slot = (part) => slotForPart(part)?.slotId ?? null;
+  for (const p of ['Body', 'Face', 'Ears', 'Nose', 'Mouth']) assert.equal(slot(p), 'skin', p);
+  for (const p of ['FrontHair', 'RearHair', 'Beard', 'Eyebrows', 'LongHair', 'Rear_Hair', 'Ponytail']) assert.equal(slot(p), 'hair', p);
+  assert.equal(slot('Clothing'), 'clothing');
+  assert.equal(slot('Cloak'), 'cloak');
+  assert.equal(slot('Robe'), 'clothing');
+  assert.equal(slot('Cape'), 'cloak');
+  assert.equal(slot('Skin'), 'skin'); // named like a slot
+  assert.equal(slot('Hat'), null);
 });
 
 test('a part the name names is ranked higher, even without a loaded one', () => {

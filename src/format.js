@@ -53,6 +53,17 @@ export const SLOTS = [
   { id: 'wing', m: null, rgb: 0xa7d6d6, label: 'Wing', part: 'Wing' },
 ];
 
+/**
+ * The colour slot each part's face pictures use in RPG Maker's own files (counted over the MV and
+ * MZ generators): skin for the body and face, hair for hair, beards and eyebrows, and so on.
+ */
+export const MAIN_SLOT = {
+  Body: 'skin', Face: 'skin', Ears: 'skin', Nose: 'skin', Mouth: 'skin',
+  FrontHair: 'hair', RearHair: 'hair', Beard: 'hair', Eyebrows: 'hair',
+  Eyes: 'eyes', FacialMark: 'mark', BeastEars: 'beastEars', Clothing: 'clothing', Cloak: 'cloak',
+  AccA: 'accA', AccB: 'accB', Glasses: 'glasses', Tail: 'tail', Wing: 'wing',
+};
+
 export const SLOT_BY_ID = new Map(SLOTS.map((s) => [s.id, s]));
 export const SLOT_BY_M = new Map(SLOTS.filter((s) => s.m != null).map((s) => [s.m, s]));
 export const SLOT_BY_RGB = new Map(SLOTS.map((s) => [s.rgb, s]));

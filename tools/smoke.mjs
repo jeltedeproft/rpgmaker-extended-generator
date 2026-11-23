@@ -385,6 +385,15 @@ try {
     check('assign dialog suggests parts by position', await evaluate(`document.querySelectorAll('#assign-suggest button').length > 0 && document.getElementById('assign-part').value.length > 0`), await evaluate(`document.getElementById('assign-suggest').textContent`));
     await shot('4d-assign-suggest.png');
     check('suggestions name layers in words, not as Beard1', await evaluate(`[...document.querySelectorAll('#assign-suggest button')].every(b => !/[a-z][0-9]( |$)/.test(b.textContent))`), await evaluate(`document.getElementById('assign-suggest').textContent`));
+    // The colour slot follows the part (portraits), until one is picked by hand.
+    const slotFor = (part) => evaluate(`(() => { const p = document.getElementById('assign-part'); p.value = '${part}'; p.dispatchEvent(new Event('input')); return document.getElementById('assign-slot').value; })()`);
+    const partBefore = await evaluate(`document.getElementById('assign-part').value`);
+    const slots = [await slotFor('RearHair'), await slotFor('Body'), await slotFor('Clothing')];
+    check('the colour slot follows the part', slots.join(',') === '3,1,7', slots.join(','));
+    check('the suggested slot says so', await evaluate(`document.getElementById('assign-slot').selectedOptions[0].textContent.includes('suggested for Clothing')`));
+    await evaluate(`(() => { const s = document.getElementById('assign-slot'); s.value = '5'; s.dispatchEvent(new Event('change')); })()`);
+    check('a slot picked by hand stays', (await slotFor('FrontHair')) === '5');
+    await slotFor(partBefore);
     for (const sheet of ['FG', 'TV']) {
       await evaluate(`(() => { const s = document.getElementById('assign-sheet'); s.value = '${sheet}'; s.dispatchEvent(new Event('change')); })()`);
       await sleep(1500);

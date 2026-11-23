@@ -8,7 +8,7 @@ import {
   layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask, matchSlot } from './recolor.js';
-import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords } from './suggest.js';
+import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
 import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
 import {
@@ -1413,6 +1413,7 @@ async function openAssignDialog(entry, queue = null) {
   $('assign-body-list').replaceChildren(...bodies.map((b) => el('option', { value: b })));
   $('assign-slot').replaceChildren(el('option', { value: '', textContent: 'none (not recolourable)' }),
     ...SLOTS.filter((s) => s.m).map((s) => el('option', { value: s.m, textContent: s.label })));
+  slotChosen = false;
   // Start from what it's read as now (reassigning), else guess the sheet from the image size.
   const current = loaded && parsePartPath(`${loaded.variant.bodyType}/${nameOf(loaded)}`);
   assigningPixels = null;
@@ -1436,7 +1437,9 @@ async function openAssignDialog(entry, queue = null) {
     $('assign-body').value = current.bodyType;
     if (current.cell) $('assign-cell').value = current.cell;
     $('assign-slot').value = SLOT_BY_ID.get(current.slotId)?.m || '';
+    slotChosen = true; // reassigning keeps the slot it has
   }
+  suggestSlot();
   if (!loaded) suggestMask(entry, assigningPixels);
   else $('assign-mask-note').textContent = '';
   updateAssignPreview();
@@ -1547,8 +1550,32 @@ function applySuggestion(r) {
   $('assign-part').value = r.part;
   $('assign-layer').value = r.layer;
   if (r.cell && [...$('assign-cell').options].some((o) => o.value === r.cell)) $('assign-cell').value = r.cell;
+  suggestSlot();
   updateAssignPreview();
 }
+
+/** The colour slot was picked by hand (or kept from the file): the part no longer changes it. */
+let slotChosen = false;
+
+/**
+ * Face pictures: the colour slot follows the part (FrontHair: Hair, Body: Skin...) until you pick
+ * one yourself. The suggested option says so.
+ */
+function suggestSlot() {
+  const select = $('assign-slot');
+  for (const o of select.options) o.textContent = o.textContent.replace(/ \(suggested.*\)$/, '');
+  const s = slotForPart($('assign-part').value.trim());
+  const m = s && SLOT_BY_ID.get(s.slotId)?.m;
+  if (!m) {
+    if (!slotChosen) select.value = '';
+    return;
+  }
+  const option = [...select.options].find((o) => Number(o.value) === m);
+  option.textContent += ` (suggested for ${s.like})`;
+  if (!slotChosen) select.value = String(m);
+}
+$('assign-slot').addEventListener('change', () => (slotChosen = true));
+$('assign-part').addEventListener('input', suggestSlot);
 $('assign-sheet').addEventListener('change', () => assigning && renderSuggestions(assigning));
 
 /** Parts whose variant was taken away (reassigned) are taken off the character. */
