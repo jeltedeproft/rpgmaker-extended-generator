@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
-import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets } from './parse.js';
+import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -204,6 +204,15 @@ async function importEntriesNow(entries, packName) {
     ref.size ||= await pngSize(ref.src).catch(() => null);
   }));
   state.library.warnings.push(...fixWrongSheets(state.library, pack.name));
+  // A mask assigned under another variation than its image joins the image it is named after.
+  for (const m of attachWaitingMasks(state.library, pack.name)) {
+    state.library.warnings.push(m.text);
+    const key = `${pack.name}|${m.path}`;
+    if (state.settings.assignments?.[key]) {
+      state.settings.assignments[key] = { readAs: m.readAs, bodyType: m.bodyType };
+      saveSettings();
+    }
+  }
   for (const v of state.library.variants.values()) if (v.pack === pack.name && state.settings.autoMasks?.[v.id]) applyAutoMask(v);
   $('open-files').disabled = false;
   const addedParts = state.library.variants.size - partsBefore;
@@ -1505,6 +1514,18 @@ async function openAssignDialog(entry, queue = null) {
   suggestSlot();
   if (!loaded) suggestMask(entry, assigningPixels);
   else $('assign-mask-note').textContent = '';
+  // A mask named after a loaded image ("X_c.png" next to "X.png"): read it like that image.
+  const image = (!loaded || loaded.role === 'mask') && imageOfMask(state.library, entry.pack, entry.path);
+  const imageReading = image && parsePartPath(`${image.variant.bodyType}/${nameOf(image)}`);
+  if (imageReading && (!loaded || loaded.variant.id !== image.variant.id)) {
+    $('assign-sheet').value = imageReading.sheet;
+    $('assign-part').value = imageReading.part;
+    $('assign-layer').value = imageReading.layer.slice(imageReading.part.length);
+    $('assign-pid').value = imageReading.basePid.replace(/^p/, '');
+    $('assign-body').value = imageReading.bodyType;
+    $('assign-mask').checked = true;
+    $('assign-mask-note').textContent = `Filled in as the colour mask of ${image.path.split('/').pop()} (${readingOf(image)}).`;
+  }
   updateAssignPreview();
   if (!$('assign-dialog').open) $('assign-dialog').showModal();
   renderSuggestions(entry, !loaded);

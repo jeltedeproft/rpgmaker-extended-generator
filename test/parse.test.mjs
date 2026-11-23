@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet, attachWaitingMasks, imageOfMask } from '../src/parse.js';
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
@@ -348,4 +348,19 @@ test('a sprite sized for another sheet is read as that sheet (SV_Clothing1_pXX.p
   assert.ok(lib.variants.get('MV/Male/Clothing/p01').layers.every((l) => l.sheet === 'SV'));
   assert.equal(lib.readAs.get('MV|SV/Male/SV_Clothing1_pXX.png').readAs, 'TV_Clothing1_pXX.png');
   assert.equal(lib.unrecognized.length, 0);
+});
+
+test('a mask assigned under another variation joins the image it is named after', () => {
+  const lib = createLibrary();
+  addPack(lib, 'Fur', [{ path: 'TV/Male/TV_FurClothes01.png', src: 'a' }]);
+  assert.ok(lib.variants.get('Fur/Male/Clothing/pFur01'));
+  // Assigned by hand with the file name as variation: waits for an image that never comes.
+  assert.equal(assignFile(lib, 'Fur', 'TV/Male/TV_FurClothes01_c.png', 'b', 'TV_Clothing_pTV-FurClothes01-c_c.png', 'Male'), null);
+  assert.equal(imageOfMask(lib, 'Fur', 'TV/Male/TV_FurClothes01_c.png').path, 'TV/Male/TV_FurClothes01.png');
+  const moved = attachWaitingMasks(lib, 'Fur');
+  assert.equal(moved.length, 1);
+  assert.equal(moved[0].readAs, 'TV_Clothing_pFur01_c.png');
+  assert.equal(lib.variants.get('Fur/Male/Clothing/pFur01').layers[0].mask.path, 'TV/Male/TV_FurClothes01_c.png');
+  assert.ok(!lib.variants.has('Fur/Male/Clothing/pTV-FurClothes01-c'));
+  assert.equal(attachWaitingMasks(lib, 'Fur').length, 0);
 });

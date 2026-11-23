@@ -493,6 +493,45 @@ export function fixWrongSheets(library, packName) {
   return notes;
 }
 
+/**
+ * The loaded image a mask file is named after: "TV_FurClothes01_c.png", "...b.png" or "...mask.png"
+ * next to "TV_FurClothes01.png", in the same folder.
+ */
+export function imageOfMask(library, packName, path) {
+  const dir = path.slice(0, path.lastIndexOf('/') + 1);
+  const m = /^(.+?)(?:_c|[_ -]?mask|_?b)\.png$/i.exec(path.slice(dir.length));
+  if (!m) return null;
+  const want = `${dir}${m[1]}.png`.toLowerCase();
+  return libraryFiles(library).find((f) => f.pack === packName && f.role === 'image' && f.path.toLowerCase() === want && SPRITE_GRIDS[f.layer.sheet]) || null;
+}
+
+/** The generator name a loaded file is read as: its own name, or what it was read as. */
+function readName(library, file) {
+  return library.readAs.get(`${file.pack}|${file.path}`)?.readAs || file.path.split('/').pop();
+}
+
+/**
+ * Masks waiting for an image (assigned under another variation than their image, e.g.
+ * "pTV-FurClothes01-c" next to "pFur01") become the colour mask of the image they are named
+ * after, when that image is loaded and has no mask yet.
+ * @returns {{path:string, readAs:string, bodyType:string, text:string}[]} what moved
+ */
+export function attachWaitingMasks(library, packName) {
+  const moved = [];
+  const waiting = libraryFiles(library).filter((f) => f.pack === packName && f.role === 'mask' && !f.layer.base);
+  for (const mask of waiting) {
+    const image = imageOfMask(library, packName, mask.path);
+    if (!image || image.layer.mask) continue;
+    const readAs = readName(library, image).replace(/\.png$/i, '_c.png');
+    const bodyType = image.variant.bodyType;
+    const file = unassignFile(library, packName, mask.path);
+    if (!file || assignFile(library, packName, mask.path, file.src, readAs, bodyType)) continue;
+    library.readAs.set(`${packName}|${mask.path}`, { readAs, bodyType, how: 'odd' });
+    moved.push({ path: mask.path, readAs, bodyType, text: `${mask.path}: was waiting for an image, now the colour mask of ${image.path}` });
+  }
+  return moved;
+}
+
 /** "p17" -> "p17 (alt)"; "p17 (2)" -> "p17 (2, alt)". */
 function withTag(pid, tag) {
   return pid.endsWith(')') ? `${pid.slice(0, -1)}, ${tag})` : `${pid} (${tag})`;

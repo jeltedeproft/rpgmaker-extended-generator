@@ -624,6 +624,8 @@ try {
   // Optional: a pack with copies ("TV_Body_p01 (2).png", "(3)"), e.g. the official MV generator.
   if (process.env.ALIKE_PACK) {
     await evaluate(`localStorage.removeItem('xgen-settings')`);
+    // A mask assigned by hand under the wrong variation (the tester's TV_FurClothes01_c case).
+    await evaluate(`localStorage.setItem('xgen-settings', JSON.stringify({ assignments: { 'Generator|TV/Male/TV_FurClothes01b.png': { readAs: 'TV_Clothing_pTV-FurClothes01b_c.png', bodyType: 'Male' } } }))`);
     await send('Page.navigate', { url: `${URL_UNDER_TEST}&pack=${encodeURIComponent(process.env.ALIKE_PACK)}` });
     await sleep(9000);
     check('look-alikes dialog opens for near copies', await evaluate(`document.getElementById('alike-dialog').open`));
@@ -730,6 +732,11 @@ try {
     await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = 'SV_Clothing1_pXX.png'; i.dispatchEvent(new Event('input')); })()`);
     await sleep(800);
     const svReading = await evaluate(`document.querySelector('#files-list .file-reading')?.textContent || ''`);
+    await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = 'TV_FurClothes01b'; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(800);
+    const furReading = await evaluate(`document.querySelector('#files-list .file-reading')?.textContent || ''`);
+    check('a waiting mask joins the image it is named after', furReading.includes('Clothing pFur01') && furReading.includes('walk mask') && !furReading.includes('waiting'), furReading);
+    check('the fixed mask is remembered', await evaluate(`JSON.parse(localStorage.getItem('xgen-settings')).assignments['Generator|TV/Male/TV_FurClothes01b.png'].readAs === 'TV_Clothing_pFur01_c.png'`));
     check('a battler file at walk size is read as a walk picture', svReading.includes('walk image') && svReading.includes('by its size'), svReading);
     await evaluate(`document.getElementById('files-dialog').close()`);
     await evaluate(`localStorage.removeItem('xgen-settings')`);
