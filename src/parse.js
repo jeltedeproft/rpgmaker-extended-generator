@@ -1,7 +1,7 @@
 // Turns a list of files (from a dropped/selected generator folder) into a part library.
 // Pure: no DOM. File objects are stored as opaque `src` values and decoded later.
 
-import { SHEETS, SLOT_BY_M, PART_ORDER, DEFAULT_SIZE } from './format.js';
+import { SHEETS, SLOT_BY_M, PART_ORDER, DEFAULT_SIZE, ALL_BODIES } from './format.js';
 import { parseVxAcePath } from './vxace.js';
 import { partsInWords, partNameWords, maskFit } from './suggest.js';
 
@@ -716,6 +716,10 @@ export function selectable(variant) {
  */
 export function variantsForPart(library, part, bodyType, keepId = null) {
   const shown = (v) => selectable(v) || v.id === keepId;
+  // All body types: every body type's parts in the main list, none "from other body types".
+  if (bodyType === ALL_BODIES) {
+    return { own: [...library.bodyTypes.values()].flatMap((body) => [...(body.parts.get(part)?.values() || [])].filter(shown)), others: [] };
+  }
   const own = [...(library.bodyTypes.get(bodyType)?.parts.get(part)?.values() || [])].filter(shown);
   const others = [];
   for (const [name, body] of library.bodyTypes) {

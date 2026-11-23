@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { assignmentBodies, suggestedBody, newBodyName } from '../src/parse.js';
+import { ALL_BODIES } from '../src/format.js';
 import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet, attachWaitingMasks, imageOfMask, restoreToAssign } from '../src/parse.js';
 
 test('assignment folders include empty standards, custom and pending body types in stable order', () => {
@@ -394,4 +395,19 @@ test('a removed file can be taken back to reassign it', () => {
   assert.equal(assignFile(lib, 'P', entry.path, entry.src, 'TV_Cloak_p02.png', 'Male'), null);
   assert.ok(lib.variants.has('P/Male/Cloak/p02') && !lib.unrecognized.length);
   assert.equal(restoreToAssign(lib, 'P', 'nope.png'), null);
+});
+
+test('All body types lists every body type\'s parts in the main list', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', [
+    { path: 'TV/Male/TV_Clothing1_p01.png', src: 'a' },
+    { path: 'TV/Female/TV_Clothing1_p02.png', src: 'b' },
+    { path: 'TV/Kid/TV_Clothing1_p03.png', src: 'c' },
+  ]);
+  const male = variantsForPart(lib, 'Clothing', 'Male');
+  assert.equal(male.own.length, 1);
+  assert.equal(male.others.length, 2);
+  const all = variantsForPart(lib, 'Clothing', ALL_BODIES);
+  assert.deepEqual(all.own.map((v) => v.pid).sort(), ['p01', 'p02', 'p03']);
+  assert.equal(all.others.length, 0);
 });

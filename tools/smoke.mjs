@@ -508,7 +508,7 @@ try {
     await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);
     await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('xgen-settings') || '{}'); delete s.assignments; localStorage.setItem('xgen-settings', JSON.stringify(s)); })()`);
 
-    check('both body types offered', await evaluate(`[...document.querySelectorAll('#body-type option')].map(o => o.value).join(',')`) === 'Male,Female');
+    check('both body types offered, and All', await evaluate(`[...document.querySelectorAll('#body-type option')].map(o => o.value).join(',')`) === 'All,Male,Female');
     // Male character wearing a Female-only accessory.
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('AccA')).click()`);
     await sleep(500);
@@ -808,6 +808,20 @@ try {
       await evaluate(`document.querySelector('#variants .variant canvas').dispatchEvent(new MouseEvent('mouseout', { bubbles: true }))`);
       await sleep(200);
       check('the large preview goes away', await evaluate(`document.querySelector('.big-preview').hidden`));
+    }
+    // All body types: every body type's parts in the main list, nothing under "other body types".
+    {
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Clothing')).click()`);
+      await sleep(800);
+      const everywhere = await evaluate(`document.querySelectorAll('#variants .variant, #other-variants .variant').length`);
+      const offered = await evaluate(`[...document.getElementById('body-type').options].some(o => o.value === 'All')`);
+      await evaluate(`(() => { const s = document.getElementById('body-type'); s.value = 'All'; s.dispatchEvent(new Event('change')); })()`);
+      await sleep(1500);
+      const main = await evaluate(`document.querySelectorAll('#variants .variant').length`);
+      check('an All body types choice puts every part in the main list', offered && main === everywhere && (await evaluate(`document.getElementById('other-bodies').hidden`)), `${everywhere} -> ${main}`);
+      check('switching to All body types keeps the worn parts', await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).textContent.includes('Male')`), await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).textContent`));
+      await evaluate(`(() => { const s = document.getElementById('body-type'); s.value = 'Male'; s.dispatchEvent(new Event('change')); })()`);
+      await sleep(1500);
     }
     // Sections per image: the damage section lists the parts with a damage picture, drawn as it.
     {

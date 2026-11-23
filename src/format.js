@@ -66,6 +66,9 @@ export const MAIN_SLOT = {
 };
 
 export const SLOT_BY_ID = new Map(SLOTS.map((s) => [s.id, s]));
+
+/** The body type that is every body type at once: all parts in one list, made for anyone. */
+export const ALL_BODIES = 'All';
 export const SLOT_BY_M = new Map(SLOTS.filter((s) => s.m != null).map((s) => [s.m, s]));
 export const SLOT_BY_RGB = new Map(SLOTS.map((s) => [s.rgb, s]));
 

@@ -1,6 +1,6 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
-import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
+import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS, ALL_BODIES } from './format.js';
 import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
 import {
@@ -307,7 +307,11 @@ function renderAll() {
 function renderSidebar() {
   const lib = state.library;
   const select = $('body-type');
-  select.replaceChildren(...[...lib.bodyTypes.keys()].map((name) => el('option', { value: name, textContent: name })));
+  select.replaceChildren(
+    ...(lib.bodyTypes.size > 1 && !lib.bodyTypes.has(ALL_BODIES)
+      ? [el('option', { value: ALL_BODIES, textContent: 'All body types', title: 'Every body type\'s parts in one list' })] : []),
+    ...[...lib.bodyTypes.keys()].map((name) => el('option', { value: name, textContent: name })),
+  );
   select.value = state.character.bodyType;
   $('character-name').value = state.character.name;
 
@@ -2292,7 +2296,7 @@ async function moveFiles(loaded, bodyType, what) {
     (state.settings.assignments ||= {})[`${f.pack}|${f.path}`] = { readAs, bodyType };
     moved++;
   }
-  if (state.character && !lib.bodyTypes.has(state.character.bodyType) && lib.bodyTypes.has(bodyType)) {
+  if (state.character && !lib.bodyTypes.has(state.character.bodyType) && state.character.bodyType !== ALL_BODIES && lib.bodyTypes.has(bodyType)) {
     state.character.bodyType = bodyType;
   }
   if (state.settings.createdBodies) {
@@ -3214,7 +3218,9 @@ function unloadPack(name) {
   }
   if (state.character) {
     dropMissingParts();
-    if (!state.library.bodyTypes.has(state.character.bodyType)) state.character.bodyType = [...state.library.bodyTypes.keys()][0];
+    if (!state.library.bodyTypes.has(state.character.bodyType) && !(state.character.bodyType === ALL_BODIES && state.library.bodyTypes.size > 1)) {
+      state.character.bodyType = [...state.library.bodyTypes.keys()][0];
+    }
     if (state.character.bodyType) applyDefaults(state.character, state.library);
   }
   if (state.library.variants.size) {
@@ -3396,8 +3402,9 @@ $('body-type').addEventListener('change', (e) => {
   for (const [part, id] of Object.entries(state.character.parts)) {
     const variant = state.library.variants.get(id);
     // Parts from the old body type switch to the same part number in the new one, if it exists.
-    // Parts deliberately borrowed from a third body type stay as they are.
-    if (variant && variant.bodyType === state.character.bodyType) {
+    // Parts deliberately borrowed from a third body type stay as they are, and so does everything
+    // when switching to All body types (it has every part already).
+    if (variant && variant.bodyType === state.character.bodyType && bodyType !== ALL_BODIES) {
       parts[part] = resolveVariant(state.library, variant.part, `${variant.pack}/${bodyType}/${variant.part}/${variant.pid}`, bodyType) || id;
     } else {
       parts[part] = id;

@@ -3,7 +3,7 @@
 
 import { PAINTED_SLOTS } from './vxace.js';
 import { selectable } from './parse.js';
-import { PART_ORDER, REQUIRED_PARTS, SLOTS, SLOT_BY_RGB } from './format.js';
+import { PART_ORDER, REQUIRED_PARTS, SLOTS, SLOT_BY_RGB, ALL_BODIES } from './format.js';
 import { preferredCategory, preferredCategories, customGradientToJson, customGradientFromJson, uniqueGradients } from './gradients.js';
 import { partOfKey, pieceKeys, selectedItems, variantForSheet } from './compose.js';
 import { SHEET_KEYS } from './format.js';
@@ -78,10 +78,11 @@ export function usedSlots(character, library) {
  */
 export function applyDefaults(character, library) {
   const body = library.bodyTypes.get(character.bodyType);
-  if (!body) return character;
+  if (!body && character.bodyType !== ALL_BODIES) return character;
+  // All body types: the first body type that has the part (Male before the others).
+  const bodies = body ? [body] : [...library.bodyTypes.entries()].sort(([a], [b]) => (b === 'Male') - (a === 'Male')).map(([, b]) => b);
   for (const part of REQUIRED_PARTS) {
-    const variants = body.parts.get(part);
-    const first = [...(variants?.values() || [])].find(selectable);
+    const first = bodies.flatMap((b) => [...(b.parts.get(part)?.values() || [])]).find(selectable);
     if (first && character.parts[part] === undefined) character.parts[part] = first.id;
   }
   return character;
@@ -123,6 +124,8 @@ export function randomize(character, library, gradients, { rng = Math.random, lo
   };
   const own = library.bodyTypes.get(character.bodyType);
   const parts = new Set(own ? own.parts.keys() : []);
+  // All body types: parts of every body type, like "mix body types".
+  if (character.bodyType === ALL_BODIES) rules = { ...rules, mixBodyTypes: true };
   if (rules.mixBodyTypes) for (const b of library.bodyTypes.values()) b.parts.forEach((_, p) => parts.add(p));
   for (const part of parts) {
     if (locked.has(part)) continue;
@@ -372,7 +375,7 @@ export function deserializeCharacter(json, library, gradients = [], fileName = '
 
   const saved = data.character;
   const missing = [];
-  const bodyType = library.bodyTypes.has(saved.bodyType) ? saved.bodyType : [...library.bodyTypes.keys()][0];
+  const bodyType = library.bodyTypes.has(saved.bodyType) || saved.bodyType === ALL_BODIES ? saved.bodyType : [...library.bodyTypes.keys()][0];
   if (bodyType !== saved.bodyType) missing.push(`body type ${saved.bodyType}`);
 
   const character = {
