@@ -1900,6 +1900,8 @@ $('assign-dialog').addEventListener('close', () => {
       toast(`"${readAs}" is not a valid part name.`);
       return;
     }
+    // Reassigning an image takes its colour mask along (unassigning it would leave the mask behind).
+    const mask = entry.role === 'image' && entry.layer?.mask && !entry.layer.mask.auto ? entry.layer.mask.path : null;
     const file = unassignFile(state.library, entry.pack, entry.path) || entry;
     const error = assignFile(state.library, entry.pack, entry.path, file.src, readAs, bodyType);
     if (error) {
@@ -1907,7 +1909,16 @@ $('assign-dialog').addEventListener('close', () => {
       return;
     }
     if ($('assign-remember').checked) remember(entry, { readAs, bodyType });
-    toast(`${entry.path.split('/').pop()}: ${bodyType} ${f.part}.`);
+    const parsed = parsePartPath(`${bodyType}/${readAs}`);
+    if (mask && parsed.sheet && parsed.sheet !== 'FG' && !parsed.isMask) {
+      const maskAs = readAs.replace(/\.png$/i, '_c.png');
+      const m = unassignFile(state.library, entry.pack, mask);
+      if (m && !assignFile(state.library, entry.pack, mask, m.src, maskAs, bodyType)) {
+        state.library.readAs.set(`${entry.pack}|${mask}`, { readAs: maskAs, bodyType, how: 'hand' });
+        if ($('assign-remember').checked) remember({ pack: entry.pack, path: mask }, { readAs: maskAs, bodyType });
+      }
+    }
+    toast(`${entry.path.split('/').pop()}: ${bodyType} ${f.part}${mask ? ', with its colour mask' : ''}.`);
     afterFilesChanged();
   }
   if (action === 'remove') removeFileByUser(entry);

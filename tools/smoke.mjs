@@ -736,6 +736,17 @@ try {
     await sleep(800);
     const furReading = await evaluate(`document.querySelector('#files-list .file-reading')?.textContent || ''`);
     check('a waiting mask joins the image it is named after', furReading.includes('Clothing pFur01') && furReading.includes('walk mask') && !furReading.includes('waiting'), furReading);
+    // Reassigning the image (here: to the same reading) keeps its colour mask on it.
+    await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = 'TV_FurClothes01.png'; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(800);
+    await evaluate(`document.querySelector('#files-list .file-card button').click()`);
+    await sleep(1500);
+    await evaluate(`document.querySelector('#assign-dialog button[value="ok"]').click()`);
+    await sleep(1200);
+    await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = 'TV_FurClothes01b'; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(800);
+    const afterReassign = await evaluate(`document.querySelector('#files-list .file-reading')?.textContent || ''`);
+    check('reassigning an image keeps its colour mask on it', afterReassign.includes('Clothing pFur01') && afterReassign.includes('walk mask') && !afterReassign.includes('waiting'), afterReassign);
     check('the fixed mask is remembered', await evaluate(`JSON.parse(localStorage.getItem('xgen-settings')).assignments['Generator|TV/Male/TV_FurClothes01b.png'].readAs === 'TV_Clothing_pFur01_c.png'`));
     check('a battler file at walk size is read as a walk picture', svReading.includes('walk image') && svReading.includes('by its size'), svReading);
     await evaluate(`document.getElementById('files-dialog').close()`);
