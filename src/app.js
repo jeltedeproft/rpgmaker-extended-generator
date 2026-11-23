@@ -1717,6 +1717,7 @@ function alikeCard(f) {
   const toggle = el('button', { type: 'button', className: 'small-button', textContent: variant.hidden ? 'Show it again' : `Hide ${variant.pid}` });
   toggle.style.marginTop = '0';
   toggle.addEventListener('click', () => {
+    decidedNow.add(variant.id); // stays in the list until the dialog is opened again
     variant.hidden = !variant.hidden;
     (state.settings.lookalikes ||= {})[variant.id] = variant.hidden ? 'hide' : 'show';
     saveSettings();
@@ -1733,20 +1734,42 @@ function alikeCard(f) {
   ]);
 }
 
+/** Look-alikes clicked "hide" or "show" in this visit of the dialog: they stay listed for now. */
+const decidedNow = new Set();
+
+/** Decided: the user hid or showed it, or it is an exact duplicate (hidden automatically). */
+function alikeDecided(f) {
+  return !!state.settings.lookalikes?.[f.variant.id] || f.result.identical;
+}
+
 function renderAlikes() {
   const all = $('alike-all').checked;
-  const list = state.lookalikes.filter((f) => all || f.result.identical || f.result.ratio <= LOOKALIKE_RATIO || f.variant.hidden);
-  $('alike-list').replaceChildren(...(list.length ? list.map(alikeCard)
-    : [el('p', { className: 'muted', textContent: 'No copy looks like another part. Tick the box above to compare them anyway.' })]));
+  const hideDecided = $('alike-hide-decided').checked;
+  const listed = state.lookalikes.filter((f) => all || f.result.identical || f.result.ratio <= LOOKALIKE_RATIO || f.variant.hidden);
+  const decided = listed.filter(alikeDecided);
+  $('alike-decided-count').textContent = decided.length;
+  const list = hideDecided ? listed.filter((f) => !alikeDecided(f) || decidedNow.has(f.variant.id)) : listed;
+  const empty = hideDecided && listed.length
+    ? 'Every look-alike is decided. Untick "Hide the ones already decided" to see them.'
+    : 'No copy looks like another part. Tick the box above to compare them anyway.';
+  $('alike-list').replaceChildren(...(list.length ? list.map(alikeCard) : [el('p', { className: 'muted', textContent: empty })]));
   updateAlikesButton();
 }
 
 function openAlikesDialog() {
+  decidedNow.clear();
+  $('alike-hide-decided').checked = !!state.settings.alikeHideDecided;
   renderAlikes();
   if (!$('alike-dialog').open) $('alike-dialog').showModal();
 }
 $('open-alikes').addEventListener('click', openAlikesDialog);
 $('alike-all').addEventListener('change', renderAlikes);
+$('alike-hide-decided').addEventListener('change', () => {
+  state.settings.alikeHideDecided = $('alike-hide-decided').checked;
+  saveSettings();
+  decidedNow.clear();
+  renderAlikes();
+});
 
 
 // ---------- gallery ----------

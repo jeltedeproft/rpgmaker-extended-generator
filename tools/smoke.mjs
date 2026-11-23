@@ -543,6 +543,15 @@ try {
     // Hide the near copy, then check the part list.
     await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].find(c => c.textContent.startsWith('Male Body p01 (2)')).querySelector('button').click()`);
     await sleep(500);
+    {
+      const shown = await evaluate(`document.querySelectorAll('#alike-list .alike-card').length`);
+      await evaluate(`(() => { const c = document.getElementById('alike-hide-decided'); c.checked = true; c.dispatchEvent(new Event('change')); })()`);
+      await sleep(800);
+      const left = await evaluate(`document.querySelectorAll('#alike-list .alike-card').length`);
+      check('decided look-alikes can be hidden from the list', left < shown && !(await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].some(c => c.textContent.includes('same pixels'))`)), `${shown} -> ${left}`);
+      await evaluate(`(() => { const c = document.getElementById('alike-hide-decided'); c.checked = false; c.dispatchEvent(new Event('change')); })()`);
+      await sleep(500);
+    }
     check('hiding is remembered', await evaluate(`JSON.parse(localStorage.getItem('xgen-settings')).lookalikes[[...Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).lookalikes)].find(k => k.endsWith('/Male/Body/p01 (2)'))] === 'hide'`));
     await evaluate(`document.querySelector('#alike-dialog button[value="close"]').click()`);
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
