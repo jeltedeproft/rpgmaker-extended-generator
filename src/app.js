@@ -417,10 +417,31 @@ function refreshTiles() {
   }, 150);
 }
 
+/** Pixels drawn in a picture (not transparent). */
+function drawnPixels(image) {
+  let n = 0;
+  for (let i = 3; i < image.data.length; i += 4) if (image.data[i] > 16) n++;
+  return n;
+}
+
+/** A picture shows something: a few pixels, not just a stray dot or a sliver at the edge. */
+const showsSomething = (image) => drawnPixels(image) >= Math.max(12, (image.width * image.height) / 200);
+
+/** One frame (column, row) of a sheet image. */
+function cutFrame(image, f, col, row) {
+  const out = createImage(f.w, f.h);
+  for (let y = 0; y < f.h; y++) {
+    const start = ((row * f.h + y) * image.width + col * f.w) * 4;
+    out.data.set(image.data.subarray(start, start + f.w * 4), y * f.w * 4);
+  }
+  return out;
+}
+
 /**
- * A tile picture: the part alone, in the current colours. Uses the face if it has one, else the
- * middle walk frame facing down, else the first battler frame, else the first damage frame (some
- * packs only add a damage sprite). Only that sheet is decoded.
+ * A tile picture: the part alone, in the current colours. Uses the portrait if it has one, else
+ * the middle walk frame facing down, else the first battler frame, else the first damage frame
+ * (some packs only add a damage sprite). A picture with (almost) nothing in it is skipped: then the
+ * frame or image that shows the most of the part is used, e.g. a cloak's back seen from behind.
  */
 function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source = false) {
   // source: the picture as drawn in the file, no gradients (to compare files, not colours).
@@ -433,24 +454,28 @@ function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source 
   if (!thumbCache.has(cacheKey)) {
     if (thumbCache.size > 600) thumbCache.clear();
     thumbCache.set(cacheKey, (async () => {
+      let best = null;
+      let bestCount = 0;
       for (const sheet of sheets) {
         const layers = sheetLayers(variant, sheet, state.library);
         if (!layers.length) continue;
         await ensureLayers(layers);
         const { image, frame } = composeSheet(sheet, alone, state.library, source ? new Map() : gradientsById(), state.settings);
         if (!image) continue;
-        if (sheet === 'FG') return image;
-        // The middle walk frame facing down, or the first battler frame.
         const f = frameOf(sheet, image, frame);
-        const x = sheet === 'TV' && f.cols > 1 ? f.w : 0;
-        const out = createImage(f.w, f.h);
-        for (let y = 0; y < f.h; y++) {
-          const start = (y * image.width + x) * 4;
-          out.data.set(image.data.subarray(start, start + f.w * 4), y * f.w * 4);
+        // The portrait, or the middle walk frame facing down, or the first battler frame.
+        const usual = sheet === 'FG' ? image : cutFrame(image, f, sheet === 'TV' && f.cols > 1 ? 1 : 0, 0);
+        if (showsSomething(usual)) return usual;
+        // Nothing there: the frame of this image that shows the most.
+        for (let row = 0; row < f.rows; row++) {
+          for (let col = 0; col < f.cols; col++) {
+            const pic = f.cols * f.rows > 1 ? cutFrame(image, f, col, row) : image;
+            const count = drawnPixels(pic);
+            if (count > bestCount) [best, bestCount] = [pic, count];
+          }
         }
-        return out;
       }
-      return null;
+      return best;
     })());
   }
   return thumbCache.get(cacheKey);

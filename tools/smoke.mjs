@@ -651,6 +651,13 @@ try {
     await sleep(600);
     const bodies = await evaluate(`[...document.querySelectorAll('#variants .variant span')].map(s => s.textContent).join(',')`);
     check('hidden copies leave the part list', !bodies.includes('(2)') && !bodies.includes('(3)') && bodies.includes('p01'), bodies);
+    // Every tile shows something: an empty first picture is skipped for one that shows the part.
+    {
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Clothing')).click()`);
+      await sleep(3000);
+      const empty = await evaluate(`[...document.querySelectorAll('#variants .variant canvas')].filter(c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 16) n++; return n < 12; }).length`);
+      check('every part tile shows something', empty === 0, `${empty} empty tiles`);
+    }
     // TV_Clothing2_pXX_c.png is the mask of TV_Clothing2_pXX.png.png (the alternate), not of TV_Clothing2_pXX.png.
     await evaluate(`document.getElementById('open-files').click()`);
     await sleep(500);
