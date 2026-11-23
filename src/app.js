@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
-import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask } from './parse.js';
+import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -1693,6 +1693,10 @@ function applyRememberedAssignments(packName) {
     const path = key.slice(packName.length + 1);
     if (a.removed) {
       removeFile(state.library, packName, path);
+      if (a.deleted) {
+        const r = state.library.removed.find((u) => u.pack === packName && u.path === path);
+        if (r) r.deleted = true;
+      }
       continue;
     }
     const now = state.library.readAs.get(key);
@@ -1817,7 +1821,9 @@ function autoMaskBox(variant) {
 /** Parts removed by you (settings.removedParts) stay out of the lists when their folder opens. */
 function applyRemovedParts(packName) {
   for (const v of state.library.variants.values()) {
-    if (v.pack === packName && state.settings.removedParts?.[v.id]) v.hidden = v.removed = true;
+    const removed = v.pack === packName && state.settings.removedParts?.[v.id];
+    if (removed) v.hidden = v.removed = true;
+    if (removed === 'deleted') v.deleted = true;
   }
 }
 
@@ -1861,6 +1867,48 @@ function removeFileByUser(file) {
   remember(file, { removed: true });
   toast(`Removed ${file.path.split('/').pop()}. It's listed under "Removed".`, 8000, { label: 'Undo', run: () => putFileBack(file) });
   afterFilesChanged();
+}
+
+/**
+ * A removed file or part, to reassign: the file goes back to the "To assign" list and the assign
+ * dialog opens for it. A removed part is put back and its picture opens in the assign dialog.
+ */
+function reassignRemoved(file) {
+  if (file.removedPart) {
+    putPartBack(file.variant, false);
+    afterFilesChanged();
+    const picture = libraryFiles(state.library).find((f) => f.variant === file.variant && f.role === 'image');
+    if (picture) openAssignDialog(picture);
+    return;
+  }
+  const entry = restoreToAssign(state.library, file.pack, file.path);
+  if (!entry) return;
+  delete state.settings.assignments?.[`${file.pack}|${file.path}`];
+  saveSettings();
+  afterFilesChanged();
+  openAssignDialog(entry);
+}
+
+/**
+ * Deletes a removed file or part from the Removed list: it stays out of the generator and isn't
+ * listed any more (until the folder is forgotten). Undo brings it back to the list.
+ */
+function deleteRemoved(file) {
+  const name = file.removedPart ? `${file.variant.part} ${file.variant.pid}` : file.path.split('/').pop();
+  const setDeleted = (on) => {
+    if (file.removedPart) {
+      file.variant.deleted = on;
+      state.settings.removedParts[file.variant.id] = on ? 'deleted' : true;
+    } else {
+      const r = state.library.removed.find((u) => u.pack === file.pack && u.path === file.path);
+      if (r) r.deleted = on;
+      (state.settings.assignments ||= {})[`${file.pack}|${file.path}`] = on ? { removed: true, deleted: true } : { removed: true };
+    }
+    saveSettings();
+    renderFiles();
+  };
+  setDeleted(true);
+  toast(`Deleted ${name} from the Removed list. It stays out of the generator; forgetting the folder brings it back.`, 8000, { label: 'Undo', run: () => setDeleted(false) });
 }
 
 function putFileBack(file) {
@@ -1943,7 +1991,7 @@ function filesFor(tab) {
       const l = v.layers.find((x) => x.base) || {};
       return { pack: v.pack, path: l.base?.path || v.id, src: l.base?.src, variant: v, removedPart: true };
     });
-    return [...lib.removed.map((f) => ({ ...f, removedFile: true })), ...parts];
+    return [...lib.removed.filter((f) => !f.deleted).map((f) => ({ ...f, removedFile: true })), ...parts.filter((f) => !f.variant.deleted)];
   }
   const loaded = libraryFiles(lib);
   // A VX Ace file feeds several layers (and both body types): list it once.
@@ -1960,9 +2008,13 @@ function fileCard(file, observer) {
   const buttons = [];
   let reading;
   if (file.removedFile || file.removedPart) {
-    const back = el('button', { type: 'button', className: 'small-button', textContent: 'Put back' });
+    const back = el('button', { type: 'button', className: 'small-button', textContent: 'Put back', title: 'Back where it was before you removed it' });
     back.addEventListener('click', () => (file.removedPart ? putPartBack(file.variant) : putFileBack(file)));
-    buttons.push(back);
+    const reassign = el('button', { type: 'button', className: 'small-button', textContent: 'Reassign…', title: 'Put it back as another part, image or variation' });
+    reassign.addEventListener('click', () => reassignRemoved(file));
+    const del = el('button', { type: 'button', className: 'small-button', textContent: 'Delete', title: 'Take it off this list for good: it stays out of the generator (the file on your computer stays)' });
+    del.addEventListener('click', () => deleteRemoved(file));
+    buttons.push(back, reassign, del);
     reading = file.removedPart ? `${file.variant.bodyType} · ${file.variant.part} ${file.variant.pid} · part removed by you` : 'File removed by you';
   } else {
     const assign = el('button', { type: 'button', className: 'small-button', textContent: loaded ? 'Reassign…' : 'Assign…' });
@@ -1996,19 +2048,26 @@ const TAB_NOTES = {
   odd: 'Files with unusual names, read by guessing. Reassign any that were guessed wrong.',
   hand: 'Files you assigned. Reassign or unassign them if one went wrong.',
   all: 'Every file of the opened folders. Reassign any of them, e.g. one that was read as the wrong part.',
-  removed: 'Parts and files you removed. They stay out (also after a reload) until you put them back. The files on your computer are never touched.',
+  removed: 'Parts and files you removed. They stay out (also after a reload) until you put them back or reassign them. Delete takes one off this list for good. The files on your computer are never touched.',
 };
 
+/** What the search box looks in: the file's path and what it is read as. */
+function searchText(f) {
+  const v = f.variant;
+  if (f.removedPart) return `${f.path} ${v.bodyType} ${v.part} ${v.pid} ${v.pack}`;
+  return `${f.path} ${v && f.layer ? readingOf(f) : v ? `${v.bodyType} ${v.part} ${v.pid}` : ''}`;
+}
+
 function renderFiles() {
-  const counts = { queue: filesFor('queue').length, odd: filesFor('odd').length, hand: filesFor('hand').length, removed: filesFor('removed').length };
+  const query = $('files-search').value.trim().toLowerCase();
+  const matches = (f) => !query || searchText(f).toLowerCase().includes(query);
+  const counts = Object.fromEntries(['queue', 'odd', 'hand', 'removed'].map((t) => [t, filesFor(t).length]));
   for (const b of $('files-tabs').children) {
     const tab = b.dataset.tab;
     b.classList.toggle('active', tab === filesTab);
     b.textContent = tab in counts ? `${TAB_LABELS[tab]} (${counts[tab]})` : TAB_LABELS[tab];
   }
-  const query = $('files-search').value.trim().toLowerCase();
-  const files = filesFor(filesTab).filter((f) => !query
-    || `${f.path} ${f.variant ? readingOf(f) : ''}`.toLowerCase().includes(query));
+  const files = filesFor(filesTab).filter(matches);
   $('files-start').hidden = filesTab !== 'queue' || !files.length;
   $('files-note').textContent = filesTab === 'queue' && !files.length ? 'Nothing left to assign.' : TAB_NOTES[filesTab];
   const observer = new IntersectionObserver((seen) => {

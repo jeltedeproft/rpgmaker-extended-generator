@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet, attachWaitingMasks, imageOfMask } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet, attachWaitingMasks, imageOfMask, restoreToAssign } from '../src/parse.js';
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
@@ -363,4 +363,17 @@ test('a mask assigned under another variation joins the image it is named after'
   assert.equal(lib.variants.get('Fur/Male/Clothing/pFur01').layers[0].mask.path, 'TV/Male/TV_FurClothes01_c.png');
   assert.ok(!lib.variants.has('Fur/Male/Clothing/pTV-FurClothes01-c'));
   assert.equal(attachWaitingMasks(lib, 'Fur').length, 0);
+});
+
+test('a removed file can be taken back to reassign it', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', [{ path: 'TV/Male/TV_Hat_p01.png', src: 'a' }]);
+  assert.ok(removeFile(lib, 'P', 'TV/Male/TV_Hat_p01.png'));
+  const entry = restoreToAssign(lib, 'P', 'TV/Male/TV_Hat_p01.png');
+  assert.equal(entry.src, 'a');
+  assert.equal(lib.removed.length, 0);
+  assert.deepEqual(lib.unrecognized.map((u) => u.path), ['TV/Male/TV_Hat_p01.png']);
+  assert.equal(assignFile(lib, 'P', entry.path, entry.src, 'TV_Cloak_p02.png', 'Male'), null);
+  assert.ok(lib.variants.has('P/Male/Cloak/p02') && !lib.unrecognized.length);
+  assert.equal(restoreToAssign(lib, 'P', 'nope.png'), null);
 });

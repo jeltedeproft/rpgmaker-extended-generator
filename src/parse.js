@@ -532,6 +532,19 @@ export function attachWaitingMasks(library, packName) {
   return moved;
 }
 
+/**
+ * Takes a removed file back as a file to assign, to reassign it by hand.
+ * @returns {object|null} its "to assign" entry, or null when it isn't removed
+ */
+export function restoreToAssign(library, packName, path) {
+  const i = library.removed.findIndex((u) => u.pack === packName && u.path === path);
+  if (i === -1) return null;
+  const [{ src }] = library.removed.splice(i, 1);
+  const entry = { pack: packName, path, src, reason: 'Put back to reassign' };
+  library.unrecognized.push(entry);
+  return entry;
+}
+
 /** "p17" -> "p17 (alt)"; "p17 (2)" -> "p17 (2, alt)". */
 function withTag(pid, tag) {
   return pid.endsWith(')') ? `${pid.slice(0, -1)}, ${tag})` : `${pid} (${tag})`;

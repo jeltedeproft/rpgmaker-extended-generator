@@ -456,6 +456,40 @@ try {
       await evaluate(`document.querySelector('#files-list .file-card .file-buttons button').click()`);
       await sleep(800);
       check('a removed file can be put back', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 2) + ')');
+      // Removed: search filters it; a removed file can be reassigned or deleted from the list.
+      await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
+      await evaluate(`document.querySelector('#files-tabs [data-tab="all"]').click()`);
+      await sleep(400);
+      const twoNames = await evaluate(`[...document.querySelectorAll('#files-list .file-card .file-name')].slice(0, 2).map((n) => n.textContent)`);
+      for (const n of twoNames) {
+        await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ${JSON.stringify(n)}; i.dispatchEvent(new Event('input')); })()`);
+        await sleep(500);
+        await evaluate(`[...document.querySelectorAll('#files-list .file-card')].find((c) => c.querySelector('.file-name').textContent === ${JSON.stringify(n)}).querySelector('.file-buttons button:last-child').click()`);
+        await sleep(600);
+      }
+      await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
+      await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').click()`);
+      await sleep(500);
+      const removedAll = await evaluate(`document.querySelectorAll('#files-list .file-card').length`);
+      await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ${JSON.stringify(twoNames[0])}; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(500);
+      const removedFound = await evaluate(`[...document.querySelectorAll('#files-list .file-card .file-name')].map((n) => n.textContent).join(',')`);
+      check('search filters the Removed tab', removedAll >= 2 && removedFound === twoNames[0], `${removedAll} -> ${removedFound}`);
+      check('removed files offer put back, reassign and delete', await evaluate(`[...document.querySelectorAll('#files-list .file-card button')].map((b) => b.textContent).join(',')`) === 'Put back,Reassign…,Delete');
+      await evaluate(`[...document.querySelectorAll('#files-list .file-card button')].find((b) => b.textContent === 'Reassign…').click()`);
+      await sleep(1200);
+      check('reassign a removed file opens the assign dialog', await evaluate(`document.getElementById('assign-dialog').open && document.getElementById('assign-file').textContent.endsWith(${JSON.stringify(twoNames[0])})`));
+      await evaluate(`document.querySelector('#assign-dialog button[value="cancel"]').click()`);
+      await sleep(500);
+      if (!(await evaluate(`document.getElementById('files-dialog').open`))) await evaluate(`document.getElementById('open-files').click()`);
+      await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').click()`);
+      await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ${JSON.stringify(twoNames[1])}; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(500);
+      await evaluate(`[...document.querySelectorAll('#files-list .file-card button')].find((b) => b.textContent === 'Delete').click()`);
+      await sleep(500);
+      check('delete takes a file off the Removed list', (await evaluate(`document.querySelectorAll('#files-list .file-card').length`)) === 0
+        && await evaluate(`Object.values(JSON.parse(localStorage.getItem('xgen-settings')).assignments).some((a) => a.deleted)`));
+      await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
     }
     await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);
     await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('xgen-settings') || '{}'); delete s.assignments; localStorage.setItem('xgen-settings', JSON.stringify(s)); })()`);
