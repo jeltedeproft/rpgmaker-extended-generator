@@ -2162,12 +2162,13 @@ function fileCard(file, observer) {
   ]);
 }
 
-const TAB_LABELS = { queue: 'To assign', odd: 'Odd names', hand: 'Assigned by you', all: 'All files', removed: 'Removed' };
+const TAB_LABELS = { queue: 'To assign', odd: 'Odd names', hand: 'Assigned by you', all: 'All files', removed: 'Removed', folders: 'Folders' };
 const TAB_NOTES = {
   queue: 'Files the generator could not read from their name. Assign them one by one, or pick one.',
   odd: 'Files with unusual names, read by guessing. Reassign any that were guessed wrong.',
   hand: 'Files you assigned. Reassign or unassign them if one went wrong.',
   all: 'Every file of the opened folders. Reassign any of them, e.g. one that was read as the wrong part.',
+  folders: 'The folders of the opened generator folders. Move a folder\'s parts to another body type (e.g. Kid parts to Male), or remove a folder you don\'t want. Both are remembered, and the files on your computer are never touched.',
   removed: 'Parts and files you removed. They stay out (also after a reload) until you put them back or reassign them. Delete takes one off this list for good. The files on your computer are never touched.',
 };
 
@@ -2187,6 +2188,14 @@ function renderFiles() {
     b.classList.toggle('active', tab === filesTab);
     b.textContent = tab in counts ? `${TAB_LABELS[tab]} (${counts[tab]})` : TAB_LABELS[tab];
   }
+  if (filesTab === 'folders') {
+    $('files-start').hidden = true;
+    $('files-more').hidden = true;
+    $('files-note').textContent = TAB_NOTES.folders;
+    const rows = folderList().filter((d) => !query || `${d.pack} ${d.dir}`.toLowerCase().includes(query));
+    $('files-list').replaceChildren(...(rows.length ? rows.map(folderRow) : [el('p', { className: 'muted', textContent: 'No folder matches.' })]));
+    return;
+  }
   const files = filesFor(filesTab).filter(matches);
   $('files-start').hidden = filesTab !== 'queue' || !files.length;
   $('files-note').textContent = filesTab === 'queue' && !files.length ? 'Nothing left to assign.' : TAB_NOTES[filesTab];
@@ -2200,6 +2209,93 @@ function renderFiles() {
   $('files-list').replaceChildren(...files.slice(0, filesShown).map((f) => fileCard(f, observer)));
   $('files-more').hidden = files.length <= filesShown;
   $('files-more').textContent = `Show more (${files.length - filesShown} left)`;
+}
+
+// ---------- Folders: a folder's parts to another body type, or the whole folder out ----------
+
+const dirOf = (path) => path.slice(0, path.lastIndexOf('/') + 1).replace(/\/$/, '') || '(top folder)';
+
+/** The folders of the opened packs, with their files: [{pack, dir, files, loaded, bodyTypes}]. */
+function folderList() {
+  const lib = state.library;
+  const byDir = new Map();
+  const add = (f, loaded) => {
+    const key = `${f.pack}|${dirOf(f.path)}`;
+    if (!byDir.has(key)) byDir.set(key, { pack: f.pack, dir: dirOf(f.path), files: new Map(), loaded: [], bodyTypes: new Set() });
+    const d = byDir.get(key);
+    if (d.files.has(f.path)) return; // a VX Ace file feeds several layers
+    d.files.set(f.path, f);
+    if (loaded) {
+      d.loaded.push(f);
+      d.bodyTypes.add(f.variant.bodyType);
+    }
+  };
+  for (const f of libraryFiles(lib)) add(f, true);
+  for (const f of lib.unrecognized) add(f, false);
+  return [...byDir.values()].sort((a, b) => `${a.pack}|${a.dir}`.localeCompare(`${b.pack}|${b.dir}`));
+}
+
+/** The name a loaded file is read as: what it was assigned or re-read as, or its own name. */
+function readAsName(file) {
+  return state.library.readAs.get(`${file.pack}|${file.path}`)?.readAs || file.path.split('/').pop();
+}
+
+/** Moves the parts of a folder to another body type (remembered like assigning by hand). */
+function moveFolder(d, bodyType) {
+  const lib = state.library;
+  const files = d.loaded.filter((f) => !f.layer?.vxace && f.variant.bodyType !== bodyType);
+  // Masks first out and last in, so they go with their images.
+  const order = [...files.filter((f) => f.role === 'mask'), ...files.filter((f) => f.role !== 'mask')];
+  const plan = order.map((f) => ({ f, readAs: readAsName(f) }));
+  for (const { f } of plan) unassignFile(lib, f.pack, f.path);
+  let moved = 0;
+  for (const { f, readAs } of [...plan.filter((p) => p.f.role !== 'mask'), ...plan.filter((p) => p.f.role === 'mask')]) {
+    if (assignFile(lib, f.pack, f.path, f.src, readAs, bodyType)) continue;
+    remember(f, { readAs, bodyType });
+    moved++;
+  }
+  afterFilesChanged();
+  toast(`Moved ${moved} file${moved === 1 ? '' : 's'} of ${d.dir} to ${bodyType}. A part that was there already is listed as a copy ("p01 (2)"): see "Look-alikes…".`, 8000);
+}
+
+/** Removes every file of a folder (they go to "Removed"); Undo puts them back. */
+function removeFolder(d) {
+  const removed = [];
+  for (const f of d.files.values()) {
+    if (!removeFile(state.library, f.pack, f.path)) continue;
+    remember(f, { removed: true });
+    removed.push(f);
+  }
+  afterFilesChanged();
+  const undo = () => {
+    for (const f of removed) {
+      if (!restoreFile(state.library, f.pack, f.path)) continue;
+      delete state.settings.assignments?.[`${f.pack}|${f.path}`];
+    }
+    saveSettings();
+    afterFilesChanged();
+  };
+  toast(`Removed ${removed.length} file${removed.length === 1 ? '' : 's'} of ${d.dir}. They're listed under "Removed".`, 10000, { label: 'Undo', run: undo });
+}
+
+function folderRow(d) {
+  const bodies = [...state.library.bodyTypes.keys()];
+  const target = el('select', { title: 'Body type to move the parts to' }, bodies.map((b) => el('option', { value: b, textContent: b })));
+  const now = [...d.bodyTypes];
+  target.value = bodies.find((b) => !now.includes(b)) || bodies[0];
+  const move = el('button', { type: 'button', className: 'small-button', textContent: 'Move its parts to', disabled: !d.loaded.length });
+  move.addEventListener('click', () => moveFolder(d, target.value));
+  const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove folder', title: 'Take every file of this folder out of the generator. Put them back under "Removed"' });
+  remove.addEventListener('click', () => removeFolder(d));
+  const what = [
+    `${d.files.size} file${d.files.size === 1 ? '' : 's'}`,
+    now.length ? `parts for ${now.join(', ')}` : '',
+    d.files.size > d.loaded.length ? `${d.files.size - d.loaded.length} to assign` : '',
+  ].filter(Boolean).join(' · ');
+  return el('div', { className: 'folder-row' }, [
+    el('div', {}, [el('b', { textContent: d.dir }), el('span', { className: 'muted small', textContent: `  ${d.pack} · ${what}` })]),
+    el('div', { className: 'file-buttons' }, [move, target, remove]),
+  ]);
 }
 
 function openFilesDialog(tab = state.library.unrecognized.length ? 'queue' : 'odd') {

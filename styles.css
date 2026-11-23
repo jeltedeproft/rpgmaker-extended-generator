@@ -301,6 +301,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .files-head h3 { margin: 0; }
 .files-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .files-tabs button { padding: 4px 10px; font-size: 13px; }
+.folder-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; grid-column: 1 / -1; }
 .files-tabs button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .files-tools { display: flex; gap: 8px; align-items: center; }
 .files-tools input { flex: 1; }

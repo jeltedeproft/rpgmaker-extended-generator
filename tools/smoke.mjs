@@ -843,6 +843,33 @@ try {
   }
 
   // FacialMark: a colour is recommended (not applied), the user can pick any.
+  // Folders: move a folder's parts to another body type; remove a folder, and undo.
+  if (process.env.ALIKE_PACK) {
+    if (!(await evaluate(`document.getElementById('files-dialog').open`))) await evaluate(`document.getElementById('open-files').click()`);
+    await sleep(400);
+    await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
+    await evaluate(`document.querySelector('#files-tabs [data-tab="folders"]').click()`);
+    await sleep(600);
+    const folders = await evaluate(`[...document.querySelectorAll('#files-list .folder-row b')].map(b => b.textContent)`);
+    check('folders are listed', folders.includes('SV/Kid') && folders.includes('Face/Male'), folders.join(','));
+    const row = (dir) => `[...document.querySelectorAll('#files-list .folder-row')].find(r => r.querySelector('b').textContent === ${JSON.stringify(dir)})`;
+    await evaluate(`(() => { const r = ${row('SV/Kid')}; r.querySelector('select').value = 'Female'; [...r.querySelectorAll('button')].find(b => b.textContent.startsWith('Move')).click(); })()`);
+    await sleep(2500);
+    if (!(await evaluate(`document.getElementById('files-dialog').open`))) await evaluate(`document.getElementById('open-files').click()`);
+    await evaluate(`document.querySelector('#files-tabs [data-tab="folders"]').click()`);
+    await sleep(500);
+    check('a folder\'s parts move to another body type', await evaluate(`${row('SV/Kid')}.textContent.includes('parts for Female') && !${row('SV/Kid')}.textContent.includes('Kid,')`), await evaluate(`${row('SV/Kid')}.textContent`));
+    check('the move is remembered', await evaluate(`Object.entries(JSON.parse(localStorage.getItem('xgen-settings')).assignments).some(([k, v]) => k.includes('SV/Kid/') && v.bodyType === 'Female')`));
+    const removedBefore = await evaluate(`parseInt(document.querySelector('#files-tabs [data-tab="removed"]').textContent.match(/\\d+/)[0])`);
+    await evaluate(`[...${row('Face/Kid')}.querySelectorAll('button')].find(b => b.textContent.startsWith('Remove')).click()`);
+    await sleep(1500);
+    const removedAfter = await evaluate(`parseInt(document.querySelector('#files-tabs [data-tab="removed"]').textContent.match(/\\d+/)[0])`);
+    check('a folder can be removed', removedAfter > removedBefore + 10 && !(await evaluate(`!!${row('Face/Kid')}`)), `${removedBefore} -> ${removedAfter}`);
+    await evaluate(`[...document.querySelectorAll('#toast button')].find(b => b.textContent === 'Undo')?.click()`);
+    await sleep(1500);
+    check('removing a folder can be undone', (await evaluate(`parseInt(document.querySelector('#files-tabs [data-tab="removed"]').textContent.match(/\\d+/)[0])`)) === removedBefore);
+    await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);
+  }
   if (process.env.MARK_PACK) {
     await send('Page.navigate', { url: `${URL_UNDER_TEST.replace(/\?.*$/, '')}?pack=${encodeURIComponent(process.env.MARK_PACK)}` });
     await sleep(8000);
