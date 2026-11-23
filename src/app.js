@@ -141,18 +141,24 @@ async function importEntries(entries, packName) {
   state.fileGradients.push(...gradients);
   state.problems.push(...errors);
 
+  // Files still to assign count as something read: the folder is remembered, so after a reload
+  // they are back in the "To assign" list.
+  const toAssign = state.library.unrecognized.filter((u) => u.pack === pack.name).length;
+  const assignNote = toAssign ? ` ${toAssign} file${toAssign > 1 ? 's' : ''} to assign: see "Files…".` : '';
   if (!addedParts) {
-    toast(`Nothing usable in "${pack.name}": ${unsupportedHint(addedGradientFiles)} See the import report.`, 12000);
+    toast(toAssign
+      ? `No parts read from the names in "${pack.name}" yet.${assignNote}`
+      : `Nothing usable in "${pack.name}": ${unsupportedHint(addedGradientFiles)} See the import report.`, 12000);
     if (state.character) renderAll();
     else {
       showApp();
       renderProblems();
     }
-    return addedGradientFiles; // colour sheets alone still count as a usable folder
+    return addedGradientFiles + toAssign; // colour sheets or files to assign still count
   }
   ensureCharacter();
   checkLookalikes(pack.name).catch((e) => console.error(e));
-  toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.`);
+  toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.${assignNote}`, toAssign ? 8000 : 4000);
   showApp();
   renderAll();
   return addedParts;
