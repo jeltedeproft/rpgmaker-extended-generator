@@ -2544,6 +2544,7 @@ function openJsonDialog(items) {
       el('h4', { textContent: item.name }),
       el('div', { className: 'json-options' }, [
         option('character', 'As a character', 'Replaces the current character (with several, they go to the Gallery).', picture(asCharacter)),
+        option('both', 'As a character and a set', 'Loads it like "As a character", and also saves its parts under Sets, to put on other characters later.', picture(asCharacter)),
         option('set', 'As a set on your character', `${(n2 => `Its ${n2} part${n2 === 1 ? '' : 's'}`)(Object.keys(asSet.set.parts).length)} go${Object.keys(asSet.set.parts).length === 1 ? 'es' : ''} on your character; body type and name stay. Also saved under Sets.`, picture(onYours)),
         option('skip', 'Skip'),
       ]),
@@ -2556,9 +2557,10 @@ function openJsonDialog(items) {
 
 function updateJsonSummary() {
   const count = (c) => jsonItems.filter((i) => i.kind === 'character' && i.choice === c).length;
-  const chars = count('character');
+  const chars = count('character') + count('both');
   const parts = [
     chars === 1 ? '1 loaded as the character' : chars ? `${chars} put in the Gallery` : '',
+    count('both') ? `${count('both')} also saved under Sets` : '',
     count('set') ? `${count('set')} put on as sets` : '',
     count('skip') ? `${count('skip')} skipped` : '',
   ].filter(Boolean);
@@ -2568,6 +2570,8 @@ function updateJsonSummary() {
 for (const b of document.querySelectorAll('[data-json-all]')) {
   b.addEventListener('click', () => {
     for (const item of jsonItems) if (item.kind === 'character' && (item.asSet || b.dataset.jsonAll === 'skip' || b.dataset.jsonAll === 'character')) item.choice = b.dataset.jsonAll;
+    // A file that can't be read as a set can still be loaded as a character.
+    for (const item of jsonItems) if (item.kind === 'character' && !item.asSet && b.dataset.jsonAll === 'both') item.choice = 'character';
     for (const r of $('json-list').querySelectorAll('input[type="radio"]')) r.checked = r.value === b.dataset.jsonAll;
     updateJsonSummary();
   });
@@ -2576,9 +2580,14 @@ for (const b of document.querySelectorAll('[data-json-all]')) {
 $('json-apply').addEventListener('click', async () => {
   $('json-dialog').close();
   const chosen = (c) => jsonItems.filter((i) => i.kind === 'character' && i.choice === c);
-  const characters = chosen('character');
+  const characters = [...chosen('character'), ...chosen('both')];
   for (const c of characters) addToGallery(c.text, c.name.replace(/\.json$/i, ''), 'loaded');
   if (characters.length === 1) await loadCharacterText(characters[0].text, characters[0].name, false);
+  // Both: also kept under Sets (not put on: it is the character already).
+  for (const item of chosen('both')) {
+    (state.settings.sets ||= []).push(item.asSet.set);
+    for (const g of item.asSet.customGradients) if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(g);
+  }
   const missing = [];
   for (const item of chosen('set')) {
     (state.settings.sets ||= []).push(item.asSet.set);
@@ -2594,6 +2603,7 @@ $('json-apply').addEventListener('click', async () => {
   const done = [
     characters.length === 1 ? `Loaded ${characters[0].name}.` : characters.length ? `${characters.length} characters are in the Gallery.` : '',
     chosen('set').length ? `Put on ${chosen('set').length} set(s).` : '',
+    chosen('both').length ? `Saved ${chosen('both').length} of them under Sets too.` : '',
     missing.length ? `Missing: ${missing.join(', ')}.` : '',
     summaryOfOthers(jsonItems),
   ].filter(Boolean).join(' ');

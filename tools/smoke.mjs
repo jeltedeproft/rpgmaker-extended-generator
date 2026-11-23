@@ -139,10 +139,12 @@ try {
     check('several JSON files: a choice with pictures', await evaluate(`document.getElementById('json-dialog').open && document.querySelectorAll('#json-list .json-row').length === 3 && [...document.querySelectorAll('#json-list canvas')].filter(c => c.width > 0).length >= 4`));
     await shot('2b-json-import.png');
     await evaluate(`document.querySelector('#json-list input[value="set"]').click()`);
+    await evaluate(`document.querySelectorAll('#json-list .json-row')[1].querySelector('input[value="both"]').click()`);
     await evaluate(`document.getElementById('json-apply').click()`);
     await sleep(1500);
     const sets = await evaluate(`[...document.querySelectorAll('#set-list .set-apply')].map(b => b.textContent).join('|')`);
     check('JSON files imported as chosen', (await evaluate(`document.getElementById('character-name').value`)) === 'Json B' && sets.includes('Json A') && sets.includes('Json set'), sets);
+    check('a JSON file can be a character and a set at once', sets.includes('Json B'), sets);
   }
   // Remove one part (not its folder), then undo.
   {
@@ -259,7 +261,13 @@ try {
     await click('#randomize');
     await sleep(900);
     const worn = `[...document.querySelectorAll('#part-list button')].filter(b => !b.classList.contains('piece') && b.querySelector('.value').textContent && b.querySelector('.value').textContent !== 'none').map(b => b.firstChild.textContent.replace(' 🔒', ''))`;
-    const before = await evaluate(worn);
+    let before = await evaluate(worn);
+    // Randomize can put on only Body and Face: then there is nothing to clear, so try again.
+    for (let tries = 0; tries < 5 && before.every(k => k === 'Body' || k === 'Face'); tries++) {
+      await click('#randomize');
+      await sleep(900);
+      before = await evaluate(worn);
+    }
     await click('#clear-all');
     await sleep(900);
     const after = await evaluate(worn);
