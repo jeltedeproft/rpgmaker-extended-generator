@@ -10,11 +10,12 @@ import { createLibrary, addPack } from '../src/parse.js';
 import { splitGradientImage } from '../src/gradients.js';
 import { composeSheet } from '../src/compose.js';
 import { maskPalette } from '../src/recolor.js';
+import { cellOf } from '../src/vxace.js';
 
 const ASSETS = join(dirname(fileURLToPath(import.meta.url)), '..', 'test-assets');
 const packs = existsSync(ASSETS) ? readdirSync(ASSETS).filter((n) => statSync(join(ASSETS, n)).isDirectory()) : [];
 const skip = packs.length ? false : 'no packs in test-assets/';
-// Formats we know we don't read yet (see docs/FORMAT.md).
+// Packs in another format, with their own test below (see docs/FORMAT.md).
 const UNSUPPORTED = new Set(['vxace']);
 
 function walk(dir) {
@@ -29,7 +30,14 @@ function loadPack(name) {
   const entries = walk(root).map((p) => ({ path: relative(root, p).replaceAll('\\', '/'), src: p }));
   const lib = createLibrary();
   addPack(lib, name, entries);
-  const decode = (ref) => ref && (ref.pixels ||= decodePng(readFileSync(ref.src)));
+  const decode = (ref) => {
+    if (!ref || ref.pixels) return;
+    const pixels = decodePng(readFileSync(ref.src));
+    if (ref.cells) {
+      ref.full = pixels;
+      ref.pixels = cellOf(ref, 0);
+    } else ref.pixels = pixels;
+  };
   for (const v of lib.variants.values()) {
     for (const l of v.layers) {
       decode(l.base);
@@ -99,3 +107,28 @@ for (const name of packs.length ? packs.filter((n) => !UNSUPPORTED.has(n)) : ['(
     }
   });
 }
+
+test('vxace: every VX Ace generator file is read, and painted colours pick cells', { skip: packs.includes('vxace') ? false : 'no vxace pack' }, () => {
+  const { lib } = loadPack('vxace');
+  assert.deepEqual(lib.unrecognized.map((u) => u.path), []);
+  assert.equal(lib.packs[0].format, 'vxace');
+  assert.deepEqual([...lib.bodyTypes.keys()].sort(), ['Female', 'Male']);
+  const id = (part, pid) => `vxace/Male/${part}/${pid}`;
+  // Shared files reach both body types; Mini/Eyes.png gives every eye shape its walking eyes.
+  assert.ok(lib.variants.get('vxace/Female/Glasses/p01'));
+  assert.ok(lib.variants.get(id('Eyes', 'p03')).layers.some((l) => l.sheet === 'TV'));
+  const character = {
+    bodyType: 'Male',
+    parts: { Body: id('Body', 'p01'), Face: id('Face', 'p01'), FrontHair: id('FrontHair', 'p01'), RearHair: id('RearHair', 'p01'), Eyes: id('Eyes', 'p01'), Clothing: id('Clothing', 'p01') },
+    colors: {},
+  };
+  const face = composeSheet('FG', character, lib, new Map(), {}).image;
+  const walk = composeSheet('TV', character, lib, new Map(), {});
+  assert.deepEqual([face.width, face.height], [128, 128]);
+  assert.deepEqual([walk.image.width, walk.image.height, walk.frame.w, walk.frame.h], [96, 128, 32, 32]);
+  const sig = (img) => img.data.reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0);
+  const red = composeSheet('FG', { ...character, colors: { 'vx:hair': 'painted:5' } }, lib, new Map(), {}).image;
+  assert.notEqual(sig(red), sig(face));
+  const darkSkin = composeSheet('TV', { ...character, colors: { 'vx:skin': 'painted:3' } }, lib, new Map(), {}).image;
+  assert.notEqual(sig(darkSkin), sig(walk.image));
+});

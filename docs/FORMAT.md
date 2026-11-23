@@ -66,7 +66,7 @@ Generator/
    We follow the filename either way.
 5. Is a single 144x144 face PNG accepted by RPG Maker, or does it need a 576x288 sheet?
 
-## VX Ace generator (not supported yet)
+## VX Ace generator (supported, see src/vxace.js)
 From the tester's VX Ace `Generator` folder (515 files, kept locally in `test-assets/vxace/`).
 It is a different system: **colours are pre-painted, not recoloured.**
 ```
@@ -77,11 +77,21 @@ Generator/
   Mini/{Male,Female}/<Part>NN.png Beard, Cloth, FrontHair, RearHair
 ```
 - Face parts are 512x256: a 4x2 grid of 128x128 cells, **one cell per colour choice** (8 colours).
-  Skin (`Face`) is 512x128: 4 skin tones.
+  Skin (`Face`), `Ears`, `Mouth` and `Nose` are 512x128: 4 skin tones.
 - Mini parts are 768x256 or 768x128: cells of 96x128, each a 3x4 walk sheet of 32x32 frames.
-  `Head.png` holds 4 skin tones, `Eyes.png` 8 eye colours.
-- Suffix `s` (e.g. `FrontHair01s`, `Eyes01s`): a flat-coloured silhouette per cell. Probably a shadow
-  or skin-tinted layer drawn on the face. Unverified.
-- Suffix `a` (`RearHair01a`, `Neck01a`): a second layer of the same part, probably drawn in front of
-  or behind the main one. Unverified.
-- No gradient files and no masks.
+  `Head.png` holds 4 skin tones (read as Body p01), `Eyes.png` 8 eye colours (the walking eyes of every
+  eye shape).
+- Tall Mini files (Cloak, Tail, Wing, RearHair, Ears, Cloth) hold two layers: the top half is drawn
+  behind the body, the bottom half in front. Cloth's bottom half is the skin of the hands (4 skin
+  tones). Worked out from where the pixels sit (e.g. the cloak's back view is in the bottom half).
+- Suffix `s` (`FrontHair01s`, `Eyes01s`): half-transparent (alpha ~110-150) shadow the part casts on
+  the face, drawn just under the part.
+- Suffix `a` (`RearHair01a`, `Neck01a`): a second layer. `RearHair..a` covers the top of the head
+  (drawn over the face); `Neck..a` is the back of the collar (drawn behind everything).
+- Names map to MV parts: Acc1_ = AccA, Acc2_ = AccB, Kemono = BeastEars, Tattoo = FacialMark,
+  Neck (face) and Cloth (walk) = Clothing, Head = Body.
+- Colours are "painted slots": skin tone, hair colour and eye colour are shared by every part that
+  has them; the other parts have their own. A colour id `painted:N` picks cell N.
+- No gradient files and no masks. No damage or battler sprites.
+- UNVERIFIED: the exact draw order of the VX Ace generator (ours is in `VX_ORDER`), and whether VX
+  Ace wants 96x96 faces (the parts are 128x128; we export 128x128).

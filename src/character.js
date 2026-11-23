@@ -1,6 +1,7 @@
 // Character model: which variant per part (from any body type), which gradient per colour slot,
 // and per-part pixel offsets.
 
+import { PAINTED_SLOTS } from './vxace.js';
 import { PART_ORDER, REQUIRED_PARTS, SLOTS, SLOT_BY_RGB } from './format.js';
 import { preferredCategory, customGradientToJson, customGradientFromJson } from './gradients.js';
 import { partOfKey, pieceKeys, selectedItems, variantForSheet } from './compose.js';
@@ -67,7 +68,7 @@ export function usedSlots(character, library) {
       if (layer.mask?.slots) layer.mask.slots.forEach((s) => ids.add(s));
     }
   }
-  return SLOTS.filter((s) => ids.has(s.id));
+  return [...SLOTS.filter((s) => ids.has(s.id)), ...PAINTED_SLOTS.filter((s) => ids.has(s.id))];
 }
 
 /**
@@ -139,6 +140,12 @@ export function randomize(character, library, gradients, { rng = Math.random, lo
       const preferred = rules.anyColour ? [] : gradients.filter((g) => g.category === preferredCategory(slot.id));
       next.colors[slot.id] = pick(preferred.length ? preferred : gradients, rng).id;
     }
+  }
+
+  // VX Ace parts: a random painted colour (cell) for each painted slot.
+  const vxace = library.packs.some((p) => p.format === 'vxace');
+  for (const slot of vxace ? PAINTED_SLOTS : []) {
+    if (!locked.has(slot.id)) next.colors[slot.id] = `painted:${Math.floor(rng() * slot.count)}`;
   }
 
   if (sets.length && rng() < (rules.setChance || 0) / 100) {

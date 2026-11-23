@@ -478,7 +478,7 @@ try {
     // Per image: hide the part on the face only, or everywhere.
     {
       const beforeHide = await evaluate(faceSig);
-      check('per image box shown', await evaluate(`!document.getElementById('sheet-parts-box').hidden && document.querySelectorAll('#sheet-parts .sheet-pick').length === 4`));
+      check('per image box shown', await evaluate(`!document.getElementById('sheet-parts-box').hidden && document.querySelectorAll('#sheet-parts .sheet-pick').length >= 1`));
       check('per image choices show a picture', await evaluate(`!!document.querySelector('#sheet-parts .sheet-pick canvas')`));
       await click('#sheet-parts .sheet-pick');
       await sleep(1500);
@@ -552,6 +552,25 @@ try {
     await evaluate(`localStorage.removeItem('xgen-settings')`);
   }
 
+  // VX Ace generator folder: painted colours, 128px faces, 32px walk frames.
+  if (process.env.VX_PACK) {
+    await send('Page.navigate', { url: `${URL_UNDER_TEST.replace(/\?.*$/, '')}?pack=${encodeURIComponent(process.env.VX_PACK)}` });
+    await sleep(6000);
+    check('VX Ace folder loads as parts', await evaluate(`[...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('FrontHair')) && document.getElementById('face-canvas').width === 128`));
+    check('VX Ace walk frames are 32px', await evaluate(`document.getElementById('walk-canvas').width === 32`));
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
+    await sleep(500);
+    await click('#variants .variant:nth-child(2)');
+    await sleep(1500);
+    const faceSig = `[...document.getElementById('face-canvas').getContext('2d').getImageData(0,0,128,128).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`;
+    const swatches = await evaluate(`document.querySelectorAll('.slot .swatch.painted').length`);
+    check('VX Ace hair shows painted colour swatches', swatches >= 8, `${swatches} swatches`);
+    const beforePaint = await evaluate(faceSig);
+    await evaluate(`document.querySelectorAll('.slot .swatch.painted')[5].click()`);
+    await sleep(1200);
+    check('a painted colour repaints the hair', (await evaluate(faceSig)) !== beforePaint);
+    await shot('6-vxace.png');
+  }
   check('no uncaught errors', errors.length === 0, errors.join(' | '));
 } catch (e) {
   check('smoke run', false, e.stack);

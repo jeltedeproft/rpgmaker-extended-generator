@@ -1,5 +1,6 @@
 // Browser-only: reading folders, decoding PNGs to pixels, exporting.
 
+import { cellOf } from './vxace.js';
 import { splitGradientImage } from './gradients.js';
 import { scanMask } from './recolor.js';
 
@@ -72,12 +73,29 @@ export async function decodeImage(src) {
 const pending = new WeakMap();
 
 /** Decodes an image ref ({src, pixels}) once; concurrent calls share the work. */
+/** VX Ace files hold several layers (cells of colours): decode each file once for all of them. */
+const sharedDecodes = new Map();
+function decodeShared(src) {
+  if (!sharedDecodes.has(src)) {
+    const job = decodeImage(src).finally(() => setTimeout(() => sharedDecodes.delete(src), 2000));
+    sharedDecodes.set(src, job);
+  }
+  return sharedDecodes.get(src);
+}
+
 export function ensureImage(ref, isMask = false) {
   if (!ref || ref.pixels) return Promise.resolve(ref?.pixels);
   if (!pending.has(ref)) {
+    // A VX Ace layer's pixels are its first painted colour; the whole file stays in ref.full.
+    const decoded = ref.cells
+      ? decodeShared(ref.src).then((full) => {
+        ref.full = full;
+        return cellOf(ref, 0);
+      })
+      : decodeImage(ref.src);
     pending.set(
       ref,
-      decodeImage(ref.src).then((pixels) => {
+      decoded.then((pixels) => {
         ref.pixels = pixels;
         if (isMask) {
           // slots: colours the editor offers. unknownColors: mask colours that match no slot.

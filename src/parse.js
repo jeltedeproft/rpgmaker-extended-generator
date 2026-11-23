@@ -2,6 +2,7 @@
 // Pure: no DOM. File objects are stored as opaque `src` values and decoded later.
 
 import { SHEETS, SLOT_BY_M, PART_ORDER } from './format.js';
+import { parseVxAcePath } from './vxace.js';
 
 const PART_FILE_RE = /^(FG|TVD|TV|SV|icon)_([A-Za-z]+?)(\d*)_p([A-Za-z0-9-]+)((?:_[A-Za-z]+\d*)*)\.png$/i;
 /** "TV_Body_p01 (2).png": the copy suffix Windows adds, and RPG Maker's DLC readme tells you to rename to. */
@@ -209,6 +210,26 @@ function layerKey(parsed) {
 }
 
 /**
+ * Adds a VX Ace file: one layer per half of the picture it holds, in each body type it is for.
+ * Every layer keeps the whole file and which cells it holds; a colour picks the cell.
+ */
+function addVxAce(library, packName, vx, path, src) {
+  for (const bodyType of vx.bodyTypes || ['Male', 'Female']) {
+    const variant = getVariant(library, packName, { bodyType, part: vx.part, pid: vx.pid, basePid: vx.pid });
+    for (const l of vx.layers) {
+      if (variant.layers.some((x) => x.sheet === vx.sheet && x.key === l.key)) {
+        library.warnings.push(`${path}: a second ${l.key} for ${vx.part} ${vx.pid}, keeping the first`);
+        continue;
+      }
+      variant.layers.push({
+        sheet: vx.sheet, key: l.key, layer: vx.part, part: vx.part, slotId: l.slotId, vxace: true,
+        base: { src, pixels: null, path, cells: l.cells }, mask: null,
+      });
+    }
+  }
+}
+
+/**
  * Adds a pack (one imported folder) to the library.
  * Variant ids are namespaced by pack, so importing two packs that both use "p01" never overwrites.
  * @param {{path:string, src:any}[]} entries
@@ -221,6 +242,7 @@ export function addPack(library, packName, entries) {
   library.packs.push(pack);
 
   const lenient = [];
+  const vxShared = [];
   for (const { path, src } of entries) {
     // Readme, credits and licence files: shown in the credits list.
     if (TEXT_FILE_RE.test(path)) {
@@ -236,8 +258,24 @@ export function addPack(library, packName, entries) {
     }
 
     const parsed = parsePartPath(path);
-    if (parsed) addParsed(library, name, parsed, path, src);
-    else lenient.push({ path, src });
+    if (parsed) {
+      addParsed(library, name, parsed, path, src);
+      continue;
+    }
+    const vx = parseVxAcePath(path);
+    if (vx) {
+      pack.format = 'vxace';
+      if (vx.pid) addVxAce(library, name, vx, path, src);
+      else vxShared.push({ vx, path, src });
+      continue;
+    }
+    lenient.push({ path, src });
+  }
+  // Mini/Eyes.png: the walking eyes of every eye shape.
+  for (const { vx, path, src } of vxShared) {
+    for (const variant of [...library.variants.values()].filter((v) => v.pack === name && v.part === vx.part && v.basePid === v.pid)) {
+      addVxAce(library, name, { ...vx, pid: variant.pid, bodyTypes: [variant.bodyType] }, path, src);
+    }
   }
   // Odd names go last, so a typo'd copy ("FG_FrontHair_p17_c1].png") becomes the alternate,
   // not the original.

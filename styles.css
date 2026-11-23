@@ -241,6 +241,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .files-dialog { width: min(980px, 96vw); max-height: 92vh; }
 .files-dialog form { display: flex; flex-direction: column; gap: 8px; }
 .alike-list { display: grid; gap: 8px; overflow: auto; max-height: 64vh; }
+.swatch.painted { width: 28px; height: 20px; padding: 0; }
 .gallery-list { overflow: auto; max-height: 64vh; }
 .gallery-list h4 { margin: 10px 0 6px; font-size: 13px; }
 .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }

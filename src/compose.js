@@ -4,12 +4,15 @@ import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
 import { createImage, recolorLayer, blendOver, blendFrames, transformFrames, frameCentres, gridCentres, isTransformed, swapFrameRows } from './recolor.js';
 import { islandLabels, keepIsland } from './islands.js';
 import { solidOf, insideOutline, applyClip } from './clip.js';
+import { VX_ORDER, cellOf, paintedIndex } from './vxace.js';
 
 /**
  * Position in the draw order, 0 = top-most. Unknown layers fall back to the first entry for the
  * same part, then to the top (so custom parts are always visible).
  */
 export function orderIndex(sheet, key, part) {
+  const vx = VX_ORDER[sheet]?.indexOf(key) ?? -1;
+  if (vx !== -1) return vx;
   const order = DRAW_ORDER[sheet] || [];
   const exact = order.indexOf(key);
   if (exact !== -1) return exact;
@@ -268,7 +271,15 @@ function sheetSize(sheet, draws) {
   const body = layers.find((l) => l.part === 'Body' && l.base.pixels);
   if (body) return { w: body.base.pixels.width, h: body.base.pixels.height };
   // Faces are 144px; MZ ships some 160px parts (ears, accessories) that are centred and cropped.
-  if (sheet === 'FG') return DEFAULT_SIZE.FG;
+  if (sheet === 'FG') {
+    // A face made of parts that are all one other size (VX Ace's 128px faces) keeps that size.
+    const sizes = new Set(layers.filter((l) => l.base.pixels).map((l) => `${l.base.pixels.width}x${l.base.pixels.height}`));
+    if (sizes.size === 1 && !layers.some((l) => !l.vxace && l.base.pixels)) {
+      const [w, h] = [...sizes][0].split('x').map(Number);
+      return { w, h };
+    }
+    return DEFAULT_SIZE.FG;
+  }
   let w = 0;
   let h = 0;
   for (const l of layers) {
@@ -418,7 +429,9 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
       const id = itemColor(character, item, slotId);
       return id ? gradientsById.get(id)?.colors ?? null : null;
     };
-    const base = layer.base.pixels;
+    // VX Ace parts are painted, not recoloured: the colour picks a cell of the file.
+    const painted = !!layer.base.cells;
+    const base = painted && layer.base.pixels ? cellOf(layer.base, paintedIndex(itemColor(character, item, layer.slotId))) : layer.base.pixels;
     if (!base) {
       problems.push(`${layer.base.path}: not decoded`);
       continue;
@@ -427,7 +440,7 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     if (mask && (mask.width !== base.width || mask.height !== base.height)) {
       problems.push(`${layer.mask.path}: mask is ${mask.width}x${mask.height}, image is ${base.width}x${base.height}`);
     }
-    const onSheet = placeOnSheet(recolorLayer(base, mask, layer.slotId, gradientFor, settings), sheet, layout);
+    const onSheet = placeOnSheet(painted ? base : recolorLayer(base, mask, layer.slotId, gradientFor, settings), sheet, layout);
     let image = onSheet.image;
     if (piece) {
       const labels = islandsOf(piece.of);

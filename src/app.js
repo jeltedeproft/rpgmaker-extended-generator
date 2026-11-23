@@ -9,6 +9,7 @@ import {
 } from './compose.js';
 import { createImage, scanMask, matchSlot } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare } from './suggest.js';
+import { PAINTED_SLOTS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
 import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -167,8 +168,8 @@ function ensureCharacter() {
 /** Why a folder gave no parts, in words a user can act on. */
 function unsupportedHint(gradientFiles) {
   if (gradientFiles) return `only colour sheets were found (${gradientFiles}); they've been added to the colour lists.`;
-  return 'no files are named like MV/MZ generator parts (FG_..., TV_..., SV_...). '
-    + 'VX Ace and older generator folders use a different format that is not supported yet.';
+  return 'no files are named like MV/MZ generator parts (FG_..., TV_..., SV_...) or VX Ace ones (Face/..., Mini/...). '
+    + 'Generator folders from XP and older are not supported.';
 }
 
 function showApp() {
@@ -317,6 +318,7 @@ function refreshTiles() {
   clearTimeout(thumbTimer);
   thumbTimer = setTimeout(() => {
     for (const tile of [...$('variants').children, ...$('other-variants').children]) tile.refresh?.();
+    if (!$('sheet-parts-box').hidden) renderSheetParts();
   }, 150);
 }
 
@@ -379,6 +381,8 @@ function renderSheetParts() {
   for (const sheet of ['FG', 'TV', 'TVD', 'SV']) {
     const { usable, choice } = sheetCandidates(key, sheet);
     const ownHas = sheetLayers(variant, sheet, lib).length > 0;
+    // Images no loaded part of this kind has (VX Ace has no damage or battler sprites): no row.
+    if (!ownHas && !usable.length && !choice) continue;
     const chosen = choice && choice !== HIDDEN && lib.variants.get(choice);
     const label = choice === HIDDEN ? 'Hidden'
       : chosen ? `Use ${variantLabel(lib, chosen, state.character.bodyType)}`
@@ -834,7 +838,31 @@ function slotsForEditor() {
     if (layer.slotId) ids.add(layer.slotId);
     layer.mask?.slots?.forEach((s) => ids.add(s));
   }
-  return SLOTS.filter((s) => ids.has(s.id));
+  return [...SLOTS.filter((s) => ids.has(s.id)), ...PAINTED_SLOTS.filter((s) => ids.has(s.id))];
+}
+
+/**
+ * VX Ace parts: their colours are painted cells, so a slot shows one swatch per cell (its main
+ * colour), taken from the worn layers that use the slot.
+ */
+function paintedSwatches(slot) {
+  const keys = state.selectedPart === ALL_COLOURS ? Object.keys(state.character.parts) : [itemOfKey(state.selectedPart)];
+  const layers = keys.map((k) => state.library.variants.get(state.character.parts[k])).filter(Boolean)
+    .flatMap((v) => v.layers).filter((l) => l.slotId === slot.id && l.base?.full);
+  const count = Math.max(0, ...layers.map((l) => cellCount(l.base)));
+  const chosen = paintedIndex(slotColour(slot.id));
+  return Array.from({ length: count }, (_, i) => {
+    const colour = layers.map((l) => (i < cellCount(l.base) ? averageColour(cellOf(l.base, i)) : null)).find(Boolean) || '#888888';
+    const b = el('button', { className: 'swatch painted' + (i === chosen ? ' selected' : ''), title: `Painted colour ${i + 1}` });
+    b.style.background = colour;
+    b.addEventListener('click', () => {
+      setSlotColour(slot.id, i ? `painted:${i}` : null);
+      renderSlots();
+      renderPreview();
+      refreshTiles();
+    });
+    return b;
+  });
 }
 
 const swatchCache = new Map();
@@ -884,6 +912,12 @@ function renderSlots() {
     head.push(el('div', { className: 'source-reset' }, [reset]));
   }
   box.replaceChildren(...head, ...slots.map((slot) => {
+    if (slot.painted) {
+      return el('div', { className: 'slot' }, [
+        el('div', { className: 'slot-head' }, [el('span', { className: 'key', style: `background:#${slot.rgb.toString(16).padStart(6, '0')}` }), el('span', { textContent: `${slot.label} (VX Ace, painted)` })]),
+        el('div', { className: 'swatches' }, paintedSwatches(slot)),
+      ]);
+    }
     const preferred = preferredCategory(slot.id);
     const groups = new Map();
     for (const g of gradients) {
@@ -1510,7 +1544,9 @@ function filesFor(tab) {
   const lib = state.library;
   if (tab === 'queue') return lib.unrecognized;
   const loaded = libraryFiles(lib);
-  if (tab === 'all') return [...lib.unrecognized, ...loaded];
+  // A VX Ace file feeds several layers (and both body types): list it once.
+  const once = (files) => [...new Map(files.map((f) => [`${f.pack}|${f.path}`, f])).values()];
+  if (tab === 'all') return once([...lib.unrecognized, ...loaded]);
   return loaded.filter((f) => lib.readAs.get(`${f.pack}|${f.path}`)?.how === tab);
 }
 
