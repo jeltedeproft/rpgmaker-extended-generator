@@ -915,6 +915,27 @@ try {
     await shot('1b-facialmark.png');
     await click('#variants .variant:nth-child(1)');
     await sleep(600);
+    // A look-alike whose file is removed leaves the list instead of showing an empty picture.
+    {
+      const alt = `[...document.querySelectorAll('#alike-list .alike-card')].find(c => c.querySelector('b').textContent.startsWith('Male FrontHair p17 (alt)'))`;
+      await evaluate(`document.getElementById('open-alikes').click()`);
+      await evaluate(`(() => { const c = document.getElementById('alike-all'); c.checked = true; c.dispatchEvent(new Event('change')); })()`);
+      await sleep(300);
+      const listed = await evaluate(`!!${alt}`);
+      await evaluate(`document.getElementById('alike-dialog').close()`);
+      await evaluate(`document.getElementById('open-files').click()`);
+      await sleep(400);
+      await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = 'FG_FrontHair_p17_c1]'; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(800);
+      await evaluate(`[...document.querySelectorAll('#files-list button')].find(b => b.textContent === 'Remove').click()`);
+      await sleep(2000);
+      if (await evaluate(`document.getElementById('files-dialog').open`)) await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);
+      await evaluate(`document.getElementById('open-alikes').click()`);
+      await sleep(1500);
+      const pictured = await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].every(c => [...c.querySelectorAll('canvas')].every(x => x.width > 0))`);
+      check('a look-alike whose file is removed leaves the list', listed && !(await evaluate(`!!${alt}`)) && pictured);
+      await evaluate(`document.getElementById('alike-dialog').close()`);
+    }
   }
   // VX Ace generator folder: painted colours, 128px faces, 32px walk frames.
   if (process.env.VX_PACK) {

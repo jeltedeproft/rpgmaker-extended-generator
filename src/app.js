@@ -11,7 +11,7 @@ import { createImage, scanMask, matchSlot, recolorLayer } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
 import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask } from './automask.js';
-import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
+import { lookalikePairs, pairLayers, findLookalikes, compareVariants, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, isGeneratorSettings, itemKeys, addItem, removeItem, creditsFor, creditsText,
@@ -1762,6 +1762,7 @@ function afterFilesChanged() {
   for (const v of state.library.variants.values()) applyAutoMask(v);
   thumbCache.clear();
   dropMissingParts();
+  refreshLookalikes().catch((e) => console.warn('look-alikes', e));
   if (state.library.variants.size) {
     ensureCharacter();
     showApp();
@@ -2541,6 +2542,30 @@ async function checkLookalikesNow(packName) {
     if (undecided.length) parts.push(`${undecided.length} near copies to look at.`);
     toast(`${parts.join(' ')} See "Look-alikes…".`, 8000);
   }
+}
+
+/**
+ * After files are removed, reassigned or moved: the look-alikes follow the parts as they are now.
+ * A part that is gone (its files reassigned) leaves the list instead of showing an empty picture;
+ * the others are compared again, as their files may have changed.
+ */
+async function refreshLookalikes() {
+  const lib = state.library;
+  const now = [];
+  for (const f of state.lookalikes) {
+    const variant = lib.variants.get(f.variant.id);
+    const other = lib.variants.get(f.other.id);
+    if (!variant?.layers.length || !other?.layers.length) continue;
+    now.push({ ...f, variant, other });
+  }
+  state.lookalikes = now;
+  const compare = now.filter((f) => !f.result.sameFiles);
+  if (compare.length) {
+    await ensureLayers(compare.flatMap(pairLayers));
+    for (const f of compare) f.result = compareVariants(f.variant, f.other);
+  }
+  updateAlikesButton();
+  if ($('alike-dialog').open) renderAlikes();
 }
 
 function updateAlikesButton() {
