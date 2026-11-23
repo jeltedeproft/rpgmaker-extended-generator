@@ -139,7 +139,7 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .swatch { padding: 0; border: 2px solid transparent; border-radius: 6px; overflow: hidden; line-height: 0; }
 .swatch canvas { width: 54px; height: 14px; display: block; }
 .swatch.selected { border-color: var(--accent); }
-.swatch.add { width: 58px; height: 18px; line-height: 1; font-size: 12px; display: grid; place-items: center; border: 1px dashed var(--line); }
+.swatch.add { min-width: 58px; height: 20px; padding: 0 8px; line-height: 1; font-size: 12px; white-space: nowrap; display: grid; place-items: center; border: 1px dashed var(--line); }
 .swatch-group { font-size: 11px; color: var(--muted); margin: 6px 0 3px; }
 .swatch.source.selected { border: 2px solid var(--accent); }
 .sheet-parts { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; font-size: 13px; margin-top: 6px; }

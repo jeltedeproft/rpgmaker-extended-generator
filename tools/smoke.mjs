@@ -267,6 +267,9 @@ try {
     await click('#clear-all');
     await sleep(900);
     check('undo clear puts the parts back', (await evaluate(worn)).length === before.length);
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
+    await sleep(500);
+    check('the hue button fits its text', await evaluate(`(() => { const b = [...document.querySelectorAll('#slots .swatch.add')].find(x => x.textContent.startsWith('Hue')); return !!b && b.scrollWidth <= b.clientWidth + 1; })()`));
   }
   // Gallery: keep the current character, see it with a picture, change it, pick it again.
   {
