@@ -591,6 +591,20 @@ try {
     await evaluate(`localStorage.removeItem('xgen-settings')`);
   }
 
+  // FacialMark: a colour is recommended (not applied), the user can pick any.
+  if (process.env.MARK_PACK) {
+    await send('Page.navigate', { url: `${URL_UNDER_TEST.replace(/\?.*$/, '')}?pack=${encodeURIComponent(process.env.MARK_PACK)}` });
+    await sleep(8000);
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FacialMark')).click()`);
+    await sleep(400);
+    await click('#variants .variant:nth-child(2)');
+    await sleep(1200);
+    check('facial mark gets a recommended colour', await evaluate(`!!document.querySelector('.slot .swatch.top-pick') && [...document.querySelectorAll('.swatch-group')].some(g => g.textContent.startsWith('Recommended for facial mark'))`));
+    check('the recommendation is not applied by itself', await evaluate(`document.querySelector('.slot .swatch.source').classList.contains('selected')`));
+    await shot('1b-facialmark.png');
+    await click('#variants .variant:nth-child(1)');
+    await sleep(600);
+  }
   // VX Ace generator folder: painted colours, 128px faces, 32px walk frames.
   if (process.env.VX_PACK) {
     await send('Page.navigate', { url: `${URL_UNDER_TEST.replace(/\?.*$/, '')}?pack=${encodeURIComponent(process.env.VX_PACK)}` });

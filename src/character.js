@@ -3,7 +3,7 @@
 
 import { PAINTED_SLOTS } from './vxace.js';
 import { PART_ORDER, REQUIRED_PARTS, SLOTS, SLOT_BY_RGB } from './format.js';
-import { preferredCategory, customGradientToJson, customGradientFromJson } from './gradients.js';
+import { preferredCategory, preferredCategories, customGradientToJson, customGradientFromJson } from './gradients.js';
 import { partOfKey, pieceKeys, selectedItems, variantForSheet } from './compose.js';
 import { SHEET_KEYS } from './format.js';
 
@@ -137,7 +137,7 @@ export function randomize(character, library, gradients, { rng = Math.random, lo
   if (gradients.length) {
     for (const slot of SLOTS) {
       if (locked.has(slot.id)) continue;
-      const preferred = rules.anyColour ? [] : gradients.filter((g) => g.category === preferredCategory(slot.id));
+      const preferred = rules.anyColour ? [] : gradients.filter((g) => preferredCategories(slot.id).includes(g.category));
       next.colors[slot.id] = pick(preferred.length ? preferred : gradients, rng).id;
     }
   }

@@ -75,6 +75,67 @@ export function preferredCategory(slotId) {
   return 'common';
 }
 
+/** Categories that fit a slot, best first. Facial marks (scars, blush) often match the skin. */
+export function preferredCategories(slotId) {
+  return slotId === 'mark' ? ['common', 'skin'] : [preferredCategory(slotId)];
+}
+
+/** Words in part names that hint at a colour (rgb). */
+const COLOUR_WORDS = [
+  [['blush', 'cheek', 'cheeks', 'flush', 'rosy'], 0xe07878],
+  [['scar', 'scars', 'wound', 'cut', 'stitch', 'stitches'], 0xb0605a],
+  [['tattoo', 'tribal', 'rune', 'runes', 'warpaint', 'paint', 'marking', 'markings', 'sigil'], 0x3a4fa0],
+  [['freckle', 'freckles', 'mole', 'spots', 'dots'], 0x8a5a3a],
+  [['bruise', 'bruised'], 0x70508c],
+  [['blood', 'bloody'], 0xa01818],
+  [['tear', 'tears'], 0x88c4f0],
+  [['heart', 'hearts', 'pink'], 0xe8709c],
+  [['red', 'crimson'], 0xc83030], [['blue', 'azure'], 0x3060c8], [['green'], 0x40a040],
+  [['gold', 'golden', 'yellow'], 0xe0b030], [['silver', 'grey', 'gray'], 0xa8a8b0],
+  [['black', 'dark', 'shadow'], 0x303038], [['white'], 0xf0f0f0], [['purple', 'violet'], 0x8040b0],
+  [['brown'], 0x80502c], [['orange'], 0xe07820],
+];
+
+/** Colour a slot leans to without any hint in the names: facial marks are mostly blush-red. */
+const SLOT_COLOUR = { mark: 0xc86a62 };
+
+/** The middle colour of a gradient (its typical tone). */
+function midColour(g) {
+  const c = g.colors;
+  const i = Math.floor(c.length / 8) * 4; // the pixel half-way along
+  return [c[i], c[i + 1], c[i + 2]];
+}
+
+/**
+ * Colours recommended for a slot, best first: gradients of the fitting categories closest to the
+ * colour the part's names hint at ("blush", "scar", "blue"...) or the slot leans to. Empty when
+ * there is no hint at all; the user picks freely either way.
+ * @returns {{target:number, why:string, ids:string[]}|null}
+ */
+export function recommendColours(slotId, gradients, words = [], count = 4) {
+  let target = null;
+  let why = '';
+  for (const [names, rgb] of COLOUR_WORDS) {
+    const hit = names.find((n) => words.includes(n));
+    if (hit) {
+      target = rgb;
+      why = `"${hit}" in the name`;
+      break;
+    }
+  }
+  if (target === null && slotId in SLOT_COLOUR) {
+    target = SLOT_COLOUR[slotId];
+    why = 'usual colour of this slot';
+  }
+  if (target === null) return null;
+  const cats = preferredCategories(slotId);
+  const pool = gradients.filter((g) => g.source !== 'custom' && (cats.includes(g.category) || g.category === 'all'));
+  const t = [(target >> 16) & 255, (target >> 8) & 255, target & 255];
+  const dist = (g) => midColour(g).reduce((sum, v, i) => sum + (v - t[i]) ** 2, 0);
+  const ids = pool.map((g) => ({ id: g.id, d: dist(g) })).sort((a, b) => a.d - b.d).slice(0, count).map((x) => x.id);
+  return ids.length ? { target, why, ids } : null;
+}
+
 /** Renders gradients back to a 256 x (N*4) sheet, e.g. to export custom gradients for RPG Maker. */
 export function gradientsToImage(gradients) {
   const height = gradients.length * GRADIENT_ROW_HEIGHT;

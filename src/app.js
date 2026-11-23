@@ -2,13 +2,13 @@
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
 import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
-import { createCustomGradient, gradientsToImage, preferredCategory, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
+import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
   layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask, matchSlot } from './recolor.js';
-import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare } from './suggest.js';
+import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords } from './suggest.js';
 import { PAINTED_SLOTS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
 import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
 import {
@@ -861,6 +861,20 @@ function setSlotColour(slotId, gradientId) {
   else delete state.character.colors[slotId];
 }
 
+/** Words in the names of the worn parts that use a slot ("blush", "scar"...), for colour hints. */
+function slotWords(slot) {
+  const words = new Set();
+  for (const id of Object.values(state.character.parts)) {
+    const v = id && state.library.variants.get(id);
+    if (!v) continue;
+    for (const l of v.layers) {
+      if (l.slotId !== slot.id && !l.mask?.slots?.has?.(slot.id)) continue;
+      for (const w of nameWords(`${v.pid} ${(l.base?.path || '').split('/').pop()}`)) words.add(w);
+    }
+  }
+  return [...words];
+}
+
 function slotsForEditor() {
   if (state.selectedPart === ALL_COLOURS) return usedSlots(state.character, state.library);
   const variant = state.library.variants.get(state.character.parts[itemOfKey(state.selectedPart)]);
@@ -950,14 +964,17 @@ function renderSlots() {
         el('div', { className: 'swatches' }, paintedSwatches(slot)),
       ]);
     }
-    const preferred = preferredCategory(slot.id);
+    const preferred = preferredCategories(slot.id);
+    const recommended = recommendColours(slot.id, gradients, slotWords(slot));
     const groups = new Map();
+    if (recommended) groups.set('Recommended', recommended.ids.map((id) => gradients.find((g) => g.id === id)));
     for (const g of gradients) {
-      const key = g.source === 'custom' ? 'Your colours' : g.category === preferred || g.category === 'all' ? 'Suggested' : 'Other';
+      if (recommended?.ids.includes(g.id)) continue;
+      const key = g.source === 'custom' ? 'Your colours' : preferred.includes(g.category) || g.category === 'all' ? 'Suggested' : 'Other';
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(g);
     }
-    const ordered = ['Suggested', 'Your colours', 'Other'].filter((k) => groups.has(k));
+    const ordered = ['Recommended', 'Suggested', 'Your colours', 'Other'].filter((k) => groups.has(k));
     const hex = '#' + slot.rgb.toString(16).padStart(6, '0');
     const wrap = el('div', { className: 'slot' }, [
       el('div', { className: 'slot-head' }, [
@@ -985,7 +1002,9 @@ function renderSlots() {
         });
         wrap.append(details);
       } else {
-        if (ordered.length > 1) wrap.append(el('div', { className: 'swatch-group', textContent: key }));
+        const label = key === 'Recommended' ? `Recommended for ${slot.label.toLowerCase()} (${recommended.why}); ★ = best match. Any other colour works too.` : key;
+        if (ordered.length > 1) wrap.append(el('div', { className: 'swatch-group', textContent: label }));
+        if (key === 'Recommended') swatches.firstChild?.classList.add('top-pick');
         wrap.append(swatches);
       }
     }
