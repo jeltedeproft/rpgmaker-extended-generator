@@ -1698,8 +1698,9 @@ $('assign-dialog').addEventListener('close', () => {
     toast(`${entry.path.split('/').pop()}: ${bodyType} ${f.part}.`);
     afterFilesChanged();
   }
+  if (action === 'remove') removeFileByUser(entry);
   // One by one: on to the next file that still needs assigning.
-  if (queue && (action === 'ok' || action === 'skip')) {
+  if (queue && (action === 'ok' || action === 'skip' || action === 'remove')) {
     const rest = queue.filter((u) => state.library.unrecognized.includes(u));
     if (rest.length) openAssignDialog(rest[0], rest.slice(1));
     else toast('That was the last file to assign.');

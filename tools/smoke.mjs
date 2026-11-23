@@ -394,6 +394,24 @@ try {
     await sleep(2500);
     if (await evaluate(`document.getElementById('assign-dialog').open`)) assignSizes.push(await evaluate(`(() => { const r = document.querySelector('#assign-dialog').getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })()`));
     check('the assign dialog keeps one size', new Set(assignSizes).size === 1, assignSizes.join(' '));
+    // Remove a file straight from the assign dialog.
+    if (!(await evaluate(`document.getElementById('assign-dialog').open`))) {
+      await evaluate(`document.getElementById('files-start').click()`);
+      await sleep(1500);
+    }
+    {
+      const before = await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').textContent`);
+      await evaluate(`document.getElementById('assign-remove').click()`);
+      await sleep(1200);
+      check('a file can be removed from the assign dialog', (await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').textContent`)) !== before, await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').textContent`));
+      if (await evaluate(`document.getElementById('assign-dialog').open`)) await evaluate(`document.querySelector('#assign-dialog button[value="cancel"]').click()`);
+      await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').click()`);
+      await sleep(400);
+      await evaluate(`document.querySelector('#files-list .file-card .file-buttons button').click()`);
+      await sleep(800);
+      await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').click()`);
+      await sleep(400);
+    }
     // Reassign a file that was read from its name.
     await evaluate(`document.getElementById('assign-dialog').open && document.querySelector('#assign-dialog button[value="cancel"]').click()`);
     await evaluate(`document.querySelector('#files-tabs [data-tab="all"]').click()`);
