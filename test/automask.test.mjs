@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD } from '../src/automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD, iconMask } from '../src/automask.js';
 import { createImage, recolorLayer } from '../src/recolor.js';
 import { SLOT_BY_ID } from '../src/format.js';
 
@@ -72,4 +72,20 @@ test('outlines and whites keep their colours; up to 8 groups, or as many as ther
   assert.equal(colourGroups([img], MAX_GROUPS).length, 5);
   assert.ok(colourGroups([img], MAX_GROUPS, AUTO_SPREAD, true).length >= 3);
   assert.equal(colourGroups([twoColours()], MAX_GROUPS, AUTO_SPREAD, true).length, 2);
+});
+
+test('a Variation icon gets the mask colours its colours have in the part', () => {
+  const image = twoColours();
+  const groups = colourGroups([image], 2);
+  const red = groups.findIndex((g) => (g.rgb >> 16) > (g.rgb & 255));
+  const mask = makeMask(image, groups, red === 0 ? ['clothing', null] : [null, 'clothing']);
+  // The icon: the light red (exact), a red a bit off (drawn smaller), and the blue.
+  const icon = createImage(3, 1);
+  icon.data.set([220, 60, 50, 255, 214, 66, 54, 255, 50, 70, 220, 255]);
+  const out = iconMask(icon, [{ image, mask }]);
+  const at = (x) => (out.data[x * 4] << 16) | (out.data[x * 4 + 1] << 8) | out.data[x * 4 + 2];
+  assert.equal(at(0), SLOT_BY_ID.get('clothing').rgb);
+  assert.equal(at(1), SLOT_BY_ID.get('clothing').rgb);
+  assert.equal(out.data[2 * 4 + 3], 0); // blue is kept as drawn in the part, so on the icon too
+  assert.equal(iconMask(icon, []), null);
 });

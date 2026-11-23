@@ -7,10 +7,10 @@ import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
   layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
-import { createImage, scanMask, matchSlot } from './recolor.js';
+import { createImage, scanMask, matchSlot, recolorLayer } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
-import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD } from './automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -413,12 +413,12 @@ ${variant.id}` : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
   tile.append(thumb, el('span', { textContent: label }));
   if (variant) {
-    // The part's Variation icon, the picture RPG Maker's own generator shows. Parts without one,
-    // and the per-image sections, are drawn in the current colours (and follow colour changes).
+    // The part's Variation icon, the picture RPG Maker's own generator shows, recoloured like the
+    // part. Parts without one, and the per-image sections, are drawn from their pictures.
     let shown = thumb;
     const icon = !sheets && variant.icon;
     if (icon) tile.classList.add('has-icon');
-    tile.refresh = () => (icon ? ensureImage(variant.icon).catch(() => null) : Promise.resolve(null))
+    tile.refresh = () => (icon ? iconThumbnail(key, variant).catch(() => null) : Promise.resolve(null))
       .then((pixels) => pixels || partThumbnail(key, variant, sheets))
       .then((pixels) => pixels || (variant.icon ? ensureImage(variant.icon) : null))
       .then((pixels) => {
@@ -485,6 +485,39 @@ function cutFrame(image, f, col, row) {
  * (some packs only add a damage sprite). A picture with (almost) nothing in it is skipped: then the
  * frame or image that shows the most of the part is used, e.g. a cloak's back seen from behind.
  */
+/**
+ * A part's Variation icon in the current colours: recoloured like the part, through a colour mask
+ * read from the part's own pictures and masks. Icons of parts without any mask stay as drawn.
+ */
+function iconThumbnail(key, variant) {
+  const colours = JSON.stringify([state.character.colors, state.character.itemColors?.[key], state.settings.templates]);
+  const cacheKey = `icon|${key}|${variant.id}|${colours}`;
+  if (!thumbCache.has(cacheKey)) {
+    if (thumbCache.size > 600) thumbCache.clear();
+    thumbCache.set(cacheKey, (async () => {
+      const icon = await ensureImage(variant.icon);
+      if (!icon) return null;
+      variant.iconMask ||= (async () => {
+        const layers = variant.layers.filter((l) => l.base && l.mask && !l.base.cells);
+        if (!layers.length) return null;
+        await ensureLayers(layers);
+        return iconMask(icon, layers.map((l) => ({ image: l.base.pixels, mask: l.mask.pixels })));
+      })();
+      const mask = await variant.iconMask;
+      if (!mask) return icon;
+      const byId = gradientsById();
+      const gradientFor = (slotId) => {
+        const id = itemColor(state.character, key, slotId);
+        const g = id ? byId.get(id) : null;
+        if (g?.shiftSource) return (g.shiftRef ||= { shift: g.adjust });
+        return g?.colors ?? null;
+      };
+      return recolorLayer(icon, mask, null, gradientFor, state.settings);
+    })());
+  }
+  return thumbCache.get(cacheKey);
+}
+
 function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source = false) {
   // source: the picture as drawn in the file, no gradients (to compare files, not colours).
   const alone = {

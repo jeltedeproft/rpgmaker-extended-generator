@@ -768,6 +768,13 @@ try {
     {
       await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('AccA')).click()`);
       await sleep(1500);
+      const iconSig = `(() => { const c = document.querySelector('#variants .variant.has-icon canvas'); return c ? [...c.getContext('2d').getImageData(0, 0, c.width, c.height).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0) : 0; })()`;
+      await evaluate(`document.querySelector('#variants .variant.has-icon').click()`);
+      await sleep(1500);
+      const iconBefore = await evaluate(iconSig);
+      await evaluate(`[...document.querySelectorAll('.slot')].find(x => x.querySelector('.slot-head').textContent.includes('Accessory A main'))?.querySelector('.swatch:not(.add):not(.selected)')?.click()`);
+      await sleep(2000);
+      check('variation icons are recoloured like their part', (await evaluate(iconSig)) !== iconBefore);
       check('tiles show the variation icon', await evaluate(`(() => { const t = document.querySelector('#variants .variant.has-icon canvas'); return !!t && t.width === 64 && t.height === 64; })()`));
     }
     // Pointing at a tile shows a large preview of it.

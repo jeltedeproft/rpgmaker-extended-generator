@@ -114,6 +114,58 @@ export function makeMask(image, groups, slotIds) {
   return out;
 }
 
+/**
+ * A colour mask for a Variation icon, from the part's own pictures and their colour masks: an icon
+ * pixel gets the mask colour that its colour has in the part's pictures (the nearest colour, for
+ * icons drawn smaller). Colours that are kept as drawn there stay as drawn on the icon.
+ * @param {{image:object, mask:object}[]} pairs the part's pictures with their colour masks
+ * @returns {object|null} the mask, or null when the pictures tell nothing
+ */
+export function iconMask(icon, pairs) {
+  const votes = new Map();
+  for (const { image, mask } of pairs) {
+    if (!image || !mask || image.width !== mask.width || image.height !== mask.height) continue;
+    const d = image.data;
+    const m = mask.data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] <= 16) continue;
+      const colour = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      const kept = m[i + 3] <= 16 || (m[i] > 240 && m[i + 1] > 240 && m[i + 2] > 240);
+      const vote = kept ? -1 : (m[i] << 16) | (m[i + 1] << 8) | m[i + 2];
+      let v = votes.get(colour);
+      if (!v) votes.set(colour, (v = new Map()));
+      v.set(vote, (v.get(vote) || 0) + 1);
+    }
+  }
+  if (!votes.size) return null;
+  const best = new Map([...votes].map(([colour, v]) => [colour, [...v].reduce((a, b) => (b[1] > a[1] ? b : a))[0]]));
+  if (![...best.values()].some((v) => v >= 0)) return null;
+  const known = [...best.keys()];
+  const near = new Map();
+  const nearest = (c) => {
+    if (!near.has(c)) {
+      let found = -1;
+      let bestDist = 40 ** 2;
+      for (const k of known) {
+        const d = (((k >> 16) & 255) - ((c >> 16) & 255)) ** 2 + (((k >> 8) & 255) - ((c >> 8) & 255)) ** 2 + ((k & 255) - (c & 255)) ** 2;
+        if (d < bestDist) [found, bestDist] = [best.get(k), d];
+      }
+      near.set(c, found);
+    }
+    return near.get(c);
+  };
+  const out = { width: icon.width, height: icon.height, data: new Uint8ClampedArray(icon.data.length) };
+  const d = icon.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] <= 16) continue;
+    const colour = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+    const v = best.has(colour) ? best.get(colour) : nearest(colour);
+    if (v < 0) continue;
+    out.data.set([(v >> 16) & 255, (v >> 8) & 255, v & 255, 255], i);
+  }
+  return out;
+}
+
 /** A second slot that goes with a main one: hair has a sub colour. */
 const SECOND_SLOT = { hair: ['hairSub'] };
 
