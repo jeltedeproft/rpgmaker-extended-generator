@@ -745,6 +745,12 @@ try {
       const empty = await evaluate(`[...document.querySelectorAll('#variants .variant canvas')].filter(c => { const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 16) n++; return n < 12; }).length`);
       check('every part tile shows something', empty === 0, `${empty} empty tiles`);
     }
+    // Variation icons: in All, a part with an icon shows it (RPG Maker MV's icons are 64x64).
+    {
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('AccA')).click()`);
+      await sleep(1500);
+      check('tiles show the variation icon', await evaluate(`(() => { const t = document.querySelector('#variants .variant.has-icon canvas'); return !!t && t.width === 64 && t.height === 64; })()`));
+    }
     // Sections per image: the damage section lists the parts with a damage picture, drawn as it.
     {
       await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Clothing')).click()`);

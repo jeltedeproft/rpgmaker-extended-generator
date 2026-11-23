@@ -412,10 +412,13 @@ ${variant.id}` : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
   tile.append(thumb, el('span', { textContent: label }));
   if (variant) {
-    // Drawn in the current colours, so tiles follow colour changes (RPG Maker's own Variation
-    // icons have fixed colours; they're only used when the part can't be drawn).
+    // The part's Variation icon, the picture RPG Maker's own generator shows. Parts without one,
+    // and the per-image sections, are drawn in the current colours (and follow colour changes).
     let shown = thumb;
-    tile.refresh = () => partThumbnail(key, variant, sheets)
+    const icon = !sheets && variant.icon;
+    if (icon) tile.classList.add('has-icon');
+    tile.refresh = () => (icon ? ensureImage(variant.icon).catch(() => null) : Promise.resolve(null))
+      .then((pixels) => pixels || partThumbnail(key, variant, sheets))
       .then((pixels) => pixels || (variant.icon ? ensureImage(variant.icon) : null))
       .then((pixels) => {
         if (!pixels) return;
