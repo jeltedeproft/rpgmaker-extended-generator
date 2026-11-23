@@ -89,7 +89,10 @@ export function ensureImage(ref, isMask = false) {
   if (!ref || ref.pixels) return Promise.resolve(ref?.pixels);
   if (!pending.has(ref)) {
     // A VX Ace layer's pixels are its first painted colour; the whole file stays in ref.full.
-    const decoded = ref.cells
+    // A mask made by the generator (automask.js) is drawn from its image, not read from a file.
+    const decoded = ref.make
+      ? ref.make()
+      : ref.cells
       ? decodeShared(ref.src).then((full) => {
         ref.full = full;
         return cellOf(ref, 0);

@@ -651,6 +651,33 @@ try {
     await sleep(600);
     const bodies = await evaluate(`[...document.querySelectorAll('#variants .variant span')].map(s => s.textContent).join(',')`);
     check('hidden copies leave the part list', !bodies.includes('(2)') && !bodies.includes('(3)') && bodies.includes('p01'), bodies);
+    // A part drawn without a colour mask can get one made by the generator.
+    {
+      const sheetSig = `(() => { const c = document.getElementById('sheet-canvas'); return [...c.getContext('2d').getImageData(0, 0, c.width, c.height).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0); })()`;
+      await evaluate(`(() => { const s = document.getElementById('sheet-view-select'); s.value = 'TV'; s.dispatchEvent(new Event('change')); document.getElementById('sheet-view').open = true; })()`);
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Clothing')).click()`);
+      await sleep(600);
+      await evaluate(`[...document.querySelectorAll('#variants .variant, #other-variants .variant')].find(b => b.title.endsWith('/Clothing/pXX')).click()`);
+      await sleep(1500);
+      const offered = await evaluate(`!!document.querySelector('#slots .automask button')`);
+      check('a part without a colour mask offers to make one', offered, await evaluate(`[document.getElementById('editor-title').textContent, ...[...document.querySelectorAll('#variants .variant, #other-variants .variant')].filter(b => b.title.includes('pXX')).map(b => b.title.split(String.fromCharCode(10)).join(' ') + (b.classList.contains('selected') ? ' [selected]' : ''))].join(' | ')`));
+      if (offered) {
+      const beforeMask = await evaluate(sheetSig);
+      await evaluate(`(() => { const s = document.querySelector('#slots .automask select'); s.value = '2'; [...document.querySelectorAll('#slots .automask button')].find(b => b.textContent.startsWith('Make')).click(); })()`);
+      await sleep(2500);
+      const groups = await evaluate(`document.querySelectorAll('#slots .automask-groups .layer-head').length`);
+      check('the made mask splits the colours into groups', groups === 2, `${groups} groups`);
+      check('the made mask offers colour slots', await evaluate(`[...document.querySelectorAll('.slot-head')].some(h => h.textContent.includes('Clothing main'))`));
+      await evaluate(`[...document.querySelectorAll('.slot')].find(x => x.querySelector('.slot-head').textContent.includes('Clothing main')).querySelector('.swatch:not(.add)').click()`);
+      await sleep(1500);
+      check('a part with a made mask is recoloured', (await evaluate(sheetSig)) !== beforeMask);
+      await shot('5b-automask.png');
+      check('the made mask is remembered', await evaluate(`Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).autoMasks || {}).some(k => k.endsWith('/Clothing/pXX'))`));
+      await evaluate(`[...document.querySelectorAll('#slots .automask button')].find(b => b.textContent.startsWith('Remove')).click()`);
+      await sleep(1500);
+      check('the made mask can be removed', await evaluate(`!!document.querySelector('#slots .automask button') && [...document.querySelectorAll('#slots .automask button')].some(b => b.textContent.startsWith('Make'))`));
+      }
+    }
     // Hue, saturation and brightness work on the source colours too (no gradient picked).
     {
       const sheetSig = `(() => { const c = document.getElementById('sheet-canvas'); return [...c.getContext('2d').getImageData(0, 0, c.width, c.height).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0); })()`;

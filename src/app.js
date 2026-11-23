@@ -10,6 +10,7 @@ import {
 import { createImage, scanMask, matchSlot } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
+import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -195,6 +196,7 @@ async function importEntriesNow(entries, packName) {
     }
   }));
   applyRememberedAssignments(pack.name);
+  for (const v of state.library.variants.values()) if (v.pack === pack.name && state.settings.autoMasks?.[v.id]) applyAutoMask(v);
   $('open-files').disabled = false;
   const addedParts = state.library.variants.size - partsBefore;
   const addedGradientFiles = state.library.gradientFiles.length - gradientFilesBefore;
@@ -1014,9 +1016,11 @@ function swatchImage(gradient) {
 function renderSlots() {
   const box = $('slots');
   const slots = slotsForEditor();
+  const auto = state.selectedPart === ALL_COLOURS ? null
+    : autoMaskBox(state.library.variants.get(state.character.parts[itemOfKey(state.selectedPart)]));
   if (!slots.length) {
     const what = state.selectedPart === ALL_COLOURS ? 'The selected parts have' : 'This part has';
-    box.replaceChildren(el('p', { className: 'muted', textContent: `${what} no recolourable areas.` }));
+    box.replaceChildren(el('p', { className: 'muted', textContent: `${what} no recolourable areas.` }), ...(auto ? [auto] : []));
     return;
   }
   const gradients = allGradients();
@@ -1045,7 +1049,7 @@ function renderSlots() {
     });
     head.push(el('div', { className: 'source-reset' }, [reset]));
   }
-  box.replaceChildren(...head, ...slots.map((slot) => {
+  box.replaceChildren(...head, ...(auto ? [auto] : []), ...slots.map((slot) => {
     if (slot.painted) {
       return el('div', { className: 'slot' }, [
         el('div', { className: 'slot-head' }, [el('span', { className: 'key', style: `background:#${slot.rgb.toString(16).padStart(6, '0')}` }), el('span', { textContent: `${slot.label} (VX Ace, painted)` })]),
@@ -1657,6 +1661,107 @@ function applyRememberedAssignments(packName) {
 function remember(entry, value) {
   (state.settings.assignments ||= {})[`${entry.pack}|${entry.path}`] = value;
   saveSettings();
+}
+
+// ---------- colour masks made by the generator, for parts drawn without one ----------
+
+/** A picture that can't be recoloured: no colour mask and no slot (not painted VX Ace either). */
+const unmasked = (l) => l.base && !l.base.cells && !l.slotId && (!l.mask || l.mask.auto);
+
+/**
+ * Gives a part's pictures without a colour mask one made by the generator, as saved in
+ * settings.autoMasks[variant id] = {count, slots}: the drawn colours split into `count` groups,
+ * group i recoloured with slots[i] (null: keeps its colours). No plan: the made masks go.
+ */
+function applyAutoMask(variant) {
+  const plan = state.settings.autoMasks?.[variant.id];
+  const layers = variant.layers.filter(unmasked);
+  for (const l of layers) if (l.mask?.auto) l.mask = null;
+  delete variant.autoGroups;
+  if (!plan || !layers.length) return;
+  // One set of colour groups for all the part's pictures, so portrait and sprites match.
+  let groups = null;
+  variant.autoGroups = () => (groups ||= Promise.all(layers.map((l) => ensureImage(l.base)))
+    .then((pictures) => colourGroups(pictures, plan.count)));
+  for (const l of layers) {
+    l.mask = {
+      auto: true, src: null, pixels: null, path: `${l.base.path} (colour mask made by the generator)`,
+      make: async () => makeMask(await ensureImage(l.base), await variant.autoGroups(), plan.slots),
+    };
+  }
+}
+
+/** Makes (count 1..4) or removes (0) the colour mask of a part, and redraws. */
+function setAutoMask(variant, count) {
+  const masks = (state.settings.autoMasks ||= {});
+  if (count) masks[variant.id] = { count, slots: defaultGroupSlots(variant.part, count) };
+  else delete masks[variant.id];
+  saveSettings();
+  applyAutoMask(variant);
+  afterAutoMask(variant);
+}
+
+function afterAutoMask(variant) {
+  thumbCache.clear();
+  ensureVariants([variant]).then(() => {
+    renderSlots();
+    renderPreview();
+    refreshTiles();
+  });
+}
+
+/**
+ * The box above the colours of a part drawn (partly) without a colour mask: make one, or change
+ * the made one (how many colour groups, which slot each group uses).
+ */
+function autoMaskBox(variant) {
+  if (!variant || !variant.layers.some(unmasked)) return null;
+  const plan = state.settings.autoMasks?.[variant.id];
+  const count = el('select', { title: 'How many colours the drawing is split into' },
+    Array.from({ length: MAX_GROUPS }, (_, i) => el('option', { value: i + 1, textContent: i ? `${i + 1} colour groups` : '1 colour group', selected: i + 1 === (plan?.count || 1) })));
+  const box = el('div', { className: 'automask' });
+  if (!plan) {
+    const make = el('button', { className: 'small-button', textContent: 'Make it recolourable' });
+    make.addEventListener('click', () => setAutoMask(variant, Number(count.value)));
+    const some = variant.layers.some((l) => l.base && !unmasked(l));
+    box.append(
+      el('p', { className: 'muted small', textContent: `${variant.part} ${variant.pid} is drawn without a colour mask${some ? ' on some images' : ''}, so it keeps the colours it is drawn in. The generator can make a mask: it splits the drawing into colour groups (light and shade of one colour stay together) and gives each group a colour slot.` }),
+      el('div', { className: 'layer-head' }, [make, count]),
+    );
+    return box;
+  }
+  count.addEventListener('change', () => setAutoMask(variant, Number(count.value)));
+  const remove = el('button', { className: 'small-button', textContent: 'Remove the made mask' });
+  remove.addEventListener('click', () => setAutoMask(variant, 0));
+  const rows = el('div', { className: 'automask-groups' }, [el('span', { className: 'muted small', textContent: 'Finding the colours…' })]);
+  variant.autoGroups?.().then((groups) => {
+    rows.replaceChildren(...groups.map((g, i) => {
+      const select = el('select', {}, [
+        el('option', { value: '', textContent: 'keep as drawn' }),
+        ...SLOTS.map((s) => el('option', { value: s.id, textContent: s.label, selected: plan.slots[i] === s.id })),
+      ]);
+      if (!plan.slots[i]) select.value = '';
+      select.addEventListener('change', () => {
+        plan.slots[i] = select.value || null;
+        saveSettings();
+        applyAutoMask(variant);
+        afterAutoMask(variant);
+      });
+      return el('div', { className: 'layer-head' }, [
+        el('span', { className: 'key', title: 'Drawn colour of this group', style: `background:#${g.rgb.toString(16).padStart(6, '0')}` }),
+        el('span', { className: 'small', textContent: `Group ${i + 1} uses` }), select,
+      ]);
+    }));
+  });
+  // The made masks tell the editor which slots to show once decoded.
+  const undecoded = variant.layers.filter((l) => l.mask?.auto && !l.mask.pixels);
+  if (undecoded.length) Promise.all(undecoded.map((l) => ensureImage(l.mask, true))).then(() => renderSlots());
+  box.append(
+    el('p', { className: 'muted small', textContent: 'Colour mask made by the generator: each colour group of the drawing uses the slot picked here, in the colours picked below.' }),
+    el('div', { className: 'layer-head' }, [count, remove]),
+    rows,
+  );
+  return box;
 }
 
 // ---------- removing single parts and files (not the whole folder) ----------
@@ -2601,6 +2706,7 @@ function forgetPackSettings(name) {
   drop(s.assignments, `${name}|`);
   drop(s.removedParts, `${name}/`);
   drop(s.lookalikes, `${name}/`);
+  drop(s.autoMasks, `${name}/`);
   saveSettings();
 }
 

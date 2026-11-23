@@ -370,7 +370,7 @@ export function libraryFiles(library) {
     if (variant.icon?.path) files.push({ pack: variant.pack, path: variant.icon.path, src: variant.icon.src, variant, role: 'icon' });
     for (const l of variant.layers) {
       if (l.base) files.push({ pack: variant.pack, path: l.base.path, src: l.base.src, variant, layer: l, role: 'image' });
-      if (l.mask) files.push({ pack: variant.pack, path: l.mask.path, src: l.mask.src, variant, layer: l, role: 'mask' });
+      if (l.mask && !l.mask.auto) files.push({ pack: variant.pack, path: l.mask.path, src: l.mask.src, variant, layer: l, role: 'mask' });
     }
   }
   return files;
@@ -389,6 +389,7 @@ export function unassignFile(library, packName, path, reason = 'Unassigned') {
   if (role === 'mask') layer.mask = null;
   if (role === 'image') {
     layer.base = null;
+    if (layer.mask?.auto) layer.mask = null; // made from this image: it goes with it
     if (layer.mask) {
       library.unrecognized.push({ pack: packName, path: layer.mask.path, src: layer.mask.src, reason: 'Its image was reassigned' });
       layer.mask = null;
