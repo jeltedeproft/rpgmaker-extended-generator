@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { colourGroups, makeMask, defaultGroupSlots } from '../src/automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD } from '../src/automask.js';
 import { createImage, recolorLayer } from '../src/recolor.js';
 import { SLOT_BY_ID } from '../src/format.js';
 
@@ -58,4 +58,18 @@ test('groups start in the part\'s own slots', () => {
   assert.deepEqual(defaultGroupSlots('FrontHair', 2), ['hair', 'hairSub']);
   assert.deepEqual(defaultGroupSlots('Body', 2), ['skin', 'underwear']);
   assert.deepEqual(defaultGroupSlots('Hat', 2), ['clothing', 'clothing']);
+});
+
+test('outlines and whites keep their colours; up to 8 groups, or as many as there are', () => {
+  assert.ok(outlineOrWhite(0x101010) && outlineOrWhite(0xf4f4f4) && !outlineOrWhite(0x2c80cb) && !outlineOrWhite(0x808080));
+  const groups = [{ rgb: 0xf6f6f6 }, { rgb: 0x2c80cb }, { rgb: 0x0c0c0c }];
+  assert.deepEqual(defaultGroupSlots('Eyes', 3, groups), [null, 'eyes', null]);
+  assert.deepEqual(defaultGroupSlots('Clothing', 1, [{ rgb: 0x101010 }]), ['clothing']); // only black: recoloured
+  // Eyes: white, blue iris, dark pupil, black outline, pink lid: five groups.
+  const img = createImage(5, 1);
+  [[250, 250, 250], [40, 110, 220], [20, 30, 90], [8, 8, 8], [230, 150, 160]].forEach((c, x) => img.data.set([...c, 255], x * 4));
+  assert.equal(MAX_GROUPS, 8);
+  assert.equal(colourGroups([img], MAX_GROUPS).length, 5);
+  assert.ok(colourGroups([img], MAX_GROUPS, AUTO_SPREAD, true).length >= 3);
+  assert.equal(colourGroups([twoColours()], MAX_GROUPS, AUTO_SPREAD, true).length, 2);
 });

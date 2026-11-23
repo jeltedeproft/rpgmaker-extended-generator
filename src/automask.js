@@ -7,17 +7,29 @@
 import { SLOTS, SLOT_BY_ID, MAIN_SLOT } from './format.js';
 
 /** Most colour groups offered. */
-export const MAX_GROUPS = 4;
+export const MAX_GROUPS = 8;
+
+/** "As many as it finds": colours closer than this (in point() units) count as one group. */
+export const AUTO_SPREAD = 40;
 
 /** A colour as a point where brightness counts little: shades of one colour lie close together. */
 function point(r, g, b) {
   return [r - g, (r + g) / 2 - b, ((r + g + b) / 3) * 0.35];
 }
 
+/**
+ * Like point(), but the colour is measured relative to the brightness, so every shade of one
+ * colour lies close together: used to count the colours ("as many as it finds").
+ */
+function chromaPoint(r, g, b) {
+  const light = (r + g + b) / 3 + 16;
+  return [((r - g) / light) * 100, (((r + g) / 2 - b) / light) * 100, light * 0.35];
+}
+
 const dist2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
 
 /** Drawn colours of some pictures, rounded and counted: [{rgb:[r,g,b], p:point, w:count}]. */
-function colourCounts(images) {
+function colourCounts(images, toPoint = point) {
   const counts = new Map();
   for (const img of images) {
     if (!img) continue;
@@ -30,7 +42,7 @@ function colourCounts(images) {
   }
   return [...counts].map(([key, w]) => {
     const rgb = [((key >> 10) & 31) * 8 + 4, ((key >> 5) & 31) * 8 + 4, (key & 31) * 8 + 4];
-    return { rgb, p: point(...rgb), w };
+    return { rgb, p: toPoint(...rgb), w };
   });
 }
 
@@ -39,13 +51,13 @@ function colourCounts(images) {
  * same pictures: it starts from the most used colour, then the colour furthest from those so far.
  * @returns {{centre:number[], rgb:number}[]} rgb: the group's average colour, most used group first
  */
-export function colourGroups(images, count) {
-  const colours = colourCounts(images);
+export function colourGroups(images, count, spread = 24, byChroma = false) {
+  const colours = colourCounts(images, byChroma ? chromaPoint : point);
   if (!colours.length) return [];
   let centres = [colours.reduce((a, b) => (b.w > a.w ? b : a)).p];
   while (centres.length < count) {
     let far = null;
-    let farDist = 24 ** 2; // colours closer than this are one group
+    let farDist = spread ** 2; // colours closer than this are one group
     for (const c of colours) {
       const d = Math.min(...centres.map((x) => dist2(x, c.p)));
       if (d > farDist) [far, farDist] = [c, d];
@@ -70,7 +82,7 @@ export function colourGroups(images, count) {
     .map((g, i) => ({ centre: centres[i], w: g.w, rgb: g.w ? g.rgb.reduce((acc, v) => (acc << 8) | Math.round(v / g.w), 0) : 0 }))
     .filter((g) => g.w)
     .sort((a, b) => b.w - a.w)
-    .map(({ centre, rgb }) => ({ centre, rgb }));
+    .map(({ centre, rgb }) => ({ centre, rgb, ...(byChroma ? { byChroma } : {}) }));
 }
 
 function nearest(p, centres) {
@@ -87,11 +99,12 @@ function nearest(p, centres) {
 export function makeMask(image, groups, slotIds) {
   const out = { width: image.width, height: image.height, data: new Uint8ClampedArray(image.data.length) };
   const centres = groups.map((g) => g.centre);
+  const toPoint = groups[0]?.byChroma ? chromaPoint : point;
   const rgbs = slotIds.map((id) => SLOT_BY_ID.get(id)?.rgb ?? null);
   const d = image.data;
   for (let i = 0; i < d.length; i += 4) {
     if (d[i + 3] === 0) continue;
-    const rgb = rgbs[nearest(point(d[i], d[i + 1], d[i + 2]), centres)];
+    const rgb = rgbs[nearest(toPoint(d[i], d[i + 1], d[i + 2]), centres)];
     if (rgb == null) continue;
     out.data[i] = (rgb >> 16) & 255;
     out.data[i + 1] = (rgb >> 8) & 255;
@@ -104,13 +117,24 @@ export function makeMask(image, groups, slotIds) {
 /** A second slot that goes with a main one: hair has a sub colour. */
 const SECOND_SLOT = { hair: ['hairSub'] };
 
+/** Grey that is nearly black or nearly white: outlines, the whites of eyes, shines. */
+export function outlineOrWhite(rgb) {
+  const c = [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255];
+  const light = (c[0] + c[1] + c[2]) / 3;
+  return Math.max(...c) - Math.min(...c) < 28 && (light < 56 || light > 220);
+}
+
 /**
  * The slots a part's colour groups use at first: the part's main slot (Body: skin), then its other
- * slots (Clothing sub 1, 2, 3; Hair sub), then the main one again.
+ * slots (Clothing sub 1, 2, 3; Hair sub), then the main one again. With the groups given, black
+ * outlines and white (eye whites, shines) keep their drawn colours, unless that is all there is.
  */
-export function defaultGroupSlots(part, count) {
+export function defaultGroupSlots(part, count, groups = null) {
   const main = MAIN_SLOT[part] || 'clothing';
   const own = SLOTS.filter((s) => s.part === part).map((s) => s.id);
   const list = [...new Set([main, ...own, ...(SECOND_SLOT[main] || [])])];
-  return Array.from({ length: count }, (_, i) => list[i] || main);
+  const keep = Array.from({ length: count }, (_, i) => !!groups?.[i] && outlineOrWhite(groups[i].rgb));
+  if (keep.every(Boolean)) keep.fill(false);
+  let next = 0;
+  return keep.map((k) => (k ? null : list[next++] || main));
 }

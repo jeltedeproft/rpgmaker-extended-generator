@@ -10,7 +10,7 @@ import {
 import { createImage, scanMask, matchSlot } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
-import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS } from './automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -1723,33 +1723,45 @@ function remember(entry, value) {
 /** A picture that can't be recoloured: no colour mask and no slot (not painted VX Ace either). */
 const unmasked = (l) => l.base && !l.base.cells && !l.slotId && (!l.mask || l.mask.auto);
 
+/** The plan of a part's made colour mask: {count: 1..8 or 'auto', slots: [...] or null}, or none. */
+function autoMaskPlan(variant) {
+  return state.settings.autoMasks?.[variant.id] || null;
+}
+
 /**
  * Gives a part's pictures without a colour mask one made by the generator, as saved in
- * settings.autoMasks[variant id] = {count, slots}: the drawn colours split into `count` groups,
- * group i recoloured with slots[i] (null: keeps its colours). No plan: the made masks go.
+ * settings.autoMasks[variant id] = {count, slots}: the drawn colours split into `count` groups
+ * ('auto': as many as it finds), group i recoloured with slots[i] (null: keeps its colours; no
+ * slots: the part's own slots, outlines and whites kept). No plan: the made masks go.
  */
 function applyAutoMask(variant) {
-  const plan = state.settings.autoMasks?.[variant.id];
+  const plan = autoMaskPlan(variant);
   const layers = variant.layers.filter(unmasked);
   for (const l of layers) if (l.mask?.auto) l.mask = null;
   delete variant.autoGroups;
+  delete variant.autoSlots;
+  delete variant.iconMask;
   if (!plan || !layers.length) return;
   // One set of colour groups for all the part's pictures, so portrait and sprites match.
   let groups = null;
   variant.autoGroups = () => (groups ||= Promise.all(layers.map((l) => ensureImage(l.base)))
-    .then((pictures) => colourGroups(pictures, plan.count)));
+    .then((pictures) => (plan.count === 'auto' ? colourGroups(pictures, MAX_GROUPS, AUTO_SPREAD, true) : colourGroups(pictures, plan.count))));
+  variant.autoSlots = async () => {
+    const g = await variant.autoGroups();
+    return plan.slots ? g.map((_, i) => plan.slots[i] ?? null) : defaultGroupSlots(variant.part, g.length, g);
+  };
   for (const l of layers) {
     l.mask = {
       auto: true, src: null, pixels: null, path: `${l.base.path} (colour mask made by the generator)`,
-      make: async () => makeMask(await ensureImage(l.base), await variant.autoGroups(), plan.slots),
+      make: async () => makeMask(await ensureImage(l.base), await variant.autoGroups(), await variant.autoSlots()),
     };
   }
 }
 
-/** Makes (count 1..4) or removes (0) the colour mask of a part, and redraws. */
+/** Makes (count 1..8 or 'auto') or removes (0) the colour mask of a part, and redraws. */
 function setAutoMask(variant, count) {
   const masks = (state.settings.autoMasks ||= {});
-  if (count) masks[variant.id] = { count, slots: defaultGroupSlots(variant.part, count) };
+  if (count) masks[variant.id] = { count, slots: null };
   else delete masks[variant.id];
   saveSettings();
   applyAutoMask(variant);
@@ -1771,13 +1783,16 @@ function afterAutoMask(variant) {
  */
 function autoMaskBox(variant) {
   if (!variant || !variant.layers.some(unmasked)) return null;
-  const plan = state.settings.autoMasks?.[variant.id];
-  const count = el('select', { title: 'How many colours the drawing is split into' },
-    Array.from({ length: MAX_GROUPS }, (_, i) => el('option', { value: i + 1, textContent: i ? `${i + 1} colour groups` : '1 colour group', selected: i + 1 === (plan?.count || 1) })));
+  const plan = autoMaskPlan(variant);
+  const count = el('select', { title: 'How many colours the drawing is split into' }, [
+    el('option', { value: 'auto', textContent: 'As many colour groups as it finds', selected: !plan || plan.count === 'auto' }),
+    ...Array.from({ length: MAX_GROUPS }, (_, i) => el('option', { value: i + 1, textContent: i ? `${i + 1} colour groups` : '1 colour group', selected: i + 1 === plan?.count })),
+  ]);
+  const countValue = () => (count.value === 'auto' ? 'auto' : Number(count.value));
   const box = el('div', { className: 'automask' });
   if (!plan) {
     const make = el('button', { className: 'small-button', textContent: 'Make it recolourable' });
-    make.addEventListener('click', () => setAutoMask(variant, Number(count.value)));
+    make.addEventListener('click', () => setAutoMask(variant, countValue()));
     const some = variant.layers.some((l) => l.base && !unmasked(l));
     box.append(
       el('p', { className: 'muted small', textContent: `${variant.part} ${variant.pid} is drawn without a colour mask${some ? ' on some images' : ''}, so it keeps the colours it is drawn in. The generator can make a mask: it splits the drawing into colour groups (light and shade of one colour stay together) and gives each group a colour slot.` }),
@@ -1785,19 +1800,22 @@ function autoMaskBox(variant) {
     );
     return box;
   }
-  count.addEventListener('change', () => setAutoMask(variant, Number(count.value)));
+  count.addEventListener('change', () => setAutoMask(variant, countValue()));
   const remove = el('button', { className: 'small-button', textContent: 'Remove the made mask' });
   remove.addEventListener('click', () => setAutoMask(variant, 0));
   const rows = el('div', { className: 'automask-groups' }, [el('span', { className: 'muted small', textContent: 'Finding the colours…' })]);
-  variant.autoGroups?.().then((groups) => {
+  Promise.all([variant.autoGroups?.(), variant.autoSlots?.()]).then(([groups, slots]) => {
+    if (!groups) return;
     rows.replaceChildren(...groups.map((g, i) => {
       const select = el('select', {}, [
         el('option', { value: '', textContent: 'keep as drawn' }),
-        ...SLOTS.map((s) => el('option', { value: s.id, textContent: s.label, selected: plan.slots[i] === s.id })),
+        ...SLOTS.map((s) => el('option', { value: s.id, textContent: s.label, selected: slots[i] === s.id })),
       ]);
-      if (!plan.slots[i]) select.value = '';
+      if (!slots[i]) select.value = '';
       select.addEventListener('change', () => {
-        plan.slots[i] = select.value || null;
+        const chosen = [...slots];
+        chosen[i] = select.value || null;
+        (state.settings.autoMasks ||= {})[variant.id] = { count: plan.count, slots: chosen };
         saveSettings();
         applyAutoMask(variant);
         afterAutoMask(variant);
