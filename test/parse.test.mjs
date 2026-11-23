@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet } from '../src/parse.js';
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
@@ -328,4 +328,24 @@ test('a mask goes with the same-named image it fits (TV_Clothing2_pXX.png and .p
   // A mask that fits its own image stays.
   const again = { owner: { base: { pixels: picture(0, 8) }, mask: { pixels: picture(0, 8), path: 'm' } }, other: { base: { pixels: picture(2, 6) }, mask: null } };
   assert.equal(fitMasks([again]).length, 0);
+});
+
+test('a sprite sized for another sheet is read as that sheet (SV_Clothing1_pXX.png is a walk sheet)', () => {
+  assert.ok(fitsSheet('SV', 576, 384) && fitsSheet('SV', 864, 576) && !fitsSheet('SV', 144, 192));
+  assert.ok(fitsSheet('TV', 144, 192) && fitsSheet('TV', 192, 256) && fitsSheet('TVD', 144, 48));
+  const lib = createLibrary();
+  addPack(lib, 'MV', [
+    { path: 'SV/Male/SV_Clothing1_pXX.png', src: 'a' },
+    { path: 'SV/Male/SV_Clothing1_pXX_c.png', src: 'b' },
+    { path: 'SV/Male/SV_Clothing1_p01.png', src: 'c' },
+    { path: 'TV/Male/TV_Clothing2_pXX.png', src: 'd' },
+  ]);
+  for (const f of libraryFiles(lib)) (f.role === 'mask' ? f.layer.mask : f.layer.base).size = f.path.includes('p01') ? { w: 576, h: 384 } : { w: 144, h: 192 };
+  const notes = fixWrongSheets(lib, 'MV');
+  assert.equal(notes.length, 2);
+  const pxx = lib.variants.get('MV/Male/Clothing/pXX');
+  assert.deepEqual(pxx.layers.map((l) => `${l.sheet}:${l.key}:${!!l.mask}`).sort(), ['TV:Clothing1:true', 'TV:Clothing2:false']);
+  assert.ok(lib.variants.get('MV/Male/Clothing/p01').layers.every((l) => l.sheet === 'SV'));
+  assert.equal(lib.readAs.get('MV|SV/Male/SV_Clothing1_pXX.png').readAs, 'TV_Clothing1_pXX.png');
+  assert.equal(lib.unrecognized.length, 0);
 });

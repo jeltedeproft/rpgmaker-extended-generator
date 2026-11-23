@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
-import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks } from './parse.js';
+import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -18,7 +18,7 @@ import {
   makeSet, applySet, DEFAULT_RULES, wearChance,
 } from './character.js';
 import {
-  entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage,
+  entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage, pngSize,
   ensureVariants, loadGradients, toCanvas, downloadBlob, downloadImage,
   canRememberFolders, pickFolder, entriesFromHandle, rememberFolder, forgetFolder, rememberedFolders,
   ensureReadPermission, readText, ensureLayers, hasReadPermission, dropFolderHandles,
@@ -196,6 +196,14 @@ async function importEntriesNow(entries, packName) {
     }
   }));
   applyRememberedAssignments(pack.name);
+  // Sprites named for one sheet but sized for another are read as the sheet they fit.
+  busyStep(`Opening "${packName}": checking picture sizes`);
+  const sprites = libraryFiles(state.library).filter((f) => f.pack === pack.name && f.role !== 'icon' && !f.layer.vxace && f.layer.sheet !== 'FG');
+  await Promise.all(sprites.map(async (f) => {
+    const ref = f.role === 'mask' ? f.layer.mask : f.layer.base;
+    ref.size ||= await pngSize(ref.src).catch(() => null);
+  }));
+  state.library.warnings.push(...fixWrongSheets(state.library, pack.name));
   for (const v of state.library.variants.values()) if (v.pack === pack.name && state.settings.autoMasks?.[v.id]) applyAutoMask(v);
   $('open-files').disabled = false;
   const addedParts = state.library.variants.size - partsBefore;
@@ -1917,9 +1925,10 @@ function fileCard(file, observer) {
     const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Take this file out of the generator (the file on your computer stays). Put it back under "Removed"' });
     remove.addEventListener('click', () => removeFileByUser(file));
     buttons.push(remove);
-    const how = state.library.readAs.get(`${file.pack}|${file.path}`)?.how;
+    const readAs = state.library.readAs.get(`${file.pack}|${file.path}`);
+    const how = readAs?.how;
     reading = loaded
-      ? `${readingOf(file)}${how === 'odd' ? ' (guessed from the name)' : how === 'hand' ? ' (assigned by you)' : ''}`
+      ? `${readingOf(file)}${how === 'odd' ? (readAs.bySize ? ' (read by its size: the name says another image)' : ' (guessed from the name)') : how === 'hand' ? ' (assigned by you)' : ''}`
       : file.reason;
   }
   return el('div', { className: 'file-card' }, [

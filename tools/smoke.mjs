@@ -711,6 +711,10 @@ try {
     await sleep(800);
     const maskReading = await evaluate(`document.querySelector('#files-list .file-reading')?.textContent || ''`);
     check('a mask goes with the same-named image it fits', maskReading.includes('pXX (alt)') && maskReading.includes('mask'), maskReading);
+    await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = 'SV_Clothing1_pXX.png'; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(800);
+    const svReading = await evaluate(`document.querySelector('#files-list .file-reading')?.textContent || ''`);
+    check('a battler file at walk size is read as a walk picture', svReading.includes('walk image') && svReading.includes('by its size'), svReading);
     await evaluate(`document.getElementById('files-dialog').close()`);
     await evaluate(`localStorage.removeItem('xgen-settings')`);
   }

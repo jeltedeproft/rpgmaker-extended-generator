@@ -1,7 +1,7 @@
 // Turns a list of files (from a dropped/selected generator folder) into a part library.
 // Pure: no DOM. File objects are stored as opaque `src` values and decoded later.
 
-import { SHEETS, SLOT_BY_M, PART_ORDER } from './format.js';
+import { SHEETS, SLOT_BY_M, PART_ORDER, DEFAULT_SIZE } from './format.js';
 import { parseVxAcePath } from './vxace.js';
 import { partsInWords, partNameWords, maskFit } from './suggest.js';
 
@@ -450,6 +450,47 @@ export function restoreFile(library, packName, path) {
     }
   } else library.unrecognized.push({ pack: packName, path, src, reason: 'Put back' });
   return true;
+}
+
+/** Frame grids of the sprite sheets: columns x rows of square frames. */
+const SPRITE_GRIDS = { TV: [3, 4], TVD: [3, 1], SV: [9, 6] };
+
+/** A picture of this size can be this sprite sheet: its frame grid splits it into square frames. */
+export function fitsSheet(sheet, width, height) {
+  const grid = SPRITE_GRIDS[sheet];
+  if (!grid) return true;
+  const [cols, rows] = grid;
+  return width % cols === 0 && height % rows === 0 && width / cols === height / rows;
+}
+
+/**
+ * Sprite pictures whose size doesn't fit the sheet in their name, but another sheet's: RPG Maker
+ * MV itself ships SV_Clothing1_pXX.png (and its mask) at walk size, 144x192. They are read as the
+ * sheet they fit, "TV_Clothing1_pXX.png", and say so in the import report. Needs `size` ({w, h})
+ * on the files' refs; files assigned by hand are left alone.
+ * @returns {string[]} what was re-read, in words
+ */
+export function fixWrongSheets(library, packName) {
+  const notes = [];
+  const files = libraryFiles(library).filter((f) => f.pack === packName && f.role !== 'icon' && !f.layer.vxace
+    && SPRITE_GRIDS[f.layer.sheet] && library.readAs.get(`${packName}|${f.path}`)?.how !== 'hand');
+  // Images first: a mask follows its image.
+  const todo = [...files.filter((f) => f.role === 'image'), ...files.filter((f) => f.role === 'mask')]
+    .map((f) => ({ f, size: (f.role === 'mask' ? f.layer.mask : f.layer.base).size }));
+  for (const { f, size } of todo) {
+    if (!size || fitsSheet(f.layer.sheet, size.w, size.h)) continue;
+    const fits = Object.keys(SPRITE_GRIDS).filter((s) => fitsSheet(s, size.w, size.h));
+    const to = fits.find((s) => DEFAULT_SIZE[s].w === size.w && DEFAULT_SIZE[s].h === size.h) || fits[0];
+    if (!to) continue;
+    const name = library.readAs.get(`${packName}|${f.path}`)?.readAs || f.path.split('/').pop();
+    const readAs = name.replace(/^(TVD|TV|SV)_/i, `${to}_`);
+    const bodyType = f.variant.bodyType;
+    const file = unassignFile(library, packName, f.path);
+    if (!file || assignFile(library, packName, f.path, file.src, readAs, bodyType)) continue;
+    library.readAs.set(`${packName}|${f.path}`, { readAs, bodyType, how: 'odd', bySize: true });
+    notes.push(`${f.path}: ${size.w}×${size.h}px is the size of a ${SHEETS[to].label.toLowerCase()} sheet, not a ${SHEETS[f.layer.sheet].label.toLowerCase()} one: read as ${readAs}`);
+  }
+  return notes;
 }
 
 /** "p17" -> "p17 (alt)"; "p17 (2)" -> "p17 (2, alt)". */

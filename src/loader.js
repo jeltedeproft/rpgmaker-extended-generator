@@ -59,6 +59,19 @@ export async function readText(src) {
   return (await toBlob(src)).text();
 }
 
+/**
+ * The size of a PNG from its header, without decoding it (File, Blob or URL).
+ * @returns {Promise<{w:number,h:number}|null>} null when it isn't a PNG
+ */
+export async function pngSize(src) {
+  const head = typeof src === 'string'
+    ? await (await fetch(src, { headers: { Range: 'bytes=0-23' } })).arrayBuffer()
+    : await src.slice(0, 24).arrayBuffer();
+  const v = new DataView(head);
+  if (head.byteLength < 24 || v.getUint32(0) !== 0x89504e47 || v.getUint32(12) !== 0x49484452) return null; // "\x89PNG", "IHDR"
+  return { w: v.getUint32(16), h: v.getUint32(20) };
+}
+
 /** Decodes a PNG (File, Blob or URL) to {width, height, data}. Colours are not premultiplied/converted. */
 export async function decodeImage(src) {
   const bitmap = await createImageBitmap(await toBlob(src), {
