@@ -143,7 +143,7 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .sheet-pick span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick-list { overflow: auto; max-height: 64vh; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
 .link-box { margin-top: 8px; }
-.assign-suggest { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
+.assign-suggest { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; align-content: flex-start; margin: 6px 0; height: 76px; overflow-y: auto; }
 .assign-suggest .small-button { margin-top: 0; }
 .sheet-parts select { min-width: 0; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; font: inherit; }
 .sheet-parts .blank { color: var(--warn, #d9822b); font-size: 12px; }
@@ -216,7 +216,13 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .credit-pack { font-weight: 600; }
 .credit input { font: inherit; font-size: 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
 .credit-text { white-space: pre-wrap; max-height: 180px; overflow: auto; font-size: 11px; background: var(--hover); padding: 6px; border-radius: 6px; margin: 4px 0 0; }
-.assign-form { width: min(560px, calc(100vw - 48px)); }
+/* The assign dialog keeps one size: every box that changes with the file has a fixed size. */
+.assign-form { width: min(600px, calc(100vw - 48px)); }
+.assign-info { flex: 1 1 auto; min-width: 0; }
+.assign-info p { min-height: 1.4em; margin: 0 0 4px; }
+#assign-file { word-break: break-all; }
+.assign-variable { min-height: 74px; }
+.assign-variable #assign-mask-note { min-height: 2.6em; margin: 2px 0 0; }
 .assign-form h3 { margin-top: 0; }
 .assign-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 10px; }
 .assign-form .field input, .assign-form .field select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
@@ -293,5 +299,5 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .file-card .file-buttons { display: flex; gap: 4px; flex-wrap: wrap; margin-top: auto; }
 .file-card .file-buttons .small-button { margin-top: 0; }
 .assign-top { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 10px; }
-.assign-preview { flex: 0 0 auto; max-width: 220px; max-height: 220px; overflow: hidden; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 12px 12px; border-radius: 6px; }
-#assign-preview { display: block; max-width: 220px; max-height: 220px; image-rendering: pixelated; }
+.assign-preview { flex: 0 0 220px; width: 220px; height: 160px; display: grid; place-items: center; overflow: hidden; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 12px 12px; border-radius: 6px; }
+#assign-preview { display: block; max-width: 220px; max-height: 160px; object-fit: contain; image-rendering: pixelated; }

@@ -378,13 +378,22 @@ try {
     await sleep(900);
     check('assign dialog shows the image', await evaluate(`document.getElementById('assign-preview').width > 0`));
     check('one by one offers skip', await evaluate(`!document.getElementById('assign-skip').hidden`));
+    const assignSizes = [await evaluate(`(() => { const r = document.querySelector('#assign-dialog').getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })()`)];
     await sleep(2500);
+    assignSizes.push(await evaluate(`(() => { const r = document.querySelector('#assign-dialog').getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })()`));
     check('assign dialog suggests an image', (await evaluate(`document.getElementById('assign-suggest').textContent`)).includes('Suggested image'));
     check('assign dialog suggests parts by position', await evaluate(`document.querySelectorAll('#assign-suggest button').length > 0 && document.getElementById('assign-part').value.length > 0`), await evaluate(`document.getElementById('assign-suggest').textContent`));
     await shot('4d-assign-suggest.png');
     check('suggestions name layers in words, not as Beard1', await evaluate(`[...document.querySelectorAll('#assign-suggest button')].every(b => !/[a-z][0-9]( |$)/.test(b.textContent))`), await evaluate(`document.getElementById('assign-suggest').textContent`));
+    for (const sheet of ['FG', 'TV']) {
+      await evaluate(`(() => { const s = document.getElementById('assign-sheet'); s.value = '${sheet}'; s.dispatchEvent(new Event('change')); })()`);
+      await sleep(1500);
+      assignSizes.push(await evaluate(`(() => { const r = document.querySelector('#assign-dialog').getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })()`));
+    }
     await evaluate(`document.getElementById('assign-skip').click()`);
-    await sleep(600);
+    await sleep(2500);
+    if (await evaluate(`document.getElementById('assign-dialog').open`)) assignSizes.push(await evaluate(`(() => { const r = document.querySelector('#assign-dialog').getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })()`));
+    check('the assign dialog keeps one size', new Set(assignSizes).size === 1, assignSizes.join(' '));
     // Reassign a file that was read from its name.
     await evaluate(`document.getElementById('assign-dialog').open && document.querySelector('#assign-dialog button[value="cancel"]').click()`);
     await evaluate(`document.querySelector('#files-tabs [data-tab="all"]').click()`);

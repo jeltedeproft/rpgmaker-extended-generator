@@ -411,7 +411,7 @@
       <h3 id="assign-title">Assign a file</h3>
       <div class="assign-top">
         <div class="assign-preview"><canvas id="assign-preview" width="0" height="0"></canvas></div>
-        <div>
+        <div class="assign-info">
           <p class="small"><code id="assign-file"></code> <span id="assign-size" class="muted"></span></p>
           <p class="small" id="assign-current"></p>
           <p class="small muted" id="assign-queue"></p>
@@ -442,6 +442,7 @@
           <datalist id="assign-body-list"></datalist>
         </label>
       </div>
+      <div class="assign-variable">
       <label class="lock"><input type="checkbox" id="assign-mask"> This is a colour mask (<code>_c</code>) for the image with the same name</label>
       <p id="assign-mask-note" class="muted small"></p>
       <div id="assign-face-fields" class="assign-row">
@@ -451,6 +452,7 @@
         <label class="field">Colour slot
           <select id="assign-slot"></select>
         </label>
+      </div>
       </div>
       <div id="assign-suggest" class="assign-suggest small"></div>
       <p class="small">Read as <code id="assign-result"></code></p>
