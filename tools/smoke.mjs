@@ -594,6 +594,20 @@ try {
       await sleep(900);
       check('pieces join again', (await evaluate(`document.querySelectorAll('#part-list button.piece').length`)) === 0);
     }
+  // Split all / Join all, in All colours (the eyes worn here fall apart in two).
+  {
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('All colours')).click()`);
+    await sleep(500);
+    await evaluate(`[...document.querySelectorAll('#slots button')].find(b => b.textContent === 'Split all').click()`);
+    await sleep(2500);
+    const pieces = await evaluate(`document.querySelectorAll('#part-list button.piece').length`);
+    check('split all splits the worn parts', pieces > 0, `${pieces} pieces`);
+    await evaluate(`[...document.querySelectorAll('#slots button')].find(b => b.textContent === 'Join all').click()`);
+    await sleep(1200);
+    check('join all joins them again', (await evaluate(`document.querySelectorAll('#part-list button.piece').length`)) === 0);
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Eyes')).click()`);
+    await sleep(500);
+  }
     // Source colours: a fresh folder shows the parts as drawn; a gradient only once picked.
     {
       check('parts start in their source colours', await evaluate(`[...document.querySelectorAll('.slot .swatch.source')].length > 0 && [...document.querySelectorAll('.slot .swatch.source')].every(b => b.classList.contains('selected'))`));

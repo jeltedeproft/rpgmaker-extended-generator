@@ -707,6 +707,40 @@ async function splitSelected(gap) {
   renderAll();
 }
 
+/** Split all: every worn part that falls apart (transparent gaps) is split into pieces. */
+async function splitAll() {
+  await ensureVariants(variantsToDecode(state.character, state.library));
+  const gap = Math.max(0, Math.min(8, Number($('split-gap').value) || 0));
+  let split = 0;
+  let whole = 0;
+  for (const key of Object.keys(state.character.parts)) {
+    if (!state.character.parts[key] || state.character.split?.[key]) continue;
+    const sheets = piecesPerSheet(state.character, state.library, key, gap, state.settings);
+    const count = Math.max(0, ...Object.values(sheets));
+    if (count < 2) {
+      whole++;
+      continue;
+    }
+    (state.character.split ||= {})[key] = { gap, count, sheets };
+    split++;
+  }
+  renderAll();
+  toast(split ? `Split ${split} part${split === 1 ? '' : 's'} into pieces${whole ? `; ${whole} ${whole === 1 ? 'is' : 'are'} one piece` : ''}.` : 'Every worn part is one piece already: nothing to split.');
+}
+
+/** Join all: every split part becomes one piece again. */
+function joinAll() {
+  for (const key of Object.keys(state.character.split || {})) {
+    for (const piece of pieceKeys(state.character, key)) {
+      delete state.character.offsets?.[piece];
+      delete state.character.itemColors?.[piece];
+    }
+    delete state.character.split[key];
+  }
+  if (state.selectedPart.includes('#')) state.selectedPart = itemOfKey(state.selectedPart);
+  renderAll();
+}
+
 function unsplitSelected() {
   const key = state.selectedPart;
   for (const piece of pieceKeys(state.character, key)) {
@@ -1088,7 +1122,11 @@ function renderSlots() {
       renderPreview();
       refreshTiles();
     });
-    head.push(el('div', { className: 'source-reset' }, [reset]), recolourAllToggle());
+    const splitButton = el('button', { className: 'small-button', textContent: 'Split all', title: 'Split every worn part into pieces where transparent gaps separate it (e.g. left and right eye)' });
+    splitButton.addEventListener('click', splitAll);
+    const joinButton = el('button', { className: 'small-button', textContent: 'Join all', hidden: !Object.keys(state.character.split || {}).length, title: 'Make every split part one piece again' });
+    joinButton.addEventListener('click', joinAll);
+    head.push(el('div', { className: 'source-reset' }, [reset, splitButton, joinButton]), recolourAllToggle());
   }
   box.replaceChildren(...head, ...(auto ? [auto] : []), ...slots.map((slot) => {
     if (slot.painted) {

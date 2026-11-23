@@ -123,6 +123,7 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 
 .other-bodies { margin-top: 10px; }
 .variant-tabs { margin-bottom: 8px; }
+.source-reset { display: flex; gap: 6px; flex-wrap: wrap; }
 .other-bodies summary { cursor: pointer; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
 .offsets h3 { margin-top: 14px; }
 .offset-grid { display: grid; grid-template-columns: auto auto auto auto; gap: 6px 12px; align-items: center; justify-content: start; font-size: 13px; }
