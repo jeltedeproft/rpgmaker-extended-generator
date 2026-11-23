@@ -883,7 +883,11 @@ try {
     await evaluate(`[...document.querySelectorAll('#toast button')].find(b => b.textContent === 'Undo')?.click()`);
     await sleep(1500);
     check('removing a folder can be undone', (await evaluate(`parseInt(document.querySelector('#files-tabs [data-tab="removed"]').textContent.match(/\\d+/)[0])`)) === removedBefore);
-    await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);
+    // A whole body type into another, in every folder at once.
+    await evaluate(`(() => { const r = document.querySelector('#files-list .body-row'); r.querySelector('.body-from').value = 'Kid'; r.querySelector('.body-to').value = 'Male'; r.querySelector('button').click(); })()`);
+    await sleep(8000);
+    check('a whole body type moves into another', !(await evaluate(`[...document.getElementById('body-type').options].some(o => o.value === 'Kid')`)), await evaluate(`document.getElementById('toast').textContent`));
+    if (await evaluate(`document.getElementById('files-dialog').open`)) await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);
   }
   if (process.env.MARK_PACK) {
     await send('Page.navigate', { url: `${URL_UNDER_TEST.replace(/\?.*$/, '')}?pack=${encodeURIComponent(process.env.MARK_PACK)}` });

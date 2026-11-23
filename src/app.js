@@ -2193,7 +2193,7 @@ function renderFiles() {
     $('files-more').hidden = true;
     $('files-note').textContent = TAB_NOTES.folders;
     const rows = folderList().filter((d) => !query || `${d.pack} ${d.dir}`.toLowerCase().includes(query));
-    $('files-list').replaceChildren(...(rows.length ? rows.map(folderRow) : [el('p', { className: 'muted', textContent: 'No folder matches.' })]));
+    $('files-list').replaceChildren(bodyTypeRow(), ...(rows.length ? rows.map(folderRow) : [el('p', { className: 'muted', textContent: 'No folder matches.' })]));
     return;
   }
   const files = filesFor(filesTab).filter(matches);
@@ -2242,8 +2242,26 @@ function readAsName(file) {
 
 /** Moves the parts of a folder to another body type (remembered like assigning by hand). */
 function moveFolder(d, bodyType) {
+  return moveFiles(d.loaded, bodyType, d.dir);
+}
+
+/**
+ * Consolidates a whole body type into another: every part of `from`, in every folder (TV, SV, TVD,
+ * Face, Variation) of every opened generator folder, goes to `to`.
+ */
+function moveBodyType(from, to) {
+  if (from === to) return;
+  const files = libraryFiles(state.library).filter((f) => f.variant.bodyType === from);
+  return moveFiles([...new Map(files.map((f) => [`${f.pack}|${f.path}`, f])).values()], to, `the ${from} parts`);
+}
+
+/**
+ * Moves loaded files to another body type, then merges what turned out to be there already: a
+ * moved part made of the same files as one of the body type is hidden as a duplicate.
+ */
+async function moveFiles(loaded, bodyType, what) {
   const lib = state.library;
-  const files = d.loaded.filter((f) => !f.layer?.vxace && f.variant.bodyType !== bodyType);
+  const files = loaded.filter((f) => !f.layer?.vxace && f.variant.bodyType !== bodyType);
   // Masks first out and last in, so they go with their images.
   const order = [...files.filter((f) => f.role === 'mask'), ...files.filter((f) => f.role !== 'mask')];
   const plan = order.map((f) => ({ f, readAs: readAsName(f) }));
@@ -2255,7 +2273,8 @@ function moveFolder(d, bodyType) {
     moved++;
   }
   afterFilesChanged();
-  toast(`Moved ${moved} file${moved === 1 ? '' : 's'} of ${d.dir} to ${bodyType}. A part that was there already is listed as a copy ("p01 (2)"): see "Look-alikes…".`, 8000);
+  const merged = await withBusy('Looking for duplicates', () => findSameFiles(null, true));
+  toast(`Moved ${moved} file${moved === 1 ? '' : 's'} of ${what} to ${bodyType}.${merged ? ` ${merged} of the moved parts were there already (the same files) and are hidden as duplicates.` : ''} Near copies are listed in "Look-alikes…".`, 10000);
 }
 
 /** Removes every file of a folder (they go to "Removed"); Undo puts them back. */
@@ -2276,6 +2295,22 @@ function removeFolder(d) {
     afterFilesChanged();
   };
   toast(`Removed ${removed.length} file${removed.length === 1 ? '' : 's'} of ${d.dir}. They're listed under "Removed".`, 10000, { label: 'Undo', run: undo });
+}
+
+/** Top of the Folders tab: a whole body type into another, in every folder at once. */
+function bodyTypeRow() {
+  const bodies = [...state.library.bodyTypes.keys()];
+  const count = (b) => [...state.library.variants.values()].filter((v) => v.bodyType === b && !v.removed).length;
+  const from = el('select', { className: 'body-from', title: 'Body type to move' }, bodies.map((b) => el('option', { value: b, textContent: `${b} (${count(b)} parts)` })));
+  const to = el('select', { className: 'body-to', title: 'Body type to move them to' }, bodies.map((b) => el('option', { value: b, textContent: b })));
+  from.value = bodies.find((b) => b !== 'Male' && b !== 'Female') || bodies[bodies.length - 1];
+  to.value = bodies.find((b) => b !== from.value) || bodies[0];
+  const move = el('button', { type: 'button', className: 'small-button primary', textContent: 'Move every part', disabled: bodies.length < 2 });
+  move.addEventListener('click', () => moveBodyType(from.value, to.value));
+  return el('div', { className: 'folder-row body-row' }, [
+    el('div', {}, [el('b', { textContent: 'Body types' }), el('span', { className: 'muted small', textContent: '  every folder of every opened generator folder at once; parts that are there already are merged' })]),
+    el('div', { className: 'file-buttons' }, [move, el('span', { className: 'small', textContent: 'of' }), from, el('span', { className: 'small', textContent: 'to' }), to]),
+  ]);
 }
 
 function folderRow(d) {

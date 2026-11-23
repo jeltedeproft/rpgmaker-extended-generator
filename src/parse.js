@@ -404,6 +404,7 @@ export function unassignFile(library, packName, path, reason = 'Unassigned') {
     const parts = library.bodyTypes.get(variant.bodyType)?.parts;
     parts?.get(variant.part)?.delete(variant.id);
     if (parts && !parts.get(variant.part)?.size) parts.delete(variant.part);
+    if (parts && !parts.size) library.bodyTypes.delete(variant.bodyType); // e.g. all Kid parts moved
   }
   library.readAs.delete(`${packName}|${path}`);
   library.unrecognized.push({ pack: packName, path, src, reason });
