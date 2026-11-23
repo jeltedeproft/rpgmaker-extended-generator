@@ -1,8 +1,8 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
-import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign } from './parse.js';
-import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE } from './gradients.js';
+import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
+import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
   layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
@@ -251,7 +251,8 @@ async function importEntriesNow(entries, packName) {
   busyStep(`Opening "${packName}": drawing the character`);
   ensureCharacter();
   checkLookalikes(pack.name).then(() => findSameFiles(pack.name, true)).catch((e) => console.error(e));
-  toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.${assignNote}`, toAssign ? 8000 : 4000);
+  const gradientsShown = uniqueGradients(allGradients()).length;
+  toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${gradientsShown} distinct colours.${assignNote}`, toAssign ? 8000 : 4000);
   showApp();
   renderAll();
   return addedParts;
@@ -1108,16 +1109,16 @@ function paintedSwatches(slot) {
   });
 }
 
-const swatchCache = new Map();
+const swatchCache = new WeakMap();
 function swatchImage(gradient) {
-  if (!swatchCache.has(gradient.id)) {
+  if (!swatchCache.has(gradient)) {
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 1;
     canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(gradient.colors), 256, 1), 0, 0);
-    swatchCache.set(gradient.id, canvas.toDataURL());
+    swatchCache.set(gradient, canvas.toDataURL());
   }
-  return swatchCache.get(gradient.id);
+  return swatchCache.get(gradient);
 }
 
 function renderSlots() {
@@ -1131,7 +1132,7 @@ function renderSlots() {
       ...(state.selectedPart === ALL_COLOURS ? [recolourAllToggle()] : []));
     return;
   }
-  const gradients = allGradients();
+  const available = allGradients();
   const head = [];
   if (state.selectedPart !== ALL_COLOURS) {
     // Own colours: this item ignores the shared colours (e.g. two accessories in different colours).
@@ -1169,6 +1170,7 @@ function renderSlots() {
       ]);
     }
     const preferred = preferredCategories(slot.id);
+    const gradients = uniqueGradients(available, slotColour(slot.id), preferred);
     const recommended = recommendColours(slot.id, gradients, slotWords(slot));
     const groups = new Map();
     if (recommended) groups.set('Recommended', recommended.ids.map((id) => gradients.find((g) => g.id === id)));
@@ -1498,7 +1500,11 @@ function updateAssignPreview() {
   $('assign-mask').parentElement.hidden = isFace || f.sheet === 'icon';
   $('assign-mask-note').hidden = $('assign-mask').parentElement.hidden;
   $('assign-face-fields').hidden = !isFace;
-  $('assign-result').textContent = f.part ? `${$('assign-body').value || 'Default'}/${buildPartName(f)}` : 'Pick a part name.';
+  const creating = !$('assign-body').value;
+  $('assign-new-body').hidden = !creating;
+  const body = $('assign-body').value || $('assign-new-body').value.trim();
+  $('assign-ok').disabled = !f.part || !body || (creating && !newBodyName(body, []));
+  $('assign-result').textContent = f.part && body ? `${body}/${buildPartName(f)}` : 'Pick a part and body type.';
 }
 
 const SHEET_WORDS = { FG: 'portrait', TV: 'walk', TVD: 'damage', SV: 'battler' };
@@ -1542,9 +1548,8 @@ async function openAssignDialog(entry, queue = null) {
   assignQueue = queue;
   const fileName = entry.path.split('/').pop();
   const stem = fileName.replace(/\.png$/i, '');
-  const folders = entry.path.split('/').slice(0, -1);
-  const bodies = [...state.library.bodyTypes.keys()];
-  const folderBody = [...folders].reverse().find((f) => bodies.some((b) => b.toLowerCase() === f.toLowerCase()));
+  const bodies = assignmentBodies(state.library, state.settings.createdBodies);
+  const folderBody = suggestedBody(dirOf(entry.path), bodies);
   const loaded = entry.variant ? entry : null;
   $('assign-title').textContent = loaded ? 'Reassign a file' : 'Assign a file';
   $('assign-ok').textContent = loaded ? 'Reassign' : 'Add';
@@ -1556,9 +1561,11 @@ async function openAssignDialog(entry, queue = null) {
   $('assign-layer').value = '';
   $('assign-pid').value = stem.replace(/[^A-Za-z0-9-]+/g, '-');
   $('assign-mask').checked = /_c$/i.test(stem);
-  $('assign-body').value = folderBody ? bodies.find((b) => b.toLowerCase() === folderBody.toLowerCase()) : state.character?.bodyType || 'Male';
+  $('assign-body').replaceChildren(...bodyOptions(bodies), el('option', { value: '', textContent: 'New folder…' }));
+  $('assign-body').value = folderBody || state.character?.bodyType || 'Male';
+  $('assign-new-body').value = '';
   $('assign-part-list').replaceChildren(...[...new Set([...PART_ORDER, ...partNames(state.library, state.character?.bodyType)])].map((p) => el('option', { value: p })));
-  $('assign-body-list').replaceChildren(...bodies.map((b) => el('option', { value: b })));
+
   $('assign-slot').replaceChildren(el('option', { value: '', textContent: 'none (not recolourable)' }),
     ...SLOTS.filter((s) => s.m).map((s) => el('option', { value: s.m, textContent: s.label })));
   slotChosen = false;
@@ -1582,7 +1589,7 @@ async function openAssignDialog(entry, queue = null) {
     $('assign-layer').value = current.layer.slice(current.part.length);
     $('assign-pid').value = current.basePid.replace(/^p/, '');
     $('assign-mask').checked = current.isMask;
-    $('assign-body').value = current.bodyType;
+    $('assign-body').value = state.library.readAs.get(`${entry.pack}|${entry.path}`)?.how === 'hand' ? current.bodyType : folderBody || current.bodyType;
     if (current.cell) $('assign-cell').value = current.cell;
     $('assign-slot').value = SLOT_BY_ID.get(current.slotId)?.m || '';
     slotChosen = true; // reassigning keeps the slot it has
@@ -2046,7 +2053,7 @@ function unassignByUser(entry) {
   afterFilesChanged();
 }
 
-for (const id of ['assign-sheet', 'assign-part', 'assign-layer', 'assign-pid', 'assign-mask', 'assign-cell', 'assign-slot', 'assign-body']) {
+for (const id of ['assign-sheet', 'assign-part', 'assign-layer', 'assign-pid', 'assign-mask', 'assign-cell', 'assign-slot', 'assign-body', 'assign-new-body']) {
   $(id).addEventListener('input', updateAssignPreview);
 }
 $('assign-dialog').addEventListener('close', () => {
@@ -2063,7 +2070,8 @@ $('assign-dialog').addEventListener('close', () => {
       return;
     }
     const readAs = buildPartName(f);
-    const bodyType = $('assign-body').value.trim() || 'Default';
+    const bodyType = $('assign-body').value || newBodyName($('assign-new-body').value, assignmentBodies(state.library, state.settings.createdBodies));
+    if (!bodyType) return;
     if (!parsePartPath(`${bodyType}/${readAs}`)) {
       toast(`"${readAs}" is not a valid part name.`);
       return;
@@ -2193,7 +2201,10 @@ function renderFiles() {
     $('files-more').hidden = true;
     $('files-note').textContent = TAB_NOTES.folders;
     const rows = folderList().filter((d) => !query || `${d.pack} ${d.dir}`.toLowerCase().includes(query));
-    $('files-list').replaceChildren(bodyTypeRow(), ...(rows.length ? rows.map(folderRow) : [el('p', { className: 'muted', textContent: 'No folder matches.' })]));
+    const bodies = assignmentBodies(state.library, state.settings.createdBodies);
+    const empty = bodies.filter((b) => state.settings.createdBodies?.includes(b) && !state.library.bodyTypes.has(b) && b.toLowerCase().includes(query));
+    $('files-list').replaceChildren(createBodyRow(bodies), bodyTypeRow(bodies), ...empty.map(emptyBodyRow), ...rows.map((d) => folderRow(d, bodies)));
+    if (!rows.length && !empty.length) $('files-list').append(el('p', { className: 'muted', textContent: 'No folder matches.' }));
     return;
   }
   const files = filesFor(filesTab).filter(matches);
@@ -2220,8 +2231,11 @@ function folderList() {
   const lib = state.library;
   const byDir = new Map();
   const add = (f, loaded) => {
-    const key = `${f.pack}|${dirOf(f.path)}`;
-    if (!byDir.has(key)) byDir.set(key, { pack: f.pack, dir: dirOf(f.path), files: new Map(), loaded: [], bodyTypes: new Set() });
+    const fileKey = `${f.pack}|${f.path}`;
+    const assigned = lib.readAs.get(fileKey)?.how === 'hand' || state.settings.assignments?.[fileKey]?.readAs || state.settings.organizedFiles?.[fileKey];
+    const dir = loaded && assigned ? f.variant.bodyType : dirOf(f.path);
+    const key = `${f.pack}|${dir}`;
+    if (!byDir.has(key)) byDir.set(key, { pack: f.pack, dir, files: new Map(), loaded: [], bodyTypes: new Set() });
     const d = byDir.get(key);
     if (d.files.has(f.path)) return; // a VX Ace file feeds several layers
     d.files.set(f.path, f);
@@ -2261,17 +2275,31 @@ function moveBodyType(from, to) {
  */
 async function moveFiles(loaded, bodyType, what) {
   const lib = state.library;
-  const files = loaded.filter((f) => !f.layer?.vxace && f.variant.bodyType !== bodyType);
+  if (!bodyType) return;
+  const eligible = loaded.filter((f) => !f.layer?.vxace);
+  const files = eligible.filter((f) => f.variant.bodyType !== bodyType);
+  // Already assigned to the right type: only change the displayed folder, keeping the original variant and ID.
+  for (const f of eligible.filter((f) => f.variant.bodyType === bodyType)) {
+    (state.settings.organizedFiles ||= {})[`${f.pack}|${f.path}`] = true;
+  }
   // Masks first out and last in, so they go with their images.
   const order = [...files.filter((f) => f.role === 'mask'), ...files.filter((f) => f.role !== 'mask')];
-  const plan = order.map((f) => ({ f, readAs: readAsName(f) }));
+  const plan = order.map((f) => ({ f, readAs: readAsName(f) })).filter(({ readAs }) => parsePartPath(`${bodyType}/${readAs}`));
   for (const { f } of plan) unassignFile(lib, f.pack, f.path);
-  let moved = 0;
+  let moved = eligible.length - files.length;
   for (const { f, readAs } of [...plan.filter((p) => p.f.role !== 'mask'), ...plan.filter((p) => p.f.role === 'mask')]) {
     if (assignFile(lib, f.pack, f.path, f.src, readAs, bodyType)) continue;
-    remember(f, { readAs, bodyType });
+    (state.settings.assignments ||= {})[`${f.pack}|${f.path}`] = { readAs, bodyType };
     moved++;
   }
+  if (state.character && !lib.bodyTypes.has(state.character.bodyType) && lib.bodyTypes.has(bodyType)) {
+    state.character.bodyType = bodyType;
+  }
+  if (state.settings.createdBodies) {
+    const movedFrom = new Set(files.map((f) => f.variant.bodyType));
+    state.settings.createdBodies = state.settings.createdBodies.filter((b) => !movedFrom.has(b) || lib.bodyTypes.has(b));
+  }
+  saveSettings();
   afterFilesChanged();
   const merged = await withBusy('Looking for duplicates', () => findSameFiles(null, true));
   toast(`Moved ${moved} file${moved === 1 ? '' : 's'} of ${what} to ${bodyType}.${merged ? ` ${merged} of the moved parts were there already (the same files) and are hidden as duplicates.` : ''} Near copies are listed in "Look-alikes…".`, 10000);
@@ -2280,16 +2308,29 @@ async function moveFiles(loaded, bodyType, what) {
 /** Removes every file of a folder (they go to "Removed"); Undo puts them back. */
 function removeFolder(d) {
   const removed = [];
-  for (const f of d.files.values()) {
-    if (!removeFile(state.library, f.pack, f.path)) continue;
-    remember(f, { removed: true });
-    removed.push(f);
+  const lib = state.library;
+  const assignments = state.settings.assignments ||= {};
+  const files = [...d.files.values()].sort((a, b) => Number(b.role === 'mask') - Number(a.role === 'mask'));
+  for (const f of files) {
+    const key = `${f.pack}|${f.path}`;
+    const reading = lib.readAs.get(key);
+    if (!removeFile(lib, f.pack, f.path)) continue;
+    removed.push({ f, key, reading, saved: assignments[key] });
+    assignments[key] = { removed: true };
   }
+  saveSettings();
   afterFilesChanged();
   const undo = () => {
-    for (const f of removed) {
-      if (!restoreFile(state.library, f.pack, f.path)) continue;
-      delete state.settings.assignments?.[`${f.pack}|${f.path}`];
+    // Restore images before masks, using the reading the file had in its generator folder.
+    const restoreOrder = [...removed.filter(({ f }) => f.role !== 'mask'), ...removed.filter(({ f }) => f.role === 'mask')];
+    for (const { f, key, reading, saved } of restoreOrder) {
+      if (reading?.readAs) {
+        const entry = restoreToAssign(lib, f.pack, f.path);
+        if (!entry || assignFile(lib, f.pack, f.path, entry.src, reading.readAs, reading.bodyType)) continue;
+        lib.readAs.set(key, reading);
+      } else if (!restoreFile(lib, f.pack, f.path)) continue;
+      if (saved) assignments[key] = saved;
+      else delete assignments[key];
     }
     saveSettings();
     afterFilesChanged();
@@ -2297,15 +2338,53 @@ function removeFolder(d) {
   toast(`Removed ${removed.length} file${removed.length === 1 ? '' : 's'} of ${d.dir}. They're listed under "Removed".`, 10000, { label: 'Undo', run: undo });
 }
 
+const bodyOptions = (names) => names.map((value) => el('option', { value, textContent: value }));
+
+function emptyBodyRow(body) {
+  const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove empty folder' });
+  remove.addEventListener('click', () => {
+    state.settings.createdBodies = state.settings.createdBodies.filter((b) => b !== body);
+    saveSettings();
+    renderFiles();
+  });
+  return el('div', { className: 'folder-row' }, [
+    el('div', {}, [el('b', { textContent: body }), el('span', { className: 'muted small', textContent: 'No files assigned yet' })]), remove,
+  ]);
+}
+
+function createBodyRow(bodies) {
+  const name = el('input', { type: 'text', placeholder: 'New folder name', ariaLabel: 'New folder name' });
+  const create = el('button', { type: 'button', className: 'small-button', textContent: 'Create folder' });
+  const add = () => {
+    const value = newBodyName(name.value, bodies);
+    if (!value) return toast('Enter a body type name without path separators or sheet folder names.');
+    if (bodies.includes(value)) return toast(`The folder "${value}" already exists.`);
+    (state.settings.createdBodies ||= []).push(value);
+    saveSettings();
+    renderFiles();
+    toast(`Created "${value}". It is available for file assignments and folder moves.`);
+  };
+  create.addEventListener('click', add);
+  name.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); add(); }
+  });
+  return el('div', { className: 'folder-row folder-new' }, [
+    el('b', { textContent: 'New body type folder' }), el('div', { className: 'file-buttons' }, [name, create]),
+  ]);
+}
+
 /** Top of the Folders tab: a whole body type into another, in every folder at once. */
-function bodyTypeRow() {
-  const bodies = [...state.library.bodyTypes.keys()];
+function bodyTypeRow(destinations) {
+  const bodies = destinations.filter((b) => state.library.bodyTypes.has(b));
   const count = (b) => [...state.library.variants.values()].filter((v) => v.bodyType === b && !v.removed).length;
-  const from = el('select', { className: 'body-from', title: 'Body type to move' }, bodies.map((b) => el('option', { value: b, textContent: `${b} (${count(b)} parts)` })));
-  const to = el('select', { className: 'body-to', title: 'Body type to move them to' }, bodies.map((b) => el('option', { value: b, textContent: b })));
-  from.value = bodies.find((b) => b !== 'Male' && b !== 'Female') || bodies[bodies.length - 1];
-  to.value = bodies.find((b) => b !== from.value) || bodies[0];
-  const move = el('button', { type: 'button', className: 'small-button primary', textContent: 'Move every part', disabled: bodies.length < 2 });
+  const from = el('select', { className: 'body-from', title: 'Body type to move' }, [el('option', { value: '', textContent: 'Choose source…' }),
+    ...bodies.map((b) => el('option', { value: b, textContent: `${b} (${count(b)} parts)` }))]);
+  const to = el('select', { className: 'body-to', title: 'Body type to move them to' }, [el('option', { value: '', textContent: 'Choose folder…' }), ...bodyOptions(destinations)]);
+
+  const move = el('button', { type: 'button', className: 'small-button primary', textContent: 'Move every part', disabled: true });
+  const update = () => { move.disabled = !from.value || !to.value || from.value === to.value; };
+  from.addEventListener('change', update);
+  to.addEventListener('change', update);
   move.addEventListener('click', () => moveBodyType(from.value, to.value));
   return el('div', { className: 'folder-row body-row' }, [
     el('div', {}, [el('b', { textContent: 'Body types' }), el('span', { className: 'muted small', textContent: '  every folder of every opened generator folder at once; parts that are there already are merged' })]),
@@ -2313,12 +2392,15 @@ function bodyTypeRow() {
   ]);
 }
 
-function folderRow(d) {
-  const bodies = [...state.library.bodyTypes.keys()];
-  const target = el('select', { title: 'Body type to move the parts to' }, bodies.map((b) => el('option', { value: b, textContent: b })));
-  const now = [...d.bodyTypes];
-  target.value = bodies.find((b) => !now.includes(b)) || bodies[0];
-  const move = el('button', { type: 'button', className: 'small-button', textContent: 'Move its parts to', disabled: !d.loaded.length });
+function folderRow(d, bodies) {
+  const target = el('select', { title: 'Body type to move the parts to' }, [el('option', { value: '', textContent: 'Choose folder…' }), ...bodyOptions(bodies)]);
+  const now = [...d.bodyTypes].sort();
+  target.value = suggestedBody(d.dir, bodies);
+  const move = el('button', { type: 'button', className: 'small-button', textContent: 'Move its parts to' });
+  const movable = d.loaded.some((f) => !f.layer?.vxace);
+  const update = () => { move.disabled = !movable || !target.value || (d.dir === target.value && now.length === 1 && now[0] === target.value); };
+  target.addEventListener('change', update);
+  update();
   move.addEventListener('click', () => moveFolder(d, target.value));
   const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove folder', title: 'Take every file of this folder out of the generator. Put them back under "Removed"' });
   remove.addEventListener('click', () => removeFolder(d));
@@ -3081,7 +3163,6 @@ $('adjust-dialog').addEventListener('close', () => {
   if (!adjusting) return;
   const temp = state.customGradients.find((g) => g.id === ADJUSTING_ID);
   state.customGradients = state.customGradients.filter((g) => g.id !== ADJUSTING_ID);
-  swatchCache.delete(ADJUSTING_ID);
   const unchanged = ADJUST_FIELDS.every((f) => adjustValues()[f] === { hue: 0, saturation: 100, brightness: 100 }[f]);
   if ($('adjust-dialog').returnValue === 'ok' && temp && !unchanged) {
     const id = `custom/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -3153,6 +3234,7 @@ function forgetPackSettings(name) {
     for (const key of Object.keys(map || {})) if (key.startsWith(prefix)) delete map[key];
   };
   drop(s.assignments, `${name}|`);
+  drop(s.organizedFiles, `${name}|`);
   drop(s.removedParts, `${name}/`);
   drop(s.lookalikes, `${name}/`);
   drop(s.autoMasks, `${name}/`);

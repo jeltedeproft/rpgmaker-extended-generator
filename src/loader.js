@@ -164,11 +164,21 @@ export async function ensureVariants(variants) {
 export async function loadGradients(library) {
   const gradients = [];
   const errors = [];
+  // Older saves identify a sheet by pack and basename. When two paths used the same
+  // name, the last sheet supplied that ID; qualify the earlier sheets by directory.
+  const last = new Map();
   for (const g of library.gradientFiles) {
     try {
       const pixels = await decodeImage(g.src);
       const name = g.path.split('/').pop().replace(/\.png$/i, '');
-      gradients.push(...splitGradientImage(pixels, { pack: g.pack, name, category: g.category }));
+      const rows = splitGradientImage(pixels, { pack: g.pack, name, category: g.category });
+      for (const row of rows) {
+        row.pack = g.pack;
+        const previous = last.get(row.id);
+        if (previous) previous.row.id = `${g.pack}/./${previous.path}${row.id.slice(row.id.lastIndexOf('#'))}`;
+        last.set(row.id, { path: g.path, row });
+        gradients.push(row);
+      }
     } catch (e) {
       errors.push(`${g.path}: ${e.message}`);
     }

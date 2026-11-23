@@ -2,6 +2,27 @@
 
 import { GRADIENT_WIDTH, GRADIENT_ROW_HEIGHT } from './format.js';
 
+const rowKeys = new WeakMap();
+
+/** One choice per exact colour ramp. Keep all original records for saved IDs and RPG Maker row numbers. */
+export function uniqueGradients(gradients, selected, preferred = []) {
+  const rows = new Map();
+  for (const g of gradients) {
+    let key = g.id;
+    if (g.shiftSource) {
+      key = 'shift:' + JSON.stringify(g.adjust);
+    } else if (g.colors) {
+      if (!rowKeys.has(g.colors)) rowKeys.set(g.colors, String.fromCharCode(...g.colors));
+      key = rowKeys.get(g.colors);
+    }
+    const previous = rows.get(key);
+    if (!previous || g.id === selected || (previous.id !== selected && preferred.includes(g.category) && !preferred.includes(previous.category))) {
+      rows.set(key, g);
+    }
+  }
+  return [...rows.values()];
+}
+
 /**
  * Splits a gradient sheet (256 wide, N*4 high) into gradient records.
  * @param {{width:number,height:number,data:Uint8ClampedArray}} image

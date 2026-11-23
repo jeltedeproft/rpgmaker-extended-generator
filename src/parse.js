@@ -21,7 +21,36 @@ const SHEET_FOLDER_NAMES = new Set(
 /** Normalises a body type folder name: "male" -> "Male". */
 function normaliseBodyType(name) {
   if (!name) return 'Default';
+  const standard = ['Male', 'Female', 'Kid', 'Default'].find((b) => b.toLowerCase() === name.toLowerCase());
+  if (standard) return standard;
   return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** Destinations exist independently of whether any parts have been assigned there yet. */
+export function assignmentBodies(library, created = []) {
+  const names = new Set(['Male', 'Female', 'Kid', ...library.bodyTypes.keys(), ...created]);
+  for (const file of library.unrecognized) {
+    const dirs = file.path.split(/[\\/]/).slice(0, -1);
+    const parent = dirs.at(-1);
+    if (parent && SHEET_FOLDER_NAMES.has(dirs.at(-2)?.toLowerCase()) && !SHEET_FOLDER_NAMES.has(parent.toLowerCase())) {
+      names.add(normaliseBodyType(parent));
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }) || (a < b ? -1 : a > b ? 1 : 0));
+}
+
+export function suggestedBody(dir, bodies) {
+  for (const segment of dir.split(/[\\/]/).reverse()) {
+    const match = bodies.find((b) => b === segment) || bodies.find((b) => b.toLowerCase() === segment.toLowerCase());
+    if (match) return match;
+  }
+  return '';
+}
+
+export function newBodyName(value, bodies) {
+  const name = value.trim();
+  if (!name || /[\\/|]/.test(name) || ['.', '..'].includes(name) || SHEET_FOLDER_NAMES.has(name.toLowerCase())) return '';
+  return suggestedBody(name, bodies) || normaliseBodyType(name);
 }
 
 /**

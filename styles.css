@@ -301,7 +301,17 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .files-head h3 { margin: 0; }
 .files-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 .files-tabs button { padding: 4px 10px; font-size: 13px; }
-.folder-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; grid-column: 1 / -1; }
+.folder-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; }
+.folder-row b, .folder-row .muted { display: block; }
+.folder-row .file-buttons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.folder-row .small-button { margin: 0; }
+.folder-row select, .folder-row input { width: 11rem; max-width: 100%; min-width: 0; }
+.body-row select { width: 8rem; }
+.assign-row .field, .assign-row select { min-width: 0; max-width: 100%; }
+@media (max-width: 700px) {
+  .folder-row { grid-template-columns: minmax(0, 1fr); }
+  .files-list { grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); }
+}
 .files-tabs button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .files-tools { display: flex; gap: 8px; align-items: center; }
 .files-tools input { flex: 1; }

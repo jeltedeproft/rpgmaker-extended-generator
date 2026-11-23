@@ -868,12 +868,12 @@ try {
     const folders = await evaluate(`[...document.querySelectorAll('#files-list .folder-row b')].map(b => b.textContent)`);
     check('folders are listed', folders.includes('SV/Kid') && folders.includes('Face/Male'), folders.join(','));
     const row = (dir) => `[...document.querySelectorAll('#files-list .folder-row')].find(r => r.querySelector('b').textContent === ${JSON.stringify(dir)})`;
-    await evaluate(`(() => { const r = ${row('SV/Kid')}; r.querySelector('select').value = 'Female'; [...r.querySelectorAll('button')].find(b => b.textContent.startsWith('Move')).click(); })()`);
+    await evaluate(`(() => { const r = ${row('SV/Kid')}; r.querySelector('select').value = 'Female'; r.querySelector('select').dispatchEvent(new Event('change')); [...r.querySelectorAll('button')].find(b => b.textContent.startsWith('Move')).click(); })()`);
     await sleep(2500);
     if (!(await evaluate(`document.getElementById('files-dialog').open`))) await evaluate(`document.getElementById('open-files').click()`);
     await evaluate(`document.querySelector('#files-tabs [data-tab="folders"]').click()`);
     await sleep(500);
-    check('a folder\'s parts move to another body type', await evaluate(`${row('SV/Kid')}.textContent.includes('parts for Female') && !${row('SV/Kid')}.textContent.includes('Kid,')`), await evaluate(`${row('SV/Kid')}.textContent`));
+    check('moving all files removes the source row and keeps the destination', await evaluate(`!${row('SV/Kid')} && !!${row('Female')}`));
     check('the move is remembered', await evaluate(`Object.entries(JSON.parse(localStorage.getItem('xgen-settings')).assignments).some(([k, v]) => k.includes('SV/Kid/') && v.bodyType === 'Female')`));
     const removedBefore = await evaluate(`parseInt(document.querySelector('#files-tabs [data-tab="removed"]').textContent.match(/\\d+/)[0])`);
     await evaluate(`[...${row('Face/Kid')}.querySelectorAll('button')].find(b => b.textContent.startsWith('Remove')).click()`);
@@ -884,7 +884,7 @@ try {
     await sleep(1500);
     check('removing a folder can be undone', (await evaluate(`parseInt(document.querySelector('#files-tabs [data-tab="removed"]').textContent.match(/\\d+/)[0])`)) === removedBefore);
     // A whole body type into another, in every folder at once.
-    await evaluate(`(() => { const r = document.querySelector('#files-list .body-row'); r.querySelector('.body-from').value = 'Kid'; r.querySelector('.body-to').value = 'Male'; r.querySelector('button').click(); })()`);
+    await evaluate(`(() => { const r = document.querySelector('#files-list .body-row'); r.querySelector('.body-from').value = 'Kid'; r.querySelector('.body-to').value = 'Male'; r.querySelector('.body-to').dispatchEvent(new Event('change')); r.querySelector('button').click(); })()`);
     await sleep(8000);
     check('a whole body type moves into another', !(await evaluate(`[...document.getElementById('body-type').options].some(o => o.value === 'Kid')`)), await evaluate(`document.getElementById('toast').textContent`));
     if (await evaluate(`document.getElementById('files-dialog').open`)) await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);

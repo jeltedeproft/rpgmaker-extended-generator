@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { recommendColours, preferredCategories } from '../src/gradients.js';
+import { recommendColours, preferredCategories, uniqueGradients } from '../src/gradients.js';
 
 /** A flat gradient of one colour. */
 function flat(id, rgb, category = 'common') {
@@ -10,6 +10,19 @@ function flat(id, rgb, category = 'common') {
 }
 
 const gradients = [flat('blue', 0x3050a0), flat('red', 0xd06a60), flat('green', 0x40a040), flat('tan', 0xe8b890, 'skin'), flat('hair', 0x3a4fa0, 'hair')];
+
+test('only exact gradient rows collapse, with selected IDs and suggested categories preserved', () => {
+  const first = flat('Pack/grad_common#0', 0xaabbcc);
+  const copy = flat('Pack2/grad_skin#2', 0xaabbcc, 'skin');
+  const different = flat('Pack/grad_common#1', 0xaabbcc);
+  different.colors[1022]++;
+  const shift = { ...copy, id: 'source-adjust', shiftSource: true, adjust: { hue: 20 } };
+  const rows = [first, copy, different, shift];
+  assert.deepEqual(uniqueGradients(rows), [first, different, shift]);
+  assert.deepEqual(uniqueGradients(rows, undefined, ['skin']), [copy, different, shift]);
+  assert.deepEqual(uniqueGradients(rows, first.id, ['skin']), [first, different, shift]);
+  assert.deepEqual(uniqueGradients(rows, copy.id), [copy, different, shift]);
+});
 
 test('facial marks get a colour recommended, from the part name or the slot', () => {
   assert.deepEqual(preferredCategories('mark'), ['common', 'skin']);

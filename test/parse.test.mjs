@@ -1,6 +1,24 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { assignmentBodies, suggestedBody, newBodyName } from '../src/parse.js';
 import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet, attachWaitingMasks, imageOfMask, restoreToAssign } from '../src/parse.js';
+
+test('assignment folders include empty standards, custom and pending body types in stable order', () => {
+  const lib = createLibrary();
+  addPack(lib, 'pack', [
+    { path: 'Face/Wolves/FG_Eyes_p01_c1.png', src: {} },
+    { path: 'TV/Robots/??? .png', src: {} },
+  ]);
+  const bodies = assignmentBodies(lib, ['Very long folder name', 'Kid']);
+  assert.deepEqual(bodies, ['Female', 'Kid', 'Male', 'Robots', 'Very long folder name', 'Wolves']);
+  assert.equal(suggestedBody('Facepalm Eyes/FEMALE/Face', bodies), 'Female');
+  assert.equal(suggestedBody('male-accessories/Face', bodies), '');
+  assert.equal(suggestedBody('Male/Robots/TV', bodies), 'Robots');
+  assert.equal(newBodyName(' kid ', bodies), 'Kid');
+  assert.equal(newBodyName('Forest folk', bodies), 'Forest folk');
+  assert.equal(newBodyName('TV', bodies), '');
+  assert.equal(newBodyName('nested/name', bodies), '');
+});
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
