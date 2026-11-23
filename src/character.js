@@ -2,6 +2,7 @@
 // and per-part pixel offsets.
 
 import { PAINTED_SLOTS } from './vxace.js';
+import { selectable } from './parse.js';
 import { PART_ORDER, REQUIRED_PARTS, SLOTS, SLOT_BY_RGB } from './format.js';
 import { preferredCategory, preferredCategories, customGradientToJson, customGradientFromJson } from './gradients.js';
 import { partOfKey, pieceKeys, selectedItems, variantForSheet } from './compose.js';
@@ -80,7 +81,7 @@ export function applyDefaults(character, library) {
   if (!body) return character;
   for (const part of REQUIRED_PARTS) {
     const variants = body.parts.get(part);
-    const first = [...(variants?.values() || [])].find((v) => !v.hidden);
+    const first = [...(variants?.values() || [])].find(selectable);
     if (first && character.parts[part] === undefined) character.parts[part] = first.id;
   }
   return character;
@@ -125,7 +126,7 @@ export function randomize(character, library, gradients, { rng = Math.random, lo
   if (rules.mixBodyTypes) for (const b of library.bodyTypes.values()) b.parts.forEach((_, p) => parts.add(p));
   for (const part of parts) {
     if (locked.has(part)) continue;
-    const ids = (b) => [...(b?.parts.get(part)?.values() || [])].filter((v) => !v.hidden).map((v) => v.id);
+    const ids = (b) => [...(b?.parts.get(part)?.values() || [])].filter(selectable).map((v) => v.id);
     const pool = rules.mixBodyTypes ? [...library.bodyTypes.values()].flatMap(ids) : ids(own);
     if (!pool.length) continue;
     changed(part, rng() < wearChance(part, rules) ? pick(pool, rng) : null);

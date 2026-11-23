@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart } from '../src/parse.js';
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
@@ -281,4 +281,14 @@ test('files can be removed and put back', () => {
   assert.equal(restoreFile(lib, 'A', 'odd.png'), true);
   assert.ok(lib.unrecognized.some((u) => u.path === 'odd.png'));
   assert.equal(lib.removed.length, 0);
+});
+
+test('a mask assigned before its image is not listed as a part', () => {
+  const lib = createLibrary();
+  addPack(lib, 'A', [{ path: 'TV/Male/TV_Eyes_p01.png', src: 1 }, { path: 'odd.png', src: 2 }, { path: 'img.png', src: 3 }]);
+  assert.equal(assignFile(lib, 'A', 'odd.png', 2, 'TV_Eyes_p02_c.png', 'Male'), null);
+  assert.deepEqual(variantsForPart(lib, 'Eyes', 'Male').own.map((v) => v.pid), ['p01']);
+  // Once its image is there, the part is listed.
+  assert.equal(assignFile(lib, 'A', 'img.png', 3, 'TV_Eyes_p02.png', 'Male'), null);
+  assert.deepEqual(variantsForPart(lib, 'Eyes', 'Male').own.map((v) => v.pid).sort(), ['p01', 'p02']);
 });

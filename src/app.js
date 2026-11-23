@@ -1358,7 +1358,8 @@ const SHEET_WORDS = { FG: 'face', TV: 'walk', TVD: 'damage', SV: 'battler' };
 /** What a loaded file is read as, in words: "Male · Clothing pFur01 · walk mask". */
 function readingOf(file) {
   const v = file.variant;
-  const what = file.role === 'icon' ? 'icon' : `${SHEET_WORDS[file.layer.sheet] || file.layer.sheet} ${file.role === 'mask' ? 'mask' : 'image'}`;
+  const what = file.role === 'icon' ? 'icon' : `${SHEET_WORDS[file.layer.sheet] || file.layer.sheet} ${file.role === 'mask' ? 'mask' : 'image'}`
+    + (file.role === 'mask' && !file.layer.base ? ' (waiting for its image; not listed as a part until then)' : '');
   return `${v.bodyType} · ${v.part} ${v.pid} · ${what}`;
 }
 

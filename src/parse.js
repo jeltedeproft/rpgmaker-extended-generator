@@ -517,11 +517,19 @@ export function variantLabel(library, variant, bodyType) {
 }
 
 /**
+ * Can be picked as a part: not hidden, and has an image to draw. A colour mask assigned before
+ * its image only waits for it: it is not a part of its own.
+ */
+export function selectable(variant) {
+  return !variant.hidden && variant.layers.some((l) => l.base);
+}
+
+/**
  * All variants of a part across body types, the given body type first. Hidden ones (look-alikes,
- * see lookalike.js) are left out, except `keepId` (the one being worn).
+ * see lookalike.js) and ones with nothing to draw are left out, except `keepId` (the one worn).
  */
 export function variantsForPart(library, part, bodyType, keepId = null) {
-  const shown = (v) => !v.hidden || v.id === keepId;
+  const shown = (v) => selectable(v) || v.id === keepId;
   const own = [...(library.bodyTypes.get(bodyType)?.parts.get(part)?.values() || [])].filter(shown);
   const others = [];
   for (const [name, body] of library.bodyTypes) {
