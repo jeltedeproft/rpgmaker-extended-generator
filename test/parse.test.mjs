@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile } from '../src/parse.js';
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
@@ -264,4 +264,21 @@ test('a pack can be taken out again, leaving the others', () => {
   assert.deepEqual([...lib.bodyTypes.keys()], ['Male']);
   removePack(lib, 'A');
   assert.equal(lib.variants.size + lib.bodyTypes.size + lib.unrecognized.length + lib.gradientFiles.length, 0);
+});
+
+test('files can be removed and put back', () => {
+  const lib = createLibrary();
+  addPack(lib, 'A', [{ path: 'TV/Male/TV_Body_p01.png', src: 1 }, { path: 'TV/Male/TV_Body_p01_c.png', src: 2 }, { path: 'odd.png', src: 3 }]);
+  assert.equal(removeFile(lib, 'A', 'TV/Male/TV_Body_p01.png'), true);
+  assert.equal(lib.variants.size, 0);
+  // Its mask has no image any more: it waits in the "to assign" list.
+  assert.deepEqual(lib.unrecognized.map((u) => u.path).sort(), ['TV/Male/TV_Body_p01_c.png', 'odd.png']);
+  assert.equal(removeFile(lib, 'A', 'odd.png'), true);
+  assert.deepEqual(lib.removed.map((u) => u.path), ['TV/Male/TV_Body_p01.png', 'odd.png']);
+  assert.equal(removeFile(lib, 'A', 'nothing.png'), false);
+  assert.equal(restoreFile(lib, 'A', 'TV/Male/TV_Body_p01.png'), true);
+  assert.ok(lib.variants.get('A/Male/Body/p01'));
+  assert.equal(restoreFile(lib, 'A', 'odd.png'), true);
+  assert.ok(lib.unrecognized.some((u) => u.path === 'odd.png'));
+  assert.equal(lib.removed.length, 0);
 });

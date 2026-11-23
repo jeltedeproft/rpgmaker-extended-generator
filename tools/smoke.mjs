@@ -126,6 +126,19 @@ try {
   await click('#remove-item');
   await sleep(600);
   check('second item removed', await evaluate(`![...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('FrontHair 2'))`));
+  // Remove one part (not its folder), then undo.
+  {
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
+    await sleep(400);
+    const tiles = await evaluate(`document.querySelectorAll('#variants .variant').length`);
+    await click('#remove-part');
+    await sleep(900);
+    check('a single part can be removed', (await evaluate(`document.querySelectorAll('#variants .variant').length`)) === tiles - 1
+      && (await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).querySelector('.value').textContent`)) === 'none');
+    await evaluate(`document.querySelector('#toast button').click()`);
+    await sleep(900);
+    check('removing a part can be undone', (await evaluate(`document.querySelectorAll('#variants .variant').length`)) === tiles && await evaluate(`!Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).removedParts || {}).length`));
+  }
 
   // Draw order: move the top face layer down one step.
   await evaluate(`document.getElementById('layers').open = true`);
@@ -368,6 +381,20 @@ try {
     await evaluate(`document.querySelector('#files-list .file-card button:nth-child(2)').click()`);
     await sleep(900);
     check('unassigned file (and its mask) go back to the queue', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 2) + ')');
+    // Remove a file from the queue, see it under Removed, put it back.
+    {
+      await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').click()`);
+      await sleep(400);
+      await evaluate(`[...document.querySelectorAll('#files-list .file-card')][0].querySelector('.file-buttons button:last-child').click()`);
+      await sleep(800);
+      check('a file can be removed', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 1) + ')'
+        && await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').textContent`) === 'Removed (1)');
+      await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').click()`);
+      await sleep(400);
+      await evaluate(`document.querySelector('#files-list .file-card .file-buttons button').click()`);
+      await sleep(800);
+      check('a removed file can be put back', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 2) + ')');
+    }
     await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);
     await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('xgen-settings') || '{}'); delete s.assignments; localStorage.setItem('xgen-settings', JSON.stringify(s)); })()`);
 

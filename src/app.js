@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
-import { createLibrary, addPack, removePack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
+import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -81,9 +81,18 @@ function gradientsById() {
 }
 
 let toastTimer;
-function toast(message, ms = 4000) {
+/** action: {label, run} shows a button, e.g. Undo. */
+function toast(message, ms = 4000, action = null) {
   const t = $('toast');
   t.textContent = message;
+  if (action) {
+    const b = el('button', { type: 'button', textContent: action.label });
+    b.addEventListener('click', () => {
+      t.hidden = true;
+      action.run();
+    });
+    t.append(b);
+  }
   t.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (t.hidden = true), ms);
@@ -111,6 +120,7 @@ async function importEntries(entries, packName) {
   const pack = addPack(state.library, packName, [...pngs, ...texts]);
   state.lastPack = pack;
   pack.keys = keys;
+  applyRemovedParts(pack.name);
   // Character presets shipped with the pack (RPG Maker MZ generator .json files, or ours).
   pack.presets = [];
   for (const e of entries.filter((x) => /\.json$/i.test(x.path)).slice(0, 200)) {
@@ -260,6 +270,7 @@ async function renderEditor() {
   $('add-item').hidden = isColours || isExtra || isPiece || !worn;
   $('add-item').textContent = `+ Another ${part}`;
   $('remove-item').hidden = !isExtra;
+  $('remove-part').hidden = isColours || isPiece || !worn;
   $('pieces').hidden = !worn || isPiece;
   $('clip-box').hidden = !worn;
   if (worn) renderClip();
@@ -1493,6 +1504,10 @@ function applyRememberedAssignments(packName) {
   for (const [key, a] of Object.entries(remembered)) {
     if (!key.startsWith(`${packName}|`)) continue;
     const path = key.slice(packName.length + 1);
+    if (a.removed) {
+      removeFile(state.library, packName, path);
+      continue;
+    }
     const now = state.library.readAs.get(key);
     if (a.readAs === null) {
       unassignFile(state.library, packName, path, 'Unassigned by you');
@@ -1507,6 +1522,65 @@ function applyRememberedAssignments(packName) {
 function remember(entry, value) {
   (state.settings.assignments ||= {})[`${entry.pack}|${entry.path}`] = value;
   saveSettings();
+}
+
+// ---------- removing single parts and files (not the whole folder) ----------
+
+/** Parts removed by you (settings.removedParts) stay out of the lists when their folder opens. */
+function applyRemovedParts(packName) {
+  for (const v of state.library.variants.values()) {
+    if (v.pack === packName && state.settings.removedParts?.[v.id]) v.hidden = v.removed = true;
+  }
+}
+
+/** Takes the part the selected item wears out of the generator (only that part). */
+function removePartByUser() {
+  const key = state.selectedPart;
+  const variant = state.library.variants.get(state.character.parts[key]);
+  if (!variant) return;
+  const before = structuredClone(state.character);
+  variant.hidden = variant.removed = true;
+  (state.settings.removedParts ||= {})[variant.id] = true;
+  saveSettings();
+  if (REQUIRED_PARTS.has(partOfKey(key))) {
+    delete state.character.parts[key];
+    applyDefaults(state.character, state.library);
+  } else state.character.parts[key] = null;
+  renderAll();
+  toast(`Removed ${variant.part} ${variant.pid} (${variant.pack}). It's listed under Files… → Removed.`, 8000, {
+    label: 'Undo',
+    run: () => {
+      putPartBack(variant, false);
+      state.character = before;
+      renderAll();
+    },
+  });
+}
+$('remove-part').addEventListener('click', removePartByUser);
+
+function putPartBack(variant, render = true) {
+  variant.removed = false;
+  variant.hidden = state.settings.lookalikes?.[variant.id] === 'hide';
+  delete state.settings.removedParts?.[variant.id];
+  saveSettings();
+  if (!render) return;
+  toast(`${variant.part} ${variant.pid} is back.`);
+  afterFilesChanged();
+}
+
+function removeFileByUser(file) {
+  if (!removeFile(state.library, file.pack, file.path)) return;
+  remember(file, { removed: true });
+  toast(`Removed ${file.path.split('/').pop()}. It's listed under "Removed".`, 8000, { label: 'Undo', run: () => putFileBack(file) });
+  afterFilesChanged();
+}
+
+function putFileBack(file) {
+  if (!restoreFile(state.library, file.pack, file.path)) return;
+  delete state.settings.assignments?.[`${file.pack}|${file.path}`];
+  saveSettings();
+  toast(`${file.path.split('/').pop()} is back.`);
+  afterFilesChanged();
 }
 
 function unassignByUser(entry) {
@@ -1564,6 +1638,13 @@ let filesShown = 60;
 function filesFor(tab) {
   const lib = state.library;
   if (tab === 'queue') return lib.unrecognized;
+  if (tab === 'removed') {
+    const parts = [...lib.variants.values()].filter((v) => v.removed).map((v) => {
+      const l = v.layers.find((x) => x.base) || {};
+      return { pack: v.pack, path: l.base?.path || v.id, src: l.base?.src, variant: v, removedPart: true };
+    });
+    return [...lib.removed.map((f) => ({ ...f, removedFile: true })), ...parts];
+  }
   const loaded = libraryFiles(lib);
   // A VX Ace file feeds several layers (and both body types): list it once.
   const once = (files) => [...new Map(files.map((f) => [`${f.pack}|${f.path}`, f])).values()];
@@ -1577,18 +1658,29 @@ function fileCard(file, observer) {
   canvas.file = file;
   observer.observe(canvas);
   const buttons = [];
-  const assign = el('button', { type: 'button', className: 'small-button', textContent: loaded ? 'Reassign…' : 'Assign…' });
-  assign.addEventListener('click', () => openAssignDialog(file));
-  buttons.push(assign);
-  if (loaded) {
-    const unassign = el('button', { type: 'button', className: 'small-button', textContent: 'Unassign', title: 'Take it out of its part and put it in the "To assign" list' });
-    unassign.addEventListener('click', () => unassignByUser(file));
-    buttons.push(unassign);
+  let reading;
+  if (file.removedFile || file.removedPart) {
+    const back = el('button', { type: 'button', className: 'small-button', textContent: 'Put back' });
+    back.addEventListener('click', () => (file.removedPart ? putPartBack(file.variant) : putFileBack(file)));
+    buttons.push(back);
+    reading = file.removedPart ? `${file.variant.bodyType} · ${file.variant.part} ${file.variant.pid} · part removed by you` : 'File removed by you';
+  } else {
+    const assign = el('button', { type: 'button', className: 'small-button', textContent: loaded ? 'Reassign…' : 'Assign…' });
+    assign.addEventListener('click', () => openAssignDialog(file));
+    buttons.push(assign);
+    if (loaded) {
+      const unassign = el('button', { type: 'button', className: 'small-button', textContent: 'Unassign', title: 'Take it out of its part and put it in the "To assign" list' });
+      unassign.addEventListener('click', () => unassignByUser(file));
+      buttons.push(unassign);
+    }
+    const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Take this file out of the generator (the file on your computer stays). Put it back under "Removed"' });
+    remove.addEventListener('click', () => removeFileByUser(file));
+    buttons.push(remove);
+    const how = state.library.readAs.get(`${file.pack}|${file.path}`)?.how;
+    reading = loaded
+      ? `${readingOf(file)}${how === 'odd' ? ' (guessed from the name)' : how === 'hand' ? ' (assigned by you)' : ''}`
+      : file.reason;
   }
-  const how = state.library.readAs.get(`${file.pack}|${file.path}`)?.how;
-  const reading = loaded
-    ? `${readingOf(file)}${how === 'odd' ? ' (guessed from the name)' : how === 'hand' ? ' (assigned by you)' : ''}`
-    : file.reason;
   return el('div', { className: 'file-card' }, [
     el('div', { className: 'file-thumb' }, [canvas]),
     el('div', { className: 'file-name', textContent: file.path.split('/').pop(), title: `${file.pack}: ${file.path}` }),
@@ -1597,16 +1689,17 @@ function fileCard(file, observer) {
   ]);
 }
 
-const TAB_LABELS = { queue: 'To assign', odd: 'Odd names', hand: 'Assigned by you', all: 'All files' };
+const TAB_LABELS = { queue: 'To assign', odd: 'Odd names', hand: 'Assigned by you', all: 'All files', removed: 'Removed' };
 const TAB_NOTES = {
   queue: 'Files the generator could not read from their name. Assign them one by one, or pick one.',
   odd: 'Files with unusual names, read by guessing. Reassign any that were guessed wrong.',
   hand: 'Files you assigned. Reassign or unassign them if one went wrong.',
   all: 'Every file of the opened folders. Reassign any of them, e.g. one that was read as the wrong part.',
+  removed: 'Parts and files you removed. They stay out (also after a reload) until you put them back. The files on your computer are never touched.',
 };
 
 function renderFiles() {
-  const counts = { queue: filesFor('queue').length, odd: filesFor('odd').length, hand: filesFor('hand').length };
+  const counts = { queue: filesFor('queue').length, odd: filesFor('odd').length, hand: filesFor('hand').length, removed: filesFor('removed').length };
   for (const b of $('files-tabs').children) {
     const tab = b.dataset.tab;
     b.classList.toggle('active', tab === filesTab);
@@ -1683,7 +1776,7 @@ async function checkLookalikes(packName) {
   let autoHidden = 0;
   for (const f of found) {
     const choice = choices[f.variant.id];
-    f.variant.hidden = choice === 'hide' || (choice !== 'show' && f.result.identical);
+    f.variant.hidden = f.variant.removed || choice === 'hide' || (choice !== 'show' && f.result.identical);
     if (!choice && f.result.identical) autoHidden++;
   }
   state.lookalikes = [...state.lookalikes.filter((f) => f.variant.pack !== packName), ...found];

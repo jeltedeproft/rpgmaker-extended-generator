@@ -168,6 +168,8 @@ export function createLibrary() {
     /** Gradient sources awaiting decode: {pack, path, category, src}. */
     gradientFiles: [],
     unrecognized: [],
+    /** Files the user removed: [{pack, path, src}], to put back. */
+    removed: [],
     warnings: [],
     /**
      * Files not read from their own name: "pack|path" -> {readAs, bodyType, how}, how = 'odd'
@@ -319,6 +321,7 @@ export function removePack(library, name) {
   }
   library.gradientFiles = library.gradientFiles.filter((g) => g.pack !== name);
   library.unrecognized = library.unrecognized.filter((u) => u.pack !== name);
+  library.removed = library.removed.filter((u) => u.pack !== name);
   for (const key of [...library.readAs.keys()]) if (key.startsWith(`${name}|`)) library.readAs.delete(key);
 }
 
@@ -385,6 +388,48 @@ export function unassignFile(library, packName, path, reason = 'Unassigned') {
   library.readAs.delete(`${packName}|${path}`);
   library.unrecognized.push({ pack: packName, path, src, reason });
   return { src };
+}
+
+/**
+ * Removes a file for good (until it is put back): out of every part it is read into, or out of
+ * the "to assign" list. A mask left without its image goes to the "to assign" list as usual.
+ * @returns {boolean} false when the file isn't in the library
+ */
+export function removeFile(library, packName, path) {
+  const same = (f) => f.pack === packName && f.path === path;
+  const waiting = library.unrecognized.find(same);
+  // A VX Ace file can feed several layers: take it out of all of them.
+  while (libraryFiles(library).some(same)) unassignFile(library, packName, path);
+  const entry = library.unrecognized.find(same);
+  if (!entry) return false;
+  library.unrecognized = library.unrecognized.filter((u) => !same(u));
+  // Remember where it was, to put it back there.
+  library.removed.push({ pack: packName, path, src: entry.src, waiting: waiting ? waiting.reason : null });
+  return true;
+}
+
+/**
+ * Puts a removed file back where it was: in the "to assign" list, or read from its name again
+ * (MV/MZ or VX Ace; a name it can't read goes to the "to assign" list).
+ */
+export function restoreFile(library, packName, path) {
+  const i = library.removed.findIndex((u) => u.pack === packName && u.path === path);
+  if (i === -1) return false;
+  const [{ src, waiting }] = library.removed.splice(i, 1);
+  if (waiting) {
+    library.unrecognized.push({ pack: packName, path, src, reason: waiting });
+    return true;
+  }
+  const parsed = parsePartPath(path);
+  const vx = !parsed && parseVxAcePath(path);
+  if (parsed) addParsed(library, packName, parsed, path, src);
+  else if (vx?.pid) addVxAce(library, packName, vx, path, src);
+  else if (vx) {
+    for (const variant of [...library.variants.values()].filter((v) => v.pack === packName && v.part === vx.part && v.basePid === v.pid)) {
+      addVxAce(library, packName, { ...vx, pid: variant.pid, bodyTypes: [variant.bodyType] }, path, src);
+    }
+  } else library.unrecognized.push({ pack: packName, path, src, reason: 'Put back' });
+  return true;
 }
 
 /** "p17" -> "p17 (alt)"; "p17 (2)" -> "p17 (2, alt)". */
