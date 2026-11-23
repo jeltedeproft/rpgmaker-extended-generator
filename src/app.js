@@ -449,7 +449,7 @@ function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source 
   return thumbCache.get(cacheKey);
 }
 
-const SHEET_NAMES = { FG: 'Face', TV: 'Walk', TVD: 'Damage', SV: 'Battler' };
+const SHEET_NAMES = { FG: 'Portrait', TV: 'Walk', TVD: 'Damage', SV: 'Battler' };
 
 /**
  * The "Per image" box: for each image (face, walk, damage, battler) the picture this part uses.
@@ -611,7 +611,7 @@ function renderPieces() {
   $('split-item').hidden = !!split;
   $('unsplit-item').hidden = !split;
   $('split-gap').value = split?.gap ?? $('split-gap').value ?? 0;
-  const SHEET_WORD = { FG: 'face', TV: 'walk', TVD: 'damage', SV: 'battler' };
+  const SHEET_WORD = { FG: 'portrait', TV: 'walk', TVD: 'damage', SV: 'battler' };
   const perSheet = split?.sheets && Object.entries(split.sheets).map(([s, n]) => `${SHEET_WORD[s] || s} ${n}`).join(', ');
   $('pieces-status').textContent = split
     ? `Split into ${split.count} pieces${perSheet ? ` (${perSheet})` : ''}, listed under ${key} on the left. Each can be moved, turned, recoloured and reordered on its own. An image with fewer pieces keeps its whole picture in piece 1.`
@@ -626,7 +626,7 @@ async function splitSelected(gap) {
   if (count < 2) {
     toast(gap > 0
       ? `${key} stays one piece with a gap of ${gap}px. Try a smaller gap.`
-      : `${key} is one piece in every image (face, walk, damage, battler): no transparent gap separates its parts.`);
+      : `${key} is one piece in every image (portrait, walk, damage, battler): no transparent gap separates its parts.`);
     return;
   }
   (state.character.split ||= {})[key] = { gap, count, sheets };
@@ -652,9 +652,9 @@ function renderOffsets() {
   for (const id of SHAPE_FIELDS.map((f) => `off-face-${f}`)) $(id).disabled = !hasFace;
   for (const id of SHAPE_FIELDS.map((f) => `off-sprite-${f}`)) $(id).disabled = !hasSprite;
   $('offsets-note').textContent = !hasSprite
-    ? 'This part only appears on the face, so it has no sprite position.'
+    ? 'This part only appears on the portrait, so it has no sprite position.'
     : !hasFace
-      ? 'This part only appears on the sprites, so it has no face position.'
+      ? 'This part only appears on the sprites, so it has no portrait position.'
       : '';
   $('off-face-x').value = o.face?.x || 0;
   $('off-face-y').value = o.face?.y || 0;
@@ -1353,7 +1353,7 @@ function updateAssignPreview() {
   $('assign-result').textContent = f.part ? `${$('assign-body').value || 'Default'}/${buildPartName(f)}` : 'Pick a part name.';
 }
 
-const SHEET_WORDS = { FG: 'face', TV: 'walk', TVD: 'damage', SV: 'battler' };
+const SHEET_WORDS = { FG: 'portrait', TV: 'walk', TVD: 'damage', SV: 'battler' };
 
 /** What a loaded file is read as, in words: "Male · Clothing pFur01 · walk mask". */
 function readingOf(file) {
@@ -2926,7 +2926,7 @@ $('sv-motion').addEventListener('change', (e) => (state.svMotion = Number(e.targ
 
 // Sheet templates: frame size and grid per sheet; blank = automatic.
 function renderTemplates() {
-  const rows = [['FG', 'Face'], ['TV', 'Walk'], ['TVD', 'Damage'], ['SV', 'Battler']];
+  const rows = [['FG', 'Portrait'], ['TV', 'Walk'], ['TVD', 'Damage'], ['SV', 'Battler']];
   const t = state.settings.templates || {};
   $('template-grid').replaceChildren(...rows.flatMap(([sheet, label]) => {
     const input = (field, placeholder, hidden = false) => {

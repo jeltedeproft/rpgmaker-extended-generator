@@ -493,7 +493,7 @@ try {
       const beforeWhole = await evaluate(faceSig);
       await evaluate(`(() => { const s = document.getElementById('image-sheet'); s.value = 'FG'; s.dispatchEvent(new Event('change')); const i = document.getElementById('image-flipx'); i.checked = true; i.dispatchEvent(new Event('input')); })()`);
       await sleep(900);
-      check('whole face can be mirrored', (await evaluate(faceSig)) !== beforeWhole && (await evaluate(`document.getElementById('image-transform-mark').textContent`)).includes('Face'));
+      check('whole face can be mirrored', (await evaluate(faceSig)) !== beforeWhole && (await evaluate(`document.getElementById('image-transform-mark').textContent`)).includes('Portrait'));
       await click('#image-reset');
       await sleep(900);
       check('whole image resets', (await evaluate(faceSig)) === beforeWhole && !(await evaluate(`document.getElementById('image-flipx').checked`)));
@@ -529,7 +529,7 @@ try {
     await sleep(1500);
     const pieces = await evaluate(`[...document.querySelectorAll('#part-list button.piece')].length`);
     check('eyes split into pieces', pieces >= 2, `${pieces} pieces`);
-    check('split status lists pieces per image', await evaluate(`/face [0-9]/.test(document.getElementById('pieces-status').textContent)`));
+    check('split status lists pieces per image', await evaluate(`/portrait [0-9]/.test(document.getElementById('pieces-status').textContent)`));
     if (pieces >= 2) {
       const beforePiece = await evaluate(faceSig);
       await evaluate(`document.querySelectorAll('#part-list button.piece')[1].click()`);
@@ -572,6 +572,7 @@ try {
       const beforeHide = await evaluate(faceSig);
       check('per image box shown', await evaluate(`!document.getElementById('sheet-parts-box').hidden && document.querySelectorAll('#sheet-parts .sheet-pick').length >= 1`));
       check('per image choices show a picture', await evaluate(`!!document.querySelector('#sheet-parts .sheet-pick canvas')`));
+      check('the portrait image is not called Face', await evaluate(`[...document.querySelectorAll('#sheet-parts .sheet-row > span, #sheet-parts label, #sheet-parts b')].every(e => e.textContent.trim() !== 'Face') && document.getElementById('sheet-parts').textContent.includes('Portrait')`), await evaluate(`document.getElementById('sheet-parts').textContent.slice(0, 80)`));
       await click('#sheet-parts .sheet-pick');
       await sleep(1500);
       check('picture picker opens', await evaluate(`document.getElementById('pick-dialog').open && document.querySelectorAll('#pick-list .variant').length >= 2`));

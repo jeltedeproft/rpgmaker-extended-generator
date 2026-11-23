@@ -4,7 +4,8 @@
 
 /** Sheet types, keyed by the filename prefix. */
 export const SHEETS = {
-  FG: { key: 'FG', label: 'Face', folder: 'Face', frame: null },
+  // The face picture (img/faces) is called "Portrait" in the editor, so it isn't mixed up with the Face part.
+  FG: { key: 'FG', label: 'Portrait', folder: 'Face', frame: null },
   TV: { key: 'TV', label: 'Walk', folder: 'TV', frame: { w: 48, h: 48, cols: 3, rows: 4 } },
   TVD: { key: 'TVD', label: 'Damage', folder: 'TVD', frame: { w: 48, h: 48, cols: 3, rows: 1 } },
   SV: { key: 'SV', label: 'Battler', folder: 'SV', frame: { w: 64, h: 64, cols: 9, rows: 6 } },

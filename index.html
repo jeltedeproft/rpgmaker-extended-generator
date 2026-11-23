@@ -92,14 +92,14 @@
       </details>
       <div id="sheet-parts-box" class="offsets" hidden>
         <h3>Per image</h3>
-        <p class="muted small">Which picture this part uses on each image. Mix them (the face of one body with the walk sprite of another), fill an image this part has no picture for, so nothing floats, or hide it on an image.</p>
+        <p class="muted small">Which picture this part uses on each image. Mix them (the portrait of one body with the walk sprite of another), fill an image this part has no picture for, so nothing floats, or hide it on an image.</p>
         <label class="lock"><input type="checkbox" id="hide-item"> Hide this part everywhere (it stays chosen; untick to show it again)</label>
         <div id="sheet-parts" class="sheet-parts"></div>
       </div>
       <div id="offsets" class="offsets" hidden>
         <h3>Position</h3>
         <div class="offset-grid">
-          <span>Face</span>
+          <span>Portrait</span>
           <label>x <input type="number" id="off-face-x" step="1" value="0"></label>
           <label>y <input type="number" id="off-face-y" step="1" value="0"></label>
           <label>turn <input type="number" id="off-face-rot" step="5" value="0" title="Degrees, clockwise"></label>
@@ -180,7 +180,7 @@
       <div class="preview-grid">
         <figure>
           <canvas id="face-canvas" width="144" height="144"></canvas>
-          <figcaption>Face</figcaption>
+          <figcaption title="The face picture (img/faces)">Portrait</figcaption>
         </figure>
         <figure>
           <canvas id="walk-canvas" width="48" height="48"></canvas>
@@ -214,7 +214,7 @@
           <option value="TV">Walk</option>
           <option value="SV">Battler</option>
           <option value="TVD">Damage</option>
-          <option value="FG">Face</option>
+          <option value="FG">Portrait</option>
         </select>
         <div class="sheet-box"><canvas id="sheet-canvas" width="0" height="0"></canvas></div>
       </details>
@@ -223,7 +223,7 @@
         <p class="muted small">Move, resize, turn, mirror or flip a whole image. Sprites change frame by frame, around each frame's middle. The export uses it too.</p>
         <div class="layer-head">
           <select id="image-sheet">
-            <option value="FG">Face</option>
+            <option value="FG">Portrait</option>
             <option value="TV">Walk</option>
             <option value="TVD">Damage</option>
             <option value="SV">Battler</option>
@@ -251,7 +251,7 @@
         <summary>Draw order</summary>
         <div class="layer-head">
           <select id="layer-sheet">
-            <option value="FG">Face</option>
+            <option value="FG">Portrait</option>
             <option value="TV">Walk</option>
             <option value="TVD">Damage</option>
             <option value="SV">Battler</option>
@@ -263,14 +263,14 @@
       </details>
       <h3>Export</h3>
       <div class="export">
-        <button data-export="FG">Face</button>
+        <button data-export="FG" title="The face picture, for img/faces">Portrait</button>
         <button data-export="TV">Walk</button>
         <button data-export="TVD">Damage</button>
         <button data-export="SV">Battler</button>
         <button data-export="all" class="primary">All</button>
       </div>
       <p class="muted small">"All" also saves a <code>_credits.txt</code> listing the packs used.</p>
-      <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>. Battlers go in <code>img/sv_actors</code> and faces in <code>img/faces</code>.</p>
+      <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>. Battlers go in <code>img/sv_actors</code> and portraits (face pictures) in <code>img/faces</code>.</p>
       <details class="settings">
         <summary>Settings</summary>
         <label><input type="checkbox" id="flip-gradient"> Flip gradient direction</label>
@@ -419,7 +419,7 @@
       </div>
       <label class="field">Sheet
         <select id="assign-sheet">
-          <option value="FG">Face (FG)</option>
+          <option value="FG">Portrait (FG, face picture)</option>
           <option value="TV">Walk (TV)</option>
           <option value="TVD">Damage (TVD)</option>
           <option value="SV">Battler (SV)</option>
@@ -446,7 +446,7 @@
       <label class="lock"><input type="checkbox" id="assign-mask"> This is a colour mask (<code>_c</code>) for the image with the same name</label>
       <p id="assign-mask-note" class="muted small"></p>
       <div id="assign-face-fields" class="assign-row">
-        <label class="field">Face cell
+        <label class="field">Portrait cell
           <select id="assign-cell"><option>c1</option><option>c2</option><option>c3</option><option>c4</option><option>c5</option><option>c6</option></select>
         </label>
         <label class="field">Colour slot
