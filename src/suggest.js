@@ -215,6 +215,31 @@ export function maskColourShare(pixels, matchSlot, ignoreRgb = 0xffffff) {
   return opaque ? maskColoured / opaque : 0;
 }
 
+/**
+ * How well a colour mask fits an image of the same size, up to 1: how much the pixels the image
+ * draws and the pixels the mask colours overlap, minus three times the share of the mask that lies
+ * where the image draws nothing (a mask never colours empty pixels of its own image). White mask
+ * pixels ("keep as drawn") count as empty, as many masks are white wherever nothing is recoloured.
+ */
+export function maskFit(image, mask) {
+  if (!image || !mask || image.width !== mask.width || image.height !== mask.height) return -Infinity;
+  const m = mask.data;
+  let both = 0;
+  let either = 0;
+  let coloured = 0;
+  let outside = 0;
+  for (let i = 0; i < m.length; i += 4) {
+    const x = image.data[i + 3] > 16;
+    const y = m[i + 3] > 16 && !(m[i] > 240 && m[i + 1] > 240 && m[i + 2] > 240);
+    if (x && y) both++;
+    if (x || y) either++;
+    if (y) coloured++;
+    if (y && !x) outside++;
+  }
+  if (!either) return 0;
+  return both / either - (coloured ? (3 * outside) / coloured : 0);
+}
+
 /** Score added for a part the file name names. */
 export const NAME_BONUS = 0.35;
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks } from '../src/parse.js';
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
@@ -297,4 +297,35 @@ test('a mask assigned before its image is not listed as a part', () => {
   // Once its image is there, the part is listed.
   assert.equal(assignFile(lib, 'A', 'img.png', 3, 'TV_Eyes_p02.png', 'Male'), null);
   assert.deepEqual(variantsForPart(lib, 'Eyes', 'Male').own.map((v) => v.pid).sort(), ['p01', 'p02']);
+});
+
+test('a mask goes with the same-named image it fits (TV_Clothing2_pXX.png and .png.png)', () => {
+  const lib = createLibrary();
+  addPack(lib, 'MV', [
+    { path: 'TV/Male/TV_Clothing2_pXX.png', src: 'a' },
+    { path: 'TV/Male/TV_Clothing2_pXX.png.png', src: 'b' },
+    { path: 'TV/Male/TV_Clothing2_pXX_c.png', src: 'c' },
+  ]);
+  const pairs = maskPairs(lib, 'MV');
+  assert.equal(pairs.length, 1);
+  const picture = (x0, x1) => {
+    const img = { width: 8, height: 1, data: new Uint8ClampedArray(32) };
+    for (let x = x0; x < x1; x++) img.data[x * 4 + 3] = 255;
+    return img;
+  };
+  pairs[0].owner.base.pixels = picture(0, 8); // the wide one
+  pairs[0].other.base.pixels = picture(2, 6); // the narrow one
+  // The mask covers the narrow one; like RPG Maker's, it is white (keep) everywhere else.
+  const mask = picture(0, 8);
+  for (let x = 0; x < 8; x++) mask.data.set(x >= 2 && x < 6 ? [0xae, 0x86, 0x82] : [255, 255, 255], x * 4);
+  pairs[0].owner.mask.pixels = mask;
+  const moved = fitMasks(pairs);
+  assert.equal(moved.length, 1);
+  assert.equal(pairs[0].other.mask.path, 'TV/Male/TV_Clothing2_pXX_c.png');
+  assert.equal(pairs[0].owner.mask, null);
+  const alt = lib.variants.get('MV/Male/Clothing/pXX (alt)');
+  assert.ok(alt.layers[0].mask);
+  // A mask that fits its own image stays.
+  const again = { owner: { base: { pixels: picture(0, 8) }, mask: { pixels: picture(0, 8), path: 'm' } }, other: { base: { pixels: picture(2, 6) }, mask: null } };
+  assert.equal(fitMasks([again]).length, 0);
 });

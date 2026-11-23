@@ -3,7 +3,7 @@
 
 import { SHEETS, SLOT_BY_M, PART_ORDER } from './format.js';
 import { parseVxAcePath } from './vxace.js';
-import { partsInWords, partNameWords } from './suggest.js';
+import { partsInWords, partNameWords, maskFit } from './suggest.js';
 
 const PART_FILE_RE = /^(FG|TVD|TV|SV|icon)_([A-Za-z]+?)(\d*)_p([A-Za-z0-9-]+)((?:_[A-Za-z]+\d*)*)\.png$/i;
 /** "TV_Body_p01 (2).png": the copy suffix Windows adds, and RPG Maker's DLC readme tells you to rename to. */
@@ -504,6 +504,48 @@ function addParsed(library, name, parsed, path, src) {
       layer.slotId = parsed.slotId;
     }
   }
+}
+
+/**
+ * Masks that may belong to another image: a layer with a mask, and an alternate's layer for the
+ * same picture without one. RPG Maker MV ships "TV_Clothing2_pXX.png" and "TV_Clothing2_pXX.png.png"
+ * next to one "TV_Clothing2_pXX_c.png", and the mask is for the second one.
+ * @returns {{owner:object, other:object}[]} layers: owner has the mask, other has none
+ */
+export function maskPairs(library, packName) {
+  const pairs = [];
+  for (const alt of library.variants.values()) {
+    if (alt.pack !== packName || !alt.alt) continue;
+    const plain = [...library.variants.values()].find((v) => v.pack === packName && v.bodyType === alt.bodyType
+      && v.part === alt.part && v.pid === alt.basePid);
+    if (!plain) continue;
+    for (const other of alt.layers) {
+      if (other.mask || !other.base || other.slotId) continue;
+      const owner = plain.layers.find((l) => l.sheet === other.sheet && l.key === other.key && l.mask && l.base);
+      if (owner) pairs.push({ owner, other });
+    }
+  }
+  return pairs;
+}
+
+/**
+ * Gives a mask to the image whose shape it covers best (images and masks decoded). A mask that
+ * fits the other image clearly better moves there.
+ * @returns {string[]} what moved, in words
+ */
+export function fitMasks(pairs) {
+  const moved = [];
+  for (const { owner, other } of pairs) {
+    const mask = owner.mask;
+    if (!mask?.pixels || !owner.base.pixels || !other.base.pixels) continue;
+    const own = maskFit(owner.base.pixels, mask.pixels);
+    const fits = maskFit(other.base.pixels, mask.pixels);
+    if (fits <= own + 0.1) continue;
+    other.mask = mask;
+    owner.mask = null;
+    moved.push(`${mask.path}: fits ${other.base.path} better than ${owner.base.path}, so it is its colour mask`);
+  }
+  return moved;
 }
 
 /** Masks without a base image can't be drawn: drop them (with a warning). */

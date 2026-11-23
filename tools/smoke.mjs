@@ -651,6 +651,15 @@ try {
     await sleep(600);
     const bodies = await evaluate(`[...document.querySelectorAll('#variants .variant span')].map(s => s.textContent).join(',')`);
     check('hidden copies leave the part list', !bodies.includes('(2)') && !bodies.includes('(3)') && bodies.includes('p01'), bodies);
+    // TV_Clothing2_pXX_c.png is the mask of TV_Clothing2_pXX.png.png (the alternate), not of TV_Clothing2_pXX.png.
+    await evaluate(`document.getElementById('open-files').click()`);
+    await sleep(500);
+    await evaluate(`document.querySelector('#files-tabs [data-tab="all"]').click()`);
+    await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = 'TV_Clothing2_pXX_c'; i.dispatchEvent(new Event('input')); })()`);
+    await sleep(800);
+    const maskReading = await evaluate(`document.querySelector('#files-list .file-reading')?.textContent || ''`);
+    check('a mask goes with the same-named image it fits', maskReading.includes('pXX (alt)') && maskReading.includes('mask'), maskReading);
+    await evaluate(`document.getElementById('files-dialog').close()`);
     await evaluate(`localStorage.removeItem('xgen-settings')`);
   }
 

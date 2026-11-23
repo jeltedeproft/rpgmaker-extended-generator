@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
-import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
+import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -220,6 +220,13 @@ async function importEntriesNow(entries, packName) {
       renderProblems();
     }
     return addedGradientFiles + toAssign; // colour sheets or files to assign still count
+  }
+  // A mask goes with the image it fits, when two images have the same name.
+  const pairs = maskPairs(state.library, pack.name);
+  if (pairs.length) {
+    busyStep(`Opening "${packName}": matching colour masks`);
+    await ensureLayers(pairs.flatMap((p) => [p.owner, p.other]));
+    state.library.warnings.push(...fitMasks(pairs));
   }
   busyStep(`Opening "${packName}": drawing the character`);
   ensureCharacter();
