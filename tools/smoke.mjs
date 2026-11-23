@@ -709,6 +709,17 @@ try {
       await evaluate(`(() => { const c = document.getElementById('alike-hide-decided'); c.checked = false; c.dispatchEvent(new Event('change')); })()`);
       await sleep(500);
     }
+    // Hide all listed copies; then show again the ones that were shown before.
+    {
+      const before = await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].filter(c => !c.classList.contains('hidden-part')).map(c => c.querySelector('b').textContent)`);
+      await evaluate(`document.getElementById('alike-hide-all').click()`);
+      await sleep(800);
+      check('all listed copies can be hidden at once', before.length > 0 && (await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].every(c => c.classList.contains('hidden-part'))`)), `${before.length} shown before`);
+      for (const name of before) {
+        await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].find(c => c.querySelector('b').textContent === ${JSON.stringify(name)})?.querySelector('button').click()`);
+        await sleep(300);
+      }
+    }
     check('hiding is remembered', await evaluate(`JSON.parse(localStorage.getItem('xgen-settings')).lookalikes[[...Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).lookalikes)].find(k => k.endsWith('/Male/Body/p01 (2)'))] === 'hide'`));
     await evaluate(`document.querySelector('#alike-dialog button[value="close"]').click()`);
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);

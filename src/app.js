@@ -2459,6 +2459,23 @@ function openAlikesDialog() {
 }
 $('open-alikes').addEventListener('click', openAlikesDialog);
 $('alike-all').addEventListener('change', renderAlikes);
+// Hide all listed copies: every copy in the list (as filtered now) is hidden, remembered per part.
+$('alike-hide-all').addEventListener('click', () => {
+  const all = $('alike-all').checked;
+  const listed = state.lookalikes.filter((f) => all || f.result.identical || f.result.ratio <= LOOKALIKE_RATIO);
+  let hidden = 0;
+  for (const f of listed) {
+    if (f.variant.hidden) continue;
+    f.variant.hidden = true;
+    (state.settings.lookalikes ||= {})[f.variant.id] = 'hide';
+    decidedNow.add(f.variant.id);
+    hidden++;
+  }
+  saveSettings();
+  renderAlikes();
+  renderEditor();
+  toast(hidden ? `Hid ${hidden} cop${hidden === 1 ? 'y' : 'ies'}. "Show it again" brings one back.` : 'Every listed copy is hidden already.');
+});
 $('alike-hide-decided').addEventListener('change', () => {
   state.settings.alikeHideDecided = $('alike-hide-decided').checked;
   saveSettings();
