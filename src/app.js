@@ -3120,6 +3120,33 @@ $('rules-reset').addEventListener('click', () => {
   openRulesDialog();
 });
 
+// Larger preview: pointing at a part tile, a picture in the per-image picker or in Files… shows
+// it big, next to it, so small and dark parts can be seen.
+const bigPreview = el('div', { className: 'big-preview', hidden: true });
+document.body.append(bigPreview);
+const PREVIEWED = '.variant canvas, .sheet-pick canvas, .file-card canvas';
+document.addEventListener('mouseover', (e) => {
+  const small = e.target.closest?.(PREVIEWED);
+  if (!small || !small.width || !small.height) return;
+  const scale = Math.max(1, Math.min(8, Math.floor(240 / Math.max(small.width, small.height))));
+  const big = el('canvas', { width: small.width, height: small.height });
+  big.getContext('2d').drawImage(small, 0, 0);
+  big.style.width = `${small.width * scale}px`;
+  big.style.height = `${small.height * scale}px`;
+  bigPreview.replaceChildren(big);
+  bigPreview.hidden = false;
+  const r = small.getBoundingClientRect();
+  const w = small.width * scale + 18;
+  const h = small.height * scale + 18;
+  const left = r.right + 12 + w <= innerWidth ? r.right + 12 : Math.max(4, r.left - 12 - w);
+  bigPreview.style.left = `${left}px`;
+  bigPreview.style.top = `${Math.max(4, Math.min(innerHeight - h - 4, r.top + r.height / 2 - h / 2))}px`;
+});
+document.addEventListener('mouseout', (e) => {
+  if (e.target.closest?.(PREVIEWED) && !e.relatedTarget?.closest?.(PREVIEWED)) bigPreview.hidden = true;
+});
+document.addEventListener('click', () => { bigPreview.hidden = true; }, true);
+
 // Clear all: every part to None except Body and Face (and locked parts); one click undoes it.
 let beforeClear = null;
 let clearTimer;

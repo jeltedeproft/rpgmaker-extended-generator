@@ -751,6 +751,15 @@ try {
       await sleep(1500);
       check('tiles show the variation icon', await evaluate(`(() => { const t = document.querySelector('#variants .variant.has-icon canvas'); return !!t && t.width === 64 && t.height === 64; })()`));
     }
+    // Pointing at a tile shows a large preview of it.
+    {
+      await evaluate(`document.querySelector('#variants .variant canvas').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))`);
+      await sleep(200);
+      check('pointing at a tile shows a large preview', await evaluate(`(() => { const p = document.querySelector('.big-preview'); const c = p?.querySelector('canvas'); return !!c && !p.hidden && parseInt(c.style.width) >= 192; })()`));
+      await evaluate(`document.querySelector('#variants .variant canvas').dispatchEvent(new MouseEvent('mouseout', { bubbles: true }))`);
+      await sleep(200);
+      check('the large preview goes away', await evaluate(`document.querySelector('.big-preview').hidden`));
+    }
     // Sections per image: the damage section lists the parts with a damage picture, drawn as it.
     {
       await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Clothing')).click()`);

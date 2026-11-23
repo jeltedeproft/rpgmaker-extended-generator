@@ -110,6 +110,15 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .variant > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .variant.selected { border-color: var(--accent); color: var(--text); }
 .variant canvas, .variant .placeholder { width: 64px; height: 64px; image-rendering: pixelated; }
+/* Dark and small pictures stand out: a thin light outline around what is drawn. */
+.variant canvas, .sheet-pick canvas, .file-card canvas { filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55)); }
+.variant:hover, .variant.selected { background: var(--checker-b); }
+.big-preview {
+  position: fixed; z-index: 1000; pointer-events: none; padding: 8px; border-radius: 8px;
+  border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px;
+}
+.big-preview canvas { display: block; image-rendering: pixelated; }
 .variant .placeholder { display: grid; place-items: center; font-size: 18px; }
 
 .other-bodies { margin-top: 10px; }
