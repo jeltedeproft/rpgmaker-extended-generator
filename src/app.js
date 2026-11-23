@@ -100,7 +100,57 @@ function toast(message, ms = 4000, action = null) {
 
 // ---------- importing ----------
 
-async function importEntries(entries, packName) {
+// ---------- busy bar: shows that something is still loading, and when it is done ----------
+
+const busy = { jobs: 0, started: 0, timer: 0, title: document.title };
+/** Lets the page draw (the bar) before more work; setTimeout also runs in background tabs. */
+const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** Shows what is happening; with a total, how far along it is. */
+function busyStep(label, done = 0, total = 0) {
+  if (!busy.jobs) return;
+  $('busy').hidden = false;
+  $('busy').classList.remove('done');
+  $('busy-label').textContent = total ? `${label} (${done} of ${total})` : `${label}…`;
+  $('busy-fill').classList.toggle('indeterminate', !total);
+  $('busy-fill').style.width = total ? `${Math.round((100 * done) / total)}%` : '';
+}
+
+/** Runs a job with the busy bar shown. Jobs may overlap; the bar stays until the last one ends. */
+async function withBusy(label, job) {
+  if (!busy.jobs++) busy.started = performance.now();
+  clearTimeout(busy.timer);
+  busyStep(label);
+  await nextFrame();
+  try {
+    return await job();
+  } finally {
+    if (!--busy.jobs) busyDone();
+  }
+}
+
+/** The last job ended. After a slow one: "✓ Done" in the bar, and in the tab title when away. */
+function busyDone() {
+  if (performance.now() - busy.started < 1200) {
+    $('busy').hidden = true;
+    return;
+  }
+  $('busy').classList.add('done');
+  $('busy-fill').classList.remove('indeterminate');
+  $('busy-fill').style.width = '';
+  $('busy-label').textContent = '✓ Done: everything is loaded';
+  busy.timer = setTimeout(() => ($('busy').hidden = true), 4000);
+  if (document.hidden) {
+    document.title = `✓ Done · ${busy.title}`;
+    document.addEventListener('visibilitychange', () => (document.title = busy.title), { once: true });
+  }
+}
+
+function importEntries(entries, packName) {
+  return withBusy(`Opening "${packName}"`, () => importEntriesNow(entries, packName));
+}
+
+async function importEntriesNow(entries, packName) {
   state.lastPack = null;
   const pngs = entries.filter((e) => /\.png$/i.test(e.path));
   if (!pngs.length) {
@@ -117,13 +167,17 @@ async function importEntries(entries, packName) {
   const partsBefore = state.library.variants.size;
   const gradientFilesBefore = state.library.gradientFiles.length;
   const texts = entries.filter((e) => TEXT_FILE_RE.test(e.path));
+  busyStep(`Opening "${packName}": reading ${pngs.length} file names`);
+  await nextFrame();
   const pack = addPack(state.library, packName, [...pngs, ...texts]);
   state.lastPack = pack;
   pack.keys = keys;
   applyRemovedParts(pack.name);
   // Character presets shipped with the pack (RPG Maker MZ generator .json files, or ours).
   pack.presets = [];
-  for (const e of entries.filter((x) => /\.json$/i.test(x.path)).slice(0, 200)) {
+  const jsons = entries.filter((x) => /\.json$/i.test(x.path)).slice(0, 200);
+  for (const [i, e] of jsons.entries()) {
+    busyStep(`Opening "${packName}": reading character presets`, i, jsons.length);
     try {
       const text = await readText(e.src);
       const data = JSON.parse(text);
@@ -145,6 +199,7 @@ async function importEntries(entries, packName) {
   const addedParts = state.library.variants.size - partsBefore;
   const addedGradientFiles = state.library.gradientFiles.length - gradientFilesBefore;
 
+  busyStep(`Opening "${packName}": loading colours`);
   const newGradientFiles = { gradientFiles: state.library.gradientFiles.slice(state.loadedGradientFiles) };
   state.loadedGradientFiles = state.library.gradientFiles.length;
   const { gradients, errors } = await loadGradients(newGradientFiles);
@@ -166,6 +221,7 @@ async function importEntries(entries, packName) {
     }
     return addedGradientFiles + toAssign; // colour sheets or files to assign still count
   }
+  busyStep(`Opening "${packName}": drawing the character`);
   ensureCharacter();
   checkLookalikes(pack.name).catch((e) => console.error(e));
   toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${allGradients().length} colours.${assignNote}`, toAssign ? 8000 : 4000);
@@ -1786,10 +1842,15 @@ function askOpenAgain(packName, twin) {
 state.lookalikes = []; // [{variant, other, result}], see lookalike.js
 
 /** Compares a pack's copies with their originals; hides exact duplicates unless you said not to. */
-async function checkLookalikes(packName) {
+function checkLookalikes(packName) {
+  if (!lookalikePairs(state.library, packName).length) return Promise.resolve();
+  return withBusy('Looking for look-alikes', () => checkLookalikesNow(packName));
+}
+
+async function checkLookalikesNow(packName) {
   const pairs = lookalikePairs(state.library, packName);
   if (!pairs.length) return;
-  await ensureLayers(pairs.flatMap(pairLayers));
+  await ensureLayers(pairs.flatMap(pairLayers), (done, total) => busyStep(`Looking for look-alikes in "${packName}"`, done, total));
   const found = findLookalikes(state.library, packName);
   const choices = state.settings.lookalikes || {};
   let autoHidden = 0;
@@ -2249,7 +2310,11 @@ $('adjust-dialog').addEventListener('close', () => {
 // ---------- folders ----------
 
 /** Opens a folder and, when it gave something usable, remembers it for next time. */
-async function importHandle(handle) {
+function importHandle(handle) {
+  return withBusy(`Reading folder "${handle.name}"`, () => importHandleNow(handle));
+}
+
+async function importHandleNow(handle) {
   const added = await importEntries(await entriesFromHandle(handle), handle.name);
   const pack = state.lastPack;
   if (added && canRememberFolders) {

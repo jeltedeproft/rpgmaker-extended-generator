@@ -111,12 +111,14 @@ export function ensureImage(ref, isMask = false) {
 }
 
 /** Decodes the given layers (image and mask). Returns error messages instead of throwing. */
-export async function ensureLayers(layers) {
+export async function ensureLayers(layers, onProgress = null) {
   const errors = [];
-  await Promise.all(layers.flatMap((layer) => [
+  let done = 0;
+  const step = () => onProgress?.(++done, layers.length);
+  await Promise.all(layers.map((layer) => Promise.all([
     ensureImage(layer.base).catch((e) => errors.push(`${layer.base.path}: ${e.message}`)),
     layer.mask && ensureImage(layer.mask, true).catch((e) => errors.push(`${layer.mask.path}: ${e.message}`)),
-  ]));
+  ]).then(step)));
   return errors;
 }
 

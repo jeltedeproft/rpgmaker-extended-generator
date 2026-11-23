@@ -331,7 +331,11 @@ try {
   // Optional: a real pack served by the dev server (PACK=test-assets/<name>, needs a manifest.json).
   if (process.env.PACK) {
     await send('Page.navigate', { url: `${URL_UNDER_TEST}&pack=${encodeURIComponent(process.env.PACK)}` });
-    await sleep(4000);
+    await sleep(200);
+    check('a loading bar shows while a pack opens', await evaluate(`document.getElementById('busy-label').textContent.startsWith('Opening')`), await evaluate(`document.getElementById('busy-label').textContent`));
+    for (let i = 0; i < 40 && !(await evaluate(`document.getElementById('busy').classList.contains('done') || document.getElementById('busy').hidden`)); i++) await sleep(250);
+    check('the loading bar says when it is done', await evaluate(`document.getElementById('busy').hidden || document.getElementById('busy-label').textContent.startsWith('✓')`));
+    await sleep(1500);
     check('real pack imported', await evaluate(`document.querySelectorAll('#packs div').length >= 3`));
     // Assign an unrecognised file by hand, as a brand-new part.
     await evaluate(`document.getElementById('problems').open = true`);
@@ -608,7 +612,12 @@ try {
   // VX Ace generator folder: painted colours, 128px faces, 32px walk frames.
   if (process.env.VX_PACK) {
     await send('Page.navigate', { url: `${URL_UNDER_TEST.replace(/\?.*$/, '')}?pack=${encodeURIComponent(process.env.VX_PACK)}` });
-    await sleep(6000);
+    await sleep(600);
+    // Locally a pack opens too fast to see the bar: show it by hand for the picture.
+    await evaluate(`(() => { const b = document.getElementById('busy'); b.hidden = false; b.classList.remove('done'); document.getElementById('busy-label').textContent = 'Looking for look-alikes (120 of 300)'; document.getElementById('busy-fill').className = 'busy-fill'; document.getElementById('busy-fill').style.width = '40%'; })()`);
+    await shot('6a-busy.png');
+    await evaluate(`document.getElementById('busy').hidden = true`);
+    await sleep(5400);
     check('VX Ace folder loads as parts', await evaluate(`[...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('FrontHair')) && document.getElementById('face-canvas').width === 128`));
     check('VX Ace walk frames are 32px', await evaluate(`document.getElementById('walk-canvas').width === 32`));
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
