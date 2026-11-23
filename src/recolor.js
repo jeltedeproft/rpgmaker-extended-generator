@@ -1,6 +1,7 @@
 // Pixel-level recolouring and blending. Images are {width, height, data: Uint8ClampedArray RGBA}.
 
 import { SLOTS, SLOT_BY_RGB, MASK_IGNORE_RGB, MASK_TOLERANCE } from './format.js';
+import { adjustRgb } from './gradients.js';
 
 export function createImage(width, height) {
   return { width, height, data: new Uint8ClampedArray(width * height * 4) };
@@ -107,11 +108,12 @@ export function scanMask(mask, base = null) {
  * Recolours one layer.
  * - With `mask`: each pixel uses the slot its mask colour marks (TV/TVD/SV `_c` files).
  * - With `slotId`: the whole layer uses that slot (FG `_mNNN` files).
- * Pixels without an assigned gradient keep their original colour.
+ * Pixels without an assigned gradient keep their original colour. A slot can also shift its own
+ * colours instead ({shift: {hue, saturation, brightness}}, see createSourceAdjust).
  * @param {object} base image
  * @param {object|null} mask image of the same size
  * @param {string|null} slotId
- * @param {(slotId:string)=>Uint8ClampedArray|null} gradientFor
+ * @param {(slotId:string)=>Uint8ClampedArray|{shift:object}|null} gradientFor
  * @param {{flipGradient:boolean}} settings
  */
 export function recolorLayer(base, mask, slotId, gradientFor, settings) {
@@ -140,6 +142,10 @@ export function recolorLayer(base, mask, slotId, gradientFor, settings) {
       gradient = perSlot.get(id);
     }
     if (!gradient) continue;
+    if (gradient.shift) {
+      dst.set(adjustRgb(src[i], src[i + 1], src[i + 2], gradient.shift), i);
+      continue;
+    }
     // Gradients run highlight (column 0) -> shadow (column 255).
     let index = 255 - luminance(src[i], src[i + 1], src[i + 2]);
     if (flip) index = 255 - index;

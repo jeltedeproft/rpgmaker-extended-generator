@@ -153,19 +153,28 @@ export function gradientsToImage(gradients) {
  * (100 = unchanged, 0 = grey / black, 200 = double). Colours RPG Maker's sheets don't have, e.g.
  * a slightly greener version of a hair colour. Alpha is kept.
  */
-export function adjustGradient(colors, { hue = 0, saturation = 100, brightness = 100 } = {}) {
+export function adjustGradient(colors, adjust = {}) {
   const out = new Uint8ClampedArray(colors);
-  const s = saturation / 100;
-  const v = brightness / 100;
-  for (let i = 0; i < out.length; i += 4) {
-    let [h, sat, val] = rgbToHsv(colors[i], colors[i + 1], colors[i + 2]);
-    h = (((h + hue) % 360) + 360) % 360;
-    const [r, g, b] = hsvToRgb(h, Math.min(1, sat * s), Math.min(1, val * v));
-    out[i] = r;
-    out[i + 1] = g;
-    out[i + 2] = b;
-  }
+  for (let i = 0; i < out.length; i += 4) out.set(adjustRgb(colors[i], colors[i + 1], colors[i + 2], adjust), i);
   return out;
+}
+
+/** One colour shifted in hue (degrees), saturation and brightness (percent, 100 = unchanged). */
+export function adjustRgb(red, green, blue, { hue = 0, saturation = 100, brightness = 100 } = {}) {
+  let [h, sat, val] = rgbToHsv(red, green, blue);
+  h = (((h + hue) % 360) + 360) % 360;
+  return hsvToRgb(h, Math.min(1, (sat * saturation) / 100), Math.min(1, (val * brightness) / 100));
+}
+
+/** Colours shown for "the part's own colours" (a swatch of an adjusted source colour). */
+export const SOURCE_SAMPLE = gradientFromStops([{ pos: 0, color: '#fff4e8' }, { pos: 0.45, color: '#c8864a' }, { pos: 1, color: '#1c1008' }]);
+
+/**
+ * A "Your colours" entry that shifts the part's own colours (no gradient): hue, saturation and
+ * brightness on every pixel of the slot. `colors` is only its swatch.
+ */
+export function createSourceAdjust(id, label, adjust) {
+  return { id, label, category: 'custom', source: 'custom', from: 'source', adjust, shiftSource: true, colors: adjustGradient(SOURCE_SAMPLE, adjust) };
 }
 
 function rgbToHsv(r, g, b) {
@@ -200,6 +209,7 @@ export function createAdjustedGradient(id, label, from, adjust, colors) {
 /** A custom gradient as saved in character files and sets. */
 export function customGradientToJson(g) {
   if (g.stops) return { id: g.id, label: g.label, stops: g.stops };
+  if (g.shiftSource) return { id: g.id, label: g.label, from: 'source', adjust: g.adjust };
   let hex = '';
   for (let i = 0; i < g.colors.length; i += 4) {
     hex += ((g.colors[i] << 16) | (g.colors[i + 1] << 8) | g.colors[i + 2]).toString(16).padStart(6, '0');
@@ -210,6 +220,7 @@ export function customGradientToJson(g) {
 /** Reads a saved custom gradient (made from stops, or adjusted from another one). */
 export function customGradientFromJson(j) {
   if (j.stops) return createCustomGradient(j.id, j.label, j.stops);
+  if (j.from === 'source') return createSourceAdjust(j.id, j.label, j.adjust);
   const colors = new Uint8ClampedArray(GRADIENT_WIDTH * 4);
   for (let i = 0; i < GRADIENT_WIDTH; i++) {
     const rgb = parseInt(String(j.colors || '').slice(i * 6, i * 6 + 6) || '0', 16);

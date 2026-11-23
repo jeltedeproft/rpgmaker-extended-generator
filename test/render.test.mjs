@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { recolorLayer, blendOver, createImage, matchSlot, scanMask, rotateFrames } from '../src/recolor.js';
-import { gradientFromStops, splitGradientImage, gradientsToImage, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from '../src/gradients.js';
+import { gradientFromStops, splitGradientImage, gradientsToImage, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust } from '../src/gradients.js';
 import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces, piecesPerSheet, sheetLayout, placeOnSheet } from '../src/compose.js';
 import { islandLabels } from '../src/islands.js';
 import { solidOf, insideOutline, applyClip } from '../src/clip.js';
@@ -563,4 +563,20 @@ test('per image: another variant stands in, or the part is hidden there', async 
   character.itemColors.Body = { skin: null };
   assert.equal(itemColor(character, 'Body', 'skin'), null);
   assert.equal(itemColor(character, 'Face', 'skin'), 'g1');
+});
+
+test('the source colours can be shifted in hue, saturation and brightness without a gradient', () => {
+  const base = createImage(2, 1);
+  base.data.set([200, 40, 40, 255, 90, 90, 90, 255]); // red, grey
+  const mask = createImage(2, 1);
+  mask.data.set([0xae, 0x86, 0x82, 255, 0xae, 0x86, 0x82, 255]); // both "Clothing main"
+  const shift = createSourceAdjust('custom/x', 'Shifted', { hue: 120, saturation: 100, brightness: 100 });
+  const out = recolorLayer(base, mask, null, (id) => (id === 'clothing' ? { shift: shift.adjust } : null), { flipGradient: false });
+  assert.deepEqual([...out.data.slice(0, 4)], [40, 200, 40, 255]); // red turned green, shading kept
+  assert.deepEqual([...out.data.slice(4, 8)], [90, 90, 90, 255]); // grey has no hue to turn
+  const darker = recolorLayer(base, mask, null, () => ({ shift: { brightness: 50 } }), { flipGradient: false });
+  assert.deepEqual([...darker.data.slice(0, 3)], [100, 20, 20]);
+  // Saved and read back with sets and character files.
+  const back = customGradientFromJson(JSON.parse(JSON.stringify(customGradientToJson(shift))));
+  assert.ok(back.shiftSource && back.adjust.hue === 120 && back.colors.length === 1024);
 });

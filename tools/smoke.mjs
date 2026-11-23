@@ -596,7 +596,7 @@ try {
     // Adjust: shift a chosen colour's hue, previewed live, kept under "Your colours".
     {
       const beforeAdjust = await evaluate(faceSig);
-      await evaluate(`[...document.querySelectorAll('.slot .swatch.add')].find(b => b.textContent.startsWith('Adjust') && !b.disabled).click()`);
+      await evaluate(`[...document.querySelectorAll('.slot .swatch.add')].find(b => b.textContent.startsWith('Hue') && !b.disabled).click()`);
       await sleep(500);
       check('adjust dialog opens', await evaluate(`document.getElementById('adjust-dialog').open`));
       await evaluate(`(() => { const i = document.getElementById('adjust-hue'); i.value = 120; i.dispatchEvent(new Event('input')); })()`);
@@ -651,6 +651,24 @@ try {
     await sleep(600);
     const bodies = await evaluate(`[...document.querySelectorAll('#variants .variant span')].map(s => s.textContent).join(',')`);
     check('hidden copies leave the part list', !bodies.includes('(2)') && !bodies.includes('(3)') && bodies.includes('p01'), bodies);
+    // Hue, saturation and brightness work on the source colours too (no gradient picked).
+    {
+      const sheetSig = `(() => { const c = document.getElementById('sheet-canvas'); return [...c.getContext('2d').getImageData(0, 0, c.width, c.height).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0); })()`;
+      await evaluate(`(() => { const s = document.getElementById('sheet-view-select'); s.value = 'TV'; s.dispatchEvent(new Event('change')); document.getElementById('sheet-view').open = true; })()`);
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
+      await sleep(800);
+      const beforeShift = await evaluate(sheetSig);
+      check('hue, saturation and brightness are offered without a gradient', await evaluate(`[...([...document.querySelectorAll('.slot')].find(x => x.querySelector('.swatch.source.selected'))?.querySelectorAll('.swatch.add') || [])].at(-1)?.textContent.startsWith('Hue')`));
+      await evaluate(`[...[...document.querySelectorAll('.slot')].find(x => x.querySelector('.swatch.source.selected')).querySelectorAll('.swatch.add')].at(-1).click()`);
+      await sleep(500);
+      await evaluate(`(() => { const i = document.getElementById('adjust-brightness'); i.value = 40; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(1200);
+      check('shifting the source colours previews live', (await evaluate(sheetSig)) !== beforeShift);
+      await evaluate(`document.querySelector('#adjust-dialog button[value="ok"]').click()`);
+      await sleep(1000);
+      check('shifted source colours are kept', (await evaluate(sheetSig)) !== beforeShift && await evaluate(`[...document.querySelectorAll('.slot .swatch.selected')].some(b => b.title.startsWith('Source colours (adjusted)'))`));
+      await shot('5c-source-hsb.png');
+    }
     // Every tile shows something: an empty first picture is skipped for one that shows the part.
     {
       await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Clothing')).click()`);

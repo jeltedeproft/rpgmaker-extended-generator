@@ -427,7 +427,10 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
   for (const { layer, item, piece } of layers) {
     const gradientFor = (slotId) => {
       const id = itemColor(character, item, slotId);
-      return id ? gradientsById.get(id)?.colors ?? null : null;
+      const g = id ? gradientsById.get(id) : null;
+      // An adjusted "source" colour shifts the pixels' own colours.
+      if (g?.shiftSource) return (g.shiftRef ||= { shift: g.adjust });
+      return g?.colors ?? null;
     };
     // VX Ace parts are painted, not recoloured: the colour picks a cell of the file.
     const painted = !!layer.base.cells;

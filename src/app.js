@@ -2,7 +2,7 @@
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
 import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks } from './parse.js';
-import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
+import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
   layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
@@ -1099,9 +1099,9 @@ function renderSlots() {
     const add = el('button', { className: 'swatch add', textContent: '+ New', title: 'Make your own gradient' });
     add.addEventListener('click', () => openGradientDialog(slot));
     const current = gradients.find((g) => g.id === slotColour(slot.id));
-    const adjust = el('button', { className: 'swatch add', textContent: 'Adjust…', disabled: !current,
-      title: current ? `Shift the hue, saturation or brightness of "${current.label}"` : 'Pick a colour first' });
-    adjust.addEventListener('click', () => openAdjustDialog(slot, current));
+    const adjust = el('button', { className: 'swatch add', textContent: 'Hue · saturation · brightness…',
+      title: current ? `Shift the hue, saturation or brightness of "${current.label}"` : 'Shift the hue, saturation or brightness of the colours this part is drawn in' });
+    adjust.addEventListener('click', () => openAdjustDialog(slot, current || null));
     wrap.append(el('div', { className: 'swatches', style: 'margin-top:5px' }, [add, adjust]));
     return wrap;
   }));
@@ -2477,11 +2477,16 @@ function adjustValues() {
 }
 
 let adjustFrame = 0;
+/** Adjusting the source colours: the part's own colours, no gradient. */
+const SOURCE_BASE = { id: 'source', label: 'Source colours', colors: SOURCE_SAMPLE };
+
 function updateAdjust() {
   if (!adjusting) return;
-  const colors = adjustGradient(adjusting.base.colors, adjustValues());
-  drawGradientRow('adjust-after', colors);
-  const temp = createAdjustedGradient(ADJUSTING_ID, $('adjust-name').value, adjusting.base.id, adjustValues(), colors);
+  const fromSource = adjusting.base === SOURCE_BASE;
+  const temp = fromSource
+    ? createSourceAdjust(ADJUSTING_ID, $('adjust-name').value, adjustValues())
+    : createAdjustedGradient(ADJUSTING_ID, $('adjust-name').value, adjusting.base.id, adjustValues(), adjustGradient(adjusting.base.colors, adjustValues()));
+  drawGradientRow('adjust-after', temp.colors);
   state.customGradients = [...state.customGradients.filter((g) => g.id !== ADJUSTING_ID), temp];
   setSlotColour(adjusting.slot.id, ADJUSTING_ID);
   cancelAnimationFrame(adjustFrame);
@@ -2493,11 +2498,14 @@ function setAdjustValues(values) {
 }
 
 function openAdjustDialog(slot, current) {
-  if (!current) return;
-  // Adjusting an adjusted colour starts again from its original, with the same settings.
-  const origin = current.from && allGradients().find((g) => g.id === current.from);
-  const base = origin || current;
-  adjusting = { slot, base, previous: current.id };
+  // Adjusting an adjusted colour starts again from its original, with the same settings. No colour
+  // chosen (source colours): the part's own colours are shifted.
+  const origin = current?.shiftSource ? SOURCE_BASE : current?.from && allGradients().find((g) => g.id === current.from);
+  const base = origin || current || SOURCE_BASE;
+  adjusting = { slot, base, previous: current?.id ?? null };
+  $('adjust-note').textContent = base === SOURCE_BASE
+    ? 'Shift the colours this part is drawn in (no gradient needed). The character updates as you slide.'
+    : "Shift the chosen gradient to a colour the colour sheets don't have. The character updates as you slide.";
   $('adjust-title').textContent = `Adjust ${slot.label.toLowerCase()} colour`;
   $('adjust-name').value = `${base.label} (adjusted)`;
   setAdjustValues(origin ? { hue: 0, saturation: 100, brightness: 100, ...current.adjust } : { hue: 0, saturation: 100, brightness: 100 });
@@ -2523,10 +2531,12 @@ $('adjust-dialog').addEventListener('close', () => {
   const unchanged = ADJUST_FIELDS.every((f) => adjustValues()[f] === { hue: 0, saturation: 100, brightness: 100 }[f]);
   if ($('adjust-dialog').returnValue === 'ok' && temp && !unchanged) {
     const id = `custom/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-    state.customGradients.push(createAdjustedGradient(id, $('adjust-name').value || 'Adjusted', temp.from, temp.adjust, temp.colors));
+    const name = $('adjust-name').value || 'Adjusted';
+    state.customGradients.push(temp.shiftSource ? createSourceAdjust(id, name, temp.adjust) : createAdjustedGradient(id, name, temp.from, temp.adjust, temp.colors));
     setSlotColour(adjusting.slot.id, id);
   } else {
-    setSlotColour(adjusting.slot.id, $('adjust-dialog').returnValue === 'ok' && unchanged ? adjusting.base.id : adjusting.previous);
+    const base = adjusting.base === SOURCE_BASE ? null : adjusting.base.id;
+    setSlotColour(adjusting.slot.id, $('adjust-dialog').returnValue === 'ok' && unchanged ? base : adjusting.previous);
   }
   adjusting = null;
   renderSlots();
@@ -3009,7 +3019,9 @@ document.querySelector('.export').addEventListener('click', async (e) => {
     downloadBlob(new Blob([currentCreditsText() + '\n'], { type: 'text/plain' }), `${name}_credits.txt`);
   }
   if (sheet === 'all' && state.customGradients.length) {
-    await downloadImage(gradientsToImage(state.customGradients), `${name}_custom_gradients.png`);
+    // Shifted source colours aren't gradients: RPG Maker can't use them.
+    const exportable = state.customGradients.filter((g) => !g.shiftSource);
+    if (exportable.length) await downloadImage(gradientsToImage(exportable), `${name}_custom_gradients.png`);
   }
   toast(count ? `Exported ${count} image(s).` : 'Nothing to export for this sheet: no selected part has layers for it.');
 });
