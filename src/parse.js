@@ -3,6 +3,7 @@
 
 import { SHEETS, SLOT_BY_M, PART_ORDER } from './format.js';
 import { parseVxAcePath } from './vxace.js';
+import { partsInWords, partNameWords } from './suggest.js';
 
 const PART_FILE_RE = /^(FG|TVD|TV|SV|icon)_([A-Za-z]+?)(\d*)_p([A-Za-z0-9-]+)((?:_[A-Za-z]+\d*)*)\.png$/i;
 /** "TV_Body_p01 (2).png": the copy suffix Windows adds, and RPG Maker's DLC readme tells you to rename to. */
@@ -112,13 +113,31 @@ export function lenientName(fileName) {
   const prefix = match[1];
   const suffixes = MASK_SUFFIX_RE.exec(match[2])[1];
   const stem = match[2].slice(0, match[2].length - suffixes.length);
-  const known = KNOWN_PARTS_LONGEST_FIRST.find((p) => stem.toLowerCase().startsWith(p.toLowerCase()));
+  // A part name at the start, written in one piece or apart: "RearHair01", "Rear_Hair_01", "rear hair2".
+  let known = null;
+  let afterKnown = 0;
+  for (const p of KNOWN_PARTS_LONGEST_FIRST) {
+    const m = new RegExp('^' + partNameWords(p).join('[_ -]*'), 'i').exec(stem);
+    if (m) {
+      known = p;
+      afterKnown = m[0].length;
+      break;
+    }
+  }
+  // The words of a part name anywhere, in any order: "Hair_Rear_01", "Long_Beard".
+  const tokens = stem.replace(/([a-z])([A-Z])/g, '$1 $2').split(/[^A-Za-z0-9]+|(?<=[A-Za-z])(?=\d)|(?<=\d)(?=[A-Za-z])/).filter(Boolean);
+  const inWords = !known && [...partsInWords(tokens.filter((t) => /^[A-Za-z]+$/.test(t)).map((t) => t.toLowerCase()), [], false)];
   let part;
   let rest;
-  const word = !known && PART_WORDS.find(([, re]) => re.test(stem));
+  const word = !known && !(inWords?.length === 1) && PART_WORDS.find(([, re]) => re.test(stem));
   if (known) {
     part = known;
-    rest = stem.slice(known.length);
+    rest = stem.slice(afterKnown);
+  } else if (inWords?.length === 1) {
+    const [[found, ws]] = inWords;
+    part = found;
+    const used = new Set(ws);
+    rest = '_' + tokens.filter((t) => !used.has(t.toLowerCase().replace(/s$/, '')) && !used.has(t.toLowerCase())).join('-');
   } else if (word) {
     // The part word can sit anywhere: "FurClothes01" -> Clothing, variation "Fur01".
     part = word[0];

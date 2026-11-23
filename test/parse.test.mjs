@@ -118,6 +118,12 @@ test('names without a part number are still read (and typos are forgiven)', () =
   assert.equal(lenientName('FG_FrontHair_p17_c1].png'), 'FG_FrontHair_p17_c1.png');
   assert.equal(lenientName('SV_Hat_c.png'), 'SV_Hat_p01_c.png');
   assert.equal(lenientName('hat.png'), null);
+  // Part names written apart or in another order.
+  assert.equal(lenientName('TV_Rear_Hair_01.png'), 'TV_RearHair_p01.png');
+  assert.equal(lenientName('TV_rear hair2.png'), 'TV_RearHair2_p01.png');
+  assert.equal(lenientName('TV_Hair_Rear_05.png'), 'TV_RearHair_p05.png');
+  assert.equal(lenientName('SV_Long_Beard_c.png'), 'SV_Beard_pLong_c.png');
+  assert.equal(lenientName('TV_FRONT_HAIR_long_c.png'), 'TV_FrontHair_plong_c.png');
   const lib = createLibrary();
   addPack(lib, 'Mine', [{ path: 'Mine/TV/Male/TV_ClothingEric.png', src: 'e' }]);
   assert.ok(lib.variants.has('Mine/Male/Clothing/pEric'));

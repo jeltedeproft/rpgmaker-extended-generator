@@ -2,7 +2,7 @@
 // is from its size and frame grid, and which part from where its pixels sit compared with the
 // parts already loaded (hair sits on top of the head, glasses over the eyes, a cloak behind it).
 
-import { DEFAULT_SIZE, SHEETS } from './format.js';
+import { DEFAULT_SIZE, SHEETS, PART_ORDER } from './format.js';
 
 /** Side of the coarse grid a shape is compared on. */
 export const PROFILE_SIZE = 12;
@@ -125,17 +125,60 @@ export function nameWords(fileName) {
     .filter(Boolean);
 }
 
-/** Parts a file name names ("beard", "Cloak2", "cape"), from known words and the given part names. */
+/** Two words that together name a part, in any order ("hair back", "Eye_Brow"). */
+const WORD_PAIRS = [
+  [['back', 'hair'], 'RearHair'], [['eye', 'brow'], 'Eyebrows'], [['face', 'mark'], 'FacialMark'],
+  [['facial', 'hair'], 'Beard'], [['animal', 'ear'], 'BeastEars'], [['beast', 'ear'], 'BeastEars'],
+  [['accessory', 'a'], 'AccA'], [['accessory', 'b'], 'AccB'],
+];
+
+/** The words of a part name: "FrontHair" -> ["front", "hair"], "AccA" -> ["acc", "a"]. */
+export function partNameWords(part) {
+  return part.replace(/([a-z])([A-Z])/g, '$1 $2').split(/[^A-Za-z]+/).map((w) => w.toLowerCase()).filter(Boolean);
+}
+
+/** "ears" and "ear" are the same word here. */
+const singular = (w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w);
+
+/**
+ * Part names in a list of words, however they are written: in one piece ("RearHair", "rearhair"),
+ * apart ("Rear_Hair", "rear hair", "REAR-HAIR") or in any order ("hair_rear").
+ * synonyms: also known other words ("cape" is a cloak, "ponytail" rear hair).
+ * @returns {Map<string, Set<string>>} part -> the words it was found from
+ */
+export function partsInWords(words, partNames = [], synonyms = true) {
+  const have = new Set(words.map(singular));
+  const joined = words.join('');
+  const found = new Map();
+  const add = (part, ws) => {
+    if (!found.has(part) || found.get(part).size < ws.length) found.set(part, new Set(ws));
+  };
+  if (synonyms) {
+    for (const w of words) if (PART_WORDS[w]) add(PART_WORDS[w], [singular(w)]);
+    for (const [ws, part] of WORD_PAIRS) if (ws.every((x) => have.has(x))) add(part, ws);
+  }
+  for (const part of new Set([...PART_ORDER, ...partNames])) {
+    const ws = partNameWords(part).map(singular);
+    if (!ws.length) continue;
+    if (ws.every((x) => have.has(x)) && (ws.length > 1 || ws[0].length > 2)) add(part, ws);
+    // Glued to other words ("longrearhair"): only names of two or more words, so "ponytail" isn't a tail.
+    else if (ws.length > 1 && joined.includes(part.toLowerCase())) add(part, ws);
+  }
+  // A part found from more words wins over one found from some of them: "rear hair" is RearHair,
+  // not FrontHair ("hair"); "beast ears" is BeastEars, not Ears.
+  const beaten = [...found].filter(([part, ws]) => [...found].some(([other, ows]) => other !== part
+    && ows.size > ws.size && [...ws].every((w) => ows.has(w))));
+  for (const [part] of beaten) found.delete(part);
+  return found;
+}
+
+/** Parts a file name names ("beard", "Cloak2", "cape", "hair_rear"), from known words and the given part names. */
 export function partsInName(fileName, partNames = []) {
   const words = nameWords(fileName);
-  const joined = fileName.toLowerCase().replace(/[^a-z]/g, '');
-  const found = new Set();
-  for (const w of words) if (PART_WORDS[w]) found.add(PART_WORDS[w]);
-  // Part names written in one piece ("FrontHair", "BeastEars", "AccB").
-  for (const part of partNames) if (part.length > 3 && joined.includes(part.toLowerCase())) found.add(part);
+  const found = partsInWords(words, partNames);
   if (found.has('BeastEars')) found.delete('Ears');
   if (found.has('RearHair') && !words.includes('front')) found.delete('FrontHair');
-  return [...found];
+  return [...found.keys()];
 }
 
 /**

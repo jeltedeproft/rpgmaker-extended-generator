@@ -46,6 +46,18 @@ test('words in the file name name parts', () => {
   assert.deepEqual(partsInName('p05.png'), []);
 });
 
+test('part names are found however they are written: apart, in one piece, in any order', () => {
+  for (const name of ['TV_RearHair01.png', 'rear_hair.png', 'Rear_Hair.png', 'REAR-HAIR.png', 'rearhair.png',
+    'hair_rear.png', 'Hair Rear 2.png', 'long hair (rear).png', 'back_hair.png']) {
+    assert.deepEqual(partsInName(name), ['RearHair'], name);
+  }
+  for (const name of ['front_hair.png', 'HairFront.png', 'FRONTHAIR.png', 'hair.png']) assert.deepEqual(partsInName(name), ['FrontHair'], name);
+  assert.deepEqual(partsInName('ears_beast.png'), ['BeastEars']);
+  assert.deepEqual(partsInName('Eye_Brow_thick.png'), ['Eyebrows']);
+  assert.deepEqual(partsInName('mark_facial.png'), ['FacialMark']);
+  assert.deepEqual(partsInName('acc_b_ribbon.png'), ['AccB']);
+});
+
 test('a part the name names is ranked higher, even without a loaded one', () => {
   const full = new Float32Array(144).fill(1);
   const top = new Float32Array(144).fill(0).fill(1, 0, 36);
