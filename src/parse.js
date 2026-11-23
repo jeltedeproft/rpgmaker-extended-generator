@@ -521,7 +521,7 @@ export function attachWaitingMasks(library, packName) {
   const waiting = libraryFiles(library).filter((f) => f.pack === packName && f.role === 'mask' && !f.layer.base);
   for (const mask of waiting) {
     const image = imageOfMask(library, packName, mask.path);
-    if (!image || image.layer.mask) continue;
+    if (!image || (image.layer.mask && !image.layer.mask.auto)) continue;
     const readAs = readName(library, image).replace(/\.png$/i, '_c.png');
     const bodyType = image.variant.bodyType;
     const file = unassignFile(library, packName, mask.path);
@@ -589,7 +589,8 @@ function addParsed(library, name, parsed, path, src) {
     variant.layers.push(layer);
   }
   if (parsed.isMask) {
-    if (layer.mask) library.warnings.push(`${path}: duplicate mask, keeping the first`);
+    // A real mask replaces one made by the generator.
+    if (layer.mask && !layer.mask.auto) library.warnings.push(`${path}: duplicate mask, keeping the first`);
     else layer.mask = { src, pixels: null, path };
   } else {
     if (layer.base) library.warnings.push(`${path}: duplicate layer, keeping the first`);

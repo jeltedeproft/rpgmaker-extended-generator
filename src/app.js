@@ -213,7 +213,6 @@ async function importEntriesNow(entries, packName) {
       saveSettings();
     }
   }
-  for (const v of state.library.variants.values()) if (v.pack === pack.name && state.settings.autoMasks?.[v.id]) applyAutoMask(v);
   $('open-files').disabled = false;
   const addedParts = state.library.variants.size - partsBefore;
   const addedGradientFiles = state.library.gradientFiles.length - gradientFilesBefore;
@@ -247,6 +246,8 @@ async function importEntriesNow(entries, packName) {
     await ensureLayers(pairs.flatMap((p) => [p.owner, p.other]));
     state.library.warnings.push(...fitMasks(pairs));
   }
+  // Made colour masks last: the real ones are where they belong by now.
+  for (const v of state.library.variants.values()) if (v.pack === pack.name) applyAutoMask(v);
   busyStep(`Opening "${packName}": drawing the character`);
   ensureCharacter();
   checkLookalikes(pack.name).catch((e) => console.error(e));
@@ -1059,7 +1060,8 @@ function renderSlots() {
     : autoMaskBox(state.library.variants.get(state.character.parts[itemOfKey(state.selectedPart)]));
   if (!slots.length) {
     const what = state.selectedPart === ALL_COLOURS ? 'The selected parts have' : 'This part has';
-    box.replaceChildren(el('p', { className: 'muted', textContent: `${what} no recolourable areas.` }), ...(auto ? [auto] : []));
+    box.replaceChildren(el('p', { className: 'muted', textContent: `${what} no recolourable areas.` }), ...(auto ? [auto] : []),
+      ...(state.selectedPart === ALL_COLOURS ? [recolourAllToggle()] : []));
     return;
   }
   const gradients = allGradients();
@@ -1086,7 +1088,7 @@ function renderSlots() {
       renderPreview();
       refreshTiles();
     });
-    head.push(el('div', { className: 'source-reset' }, [reset]));
+    head.push(el('div', { className: 'source-reset' }, [reset]), recolourAllToggle());
   }
   box.replaceChildren(...head, ...(auto ? [auto] : []), ...slots.map((slot) => {
     if (slot.painted) {
@@ -1674,6 +1676,9 @@ function dropMissingParts() {
 }
 
 function afterFilesChanged() {
+  // Assigned or unassigned files can leave a picture without a colour mask, or give it one.
+  for (const v of state.library.variants.values()) applyAutoMask(v);
+  thumbCache.clear();
   dropMissingParts();
   if (state.library.variants.size) {
     ensureCharacter();
@@ -1725,7 +1730,27 @@ const unmasked = (l) => l.base && !l.base.cells && !l.slotId && (!l.mask || l.ma
 
 /** The plan of a part's made colour mask: {count: 1..8 or 'auto', slots: [...] or null}, or none. */
 function autoMaskPlan(variant) {
-  return state.settings.autoMasks?.[variant.id] || null;
+  const saved = state.settings.autoMasks?.[variant.id];
+  if (saved !== undefined) return saved || null; // false: removed by you
+  // Recolour all (on unless turned off): every part without a colour mask gets one.
+  return state.settings.recolourAll !== false ? { count: 'auto', slots: null, automatic: true } : null;
+}
+
+/** Recolour all on or off: parts without a colour mask get one made by the generator, or not. */
+function setRecolourAll(on) {
+  state.settings.recolourAll = on;
+  saveSettings();
+  for (const v of state.library.variants.values()) applyAutoMask(v);
+  thumbCache.clear();
+  ensureVariants(variantsToDecode(state.character, state.library)).then(() => renderAll());
+  toast(on ? 'Recolour all: parts without a colour mask now follow the colours too.' : 'Recolour all is off: parts without a colour mask keep the colours they are drawn in (unless you made them recolourable).');
+}
+
+function recolourAllToggle() {
+  const box = el('input', { type: 'checkbox', className: 'recolour-all', checked: state.settings.recolourAll !== false });
+  box.addEventListener('change', () => setRecolourAll(box.checked));
+  return el('label', { className: 'lock', title: 'Parts drawn without a colour mask get one made by the generator, so they follow the colours like RPG Maker\'s own parts' },
+    [box, ' Recolour all: make every part without a colour mask recolourable']);
 }
 
 /**
@@ -1762,6 +1787,7 @@ function applyAutoMask(variant) {
 function setAutoMask(variant, count) {
   const masks = (state.settings.autoMasks ||= {});
   if (count) masks[variant.id] = { count, slots: null };
+  else if (state.settings.recolourAll !== false) masks[variant.id] = false; // stays without one
   else delete masks[variant.id];
   saveSettings();
   applyAutoMask(variant);
@@ -1797,6 +1823,7 @@ function autoMaskBox(variant) {
     box.append(
       el('p', { className: 'muted small', textContent: `${variant.part} ${variant.pid} is drawn without a colour mask${some ? ' on some images' : ''}, so it keeps the colours it is drawn in. The generator can make a mask: it splits the drawing into colour groups (light and shade of one colour stay together) and gives each group a colour slot.` }),
       el('div', { className: 'layer-head' }, [make, count]),
+      recolourAllToggle(),
     );
     return box;
   }
@@ -1830,9 +1857,10 @@ function autoMaskBox(variant) {
   const undecoded = variant.layers.filter((l) => l.mask?.auto && !l.mask.pixels);
   if (undecoded.length) Promise.all(undecoded.map((l) => ensureImage(l.mask, true))).then(() => renderSlots());
   box.append(
-    el('p', { className: 'muted small', textContent: 'Colour mask made by the generator: each colour group of the drawing uses the slot picked here, in the colours picked below.' }),
+    el('p', { className: 'muted small', textContent: `${plan.automatic ? `${variant.part} ${variant.pid} is drawn without a colour mask, so the generator made one (Recolour all). ` : 'Colour mask made by the generator: '}each colour group of the drawing uses the slot picked here, in the colours picked below. Black outlines and whites keep their colours at first.` }),
     el('div', { className: 'layer-head' }, [count, remove]),
     rows,
+    recolourAllToggle(),
   );
   return box;
 }

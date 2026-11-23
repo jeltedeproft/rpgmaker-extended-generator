@@ -701,6 +701,10 @@ try {
       await sleep(600);
       await evaluate(`[...document.querySelectorAll('#variants .variant, #other-variants .variant')].find(b => b.title.endsWith('/Clothing/pXX')).click()`);
       await sleep(1500);
+      check('a part without a colour mask is recolourable straight away', await evaluate(`(() => { const s = document.querySelector('#slots .automask select'); return !!s && s.value === 'auto' && !!document.querySelector('#slots .automask .recolour-all:checked'); })()`));
+      // Removing the made mask; then making one by hand, with 2 groups.
+      await evaluate(`[...document.querySelectorAll('#slots .automask button')].find(b => b.textContent.startsWith('Remove')).click()`);
+      await sleep(1500);
       const offered = await evaluate(`!!document.querySelector('#slots .automask button')`);
       check('a part without a colour mask offers to make one', offered, await evaluate(`[document.getElementById('editor-title').textContent, ...[...document.querySelectorAll('#variants .variant, #other-variants .variant')].filter(b => b.title.includes('pXX')).map(b => b.title.split(String.fromCharCode(10)).join(' ') + (b.classList.contains('selected') ? ' [selected]' : ''))].join(' | ')`));
       if (offered) {
@@ -718,6 +722,7 @@ try {
       await evaluate(`[...document.querySelectorAll('#slots .automask button')].find(b => b.textContent.startsWith('Remove')).click()`);
       await sleep(1500);
       check('the made mask can be removed', await evaluate(`!!document.querySelector('#slots .automask button') && [...document.querySelectorAll('#slots .automask button')].some(b => b.textContent.startsWith('Make'))`));
+      check('a removed made mask stays removed', await evaluate(`Object.entries(JSON.parse(localStorage.getItem('xgen-settings')).autoMasks || {}).some(([k, v]) => k.endsWith('/Clothing/pXX') && v === false)`));
       }
     }
     // Hue, saturation and brightness work on the source colours too (no gradient picked).
