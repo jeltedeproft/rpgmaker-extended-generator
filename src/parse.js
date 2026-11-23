@@ -306,6 +306,22 @@ export function addPack(library, packName, entries) {
   return pack;
 }
 
+/** Takes a whole pack (one opened folder) out of the library again. */
+export function removePack(library, name) {
+  library.packs = library.packs.filter((p) => p.name !== name);
+  for (const [id, v] of library.variants) if (v.pack === name) library.variants.delete(id);
+  for (const [bodyType, body] of library.bodyTypes) {
+    for (const [part, variants] of body.parts) {
+      for (const [id, v] of variants) if (v.pack === name) variants.delete(id);
+      if (!variants.size) body.parts.delete(part);
+    }
+    if (!body.parts.size) library.bodyTypes.delete(bodyType);
+  }
+  library.gradientFiles = library.gradientFiles.filter((g) => g.pack !== name);
+  library.unrecognized = library.unrecognized.filter((u) => u.pack !== name);
+  for (const key of [...library.readAs.keys()]) if (key.startsWith(`${name}|`)) library.readAs.delete(key);
+}
+
 /**
  * Adds a file the user assigned by hand (from the import report) under the given name.
  * @param {string} readAs a generator file name, e.g. "TV_Hat_p01.png"

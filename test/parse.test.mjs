@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack } from '../src/parse.js';
 
 test('parses a walking layer and its mask', () => {
   const base = parsePartPath('Generator/TV/Male/TV_Clothing1_p03.png');
@@ -252,4 +252,16 @@ test('same picture with other colour areas is not a picture difference', async (
   assert.equal(r.identical, false);
   assert.equal(r.differ, 0);
   assert.equal(r.maskDiffer, 4);
+});
+
+test('a pack can be taken out again, leaving the others', () => {
+  const lib = createLibrary();
+  addPack(lib, 'A', [{ path: 'TV/Male/TV_Body_p01.png', src: 1 }, { path: 'odd.png', src: 2 }, { path: 'grad_hair.png', src: 3 }]);
+  addPack(lib, 'B', [{ path: 'TV/Male/TV_Body_p02.png', src: 4 }, { path: 'TV/Female/TV_Body_p01.png', src: 5 }]);
+  removePack(lib, 'B');
+  assert.deepEqual(lib.packs.map((p) => p.name), ['A']);
+  assert.deepEqual([...lib.variants.keys()], ['A/Male/Body/p01']);
+  assert.deepEqual([...lib.bodyTypes.keys()], ['Male']);
+  removePack(lib, 'A');
+  assert.equal(lib.variants.size + lib.bodyTypes.size + lib.unrecognized.length + lib.gradientFiles.length, 0);
 });

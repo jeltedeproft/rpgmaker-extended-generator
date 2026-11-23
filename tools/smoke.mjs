@@ -296,6 +296,9 @@ try {
     await sleep(4000);
     check('remembered folder reopens after a reload', await evaluate(`[...document.querySelectorAll('#packs div')].some((d) => d.textContent.includes('Remembered kit'))`));
     check('remembered folders listed in the sidebar', await evaluate(`!document.getElementById('recent-folders-side').hidden && document.getElementById('recent-folders-side').textContent.includes('Remembered kit')`));
+    await evaluate(`[...document.querySelectorAll('#recent-folders-side .forget')].at(-1).click()`);
+    await sleep(1200);
+    check('forgetting a folder takes its parts out', await evaluate(`![...document.querySelectorAll('#packs div')].some((d) => d.textContent.includes('Remembered kit')) && !document.getElementById('welcome').hidden`));
     await evaluate(`(async () => {
       const L = await import(new URL('src/loader.js', location.href).href);
       for (const f of await L.rememberedFolders()) await L.forgetFolder(f.key);

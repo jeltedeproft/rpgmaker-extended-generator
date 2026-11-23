@@ -1,7 +1,7 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS } from './format.js';
-import { createLibrary, addPack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
+import { createLibrary, addPack, removePack, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategory, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -92,6 +92,7 @@ function toast(message, ms = 4000) {
 // ---------- importing ----------
 
 async function importEntries(entries, packName) {
+  state.lastPack = null;
   const pngs = entries.filter((e) => /\.png$/i.test(e.path));
   if (!pngs.length) {
     toast('No PNG files found in that folder.');
@@ -108,6 +109,7 @@ async function importEntries(entries, packName) {
   const gradientFilesBefore = state.library.gradientFiles.length;
   const texts = entries.filter((e) => TEXT_FILE_RE.test(e.path));
   const pack = addPack(state.library, packName, [...pngs, ...texts]);
+  state.lastPack = pack;
   pack.keys = keys;
   // Character presets shipped with the pack (RPG Maker MZ generator .json files, or ours).
   pack.presets = [];
@@ -170,6 +172,19 @@ function unsupportedHint(gradientFiles) {
   if (gradientFiles) return `only colour sheets were found (${gradientFiles}); they've been added to the colour lists.`;
   return 'no files are named like MV/MZ generator parts (FG_..., TV_..., SV_...) or VX Ace ones (Face/..., Mini/...). '
     + 'Generator folders from XP and older are not supported.';
+}
+
+/** Back to the start screen: nothing is loaded. */
+function showWelcome() {
+  state.character = null;
+  state.composites = {};
+  $('app').classList.add('empty');
+  $('welcome').hidden = false;
+  for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = true;
+  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files', 'open-gallery']) $(id).disabled = true;
+  $('open-files').textContent = 'Files…';
+  $('problems').hidden = true;
+  $('packs').replaceChildren();
 }
 
 function showApp() {
@@ -2118,11 +2133,48 @@ $('adjust-dialog').addEventListener('close', () => {
 /** Opens a folder and, when it gave something usable, remembers it for next time. */
 async function importHandle(handle) {
   const added = await importEntries(await entriesFromHandle(handle), handle.name);
+  const pack = state.lastPack;
   if (added && canRememberFolders) {
-    await rememberFolder(handle);
+    // The pack knows its remembered folder, so forgetting the folder takes the pack out too.
+    if (pack) pack.folderKey = await rememberFolder(handle);
+    else await rememberFolder(handle);
     renderRecentFolders();
   }
   return added;
+}
+
+/**
+ * Takes a pack out of what is loaded: its parts, colours, files to assign and look-alikes. A
+ * character wearing its parts loses them; with nothing left the start screen comes back.
+ */
+function unloadPack(name) {
+  removePack(state.library, name);
+  state.fileGradients = state.fileGradients.filter((g) => g.pack !== name);
+  state.loadedGradientFiles = state.library.gradientFiles.length;
+  state.lookalikes = state.lookalikes.filter((f) => f.variant.pack !== name);
+  updateAlikesButton();
+  if (!state.library.packs.length) {
+    showWelcome();
+    return;
+  }
+  if (state.character) {
+    dropMissingParts();
+    if (!state.library.bodyTypes.has(state.character.bodyType)) state.character.bodyType = [...state.library.bodyTypes.keys()][0];
+    if (state.character.bodyType) applyDefaults(state.character, state.library);
+  }
+  if (state.library.variants.size) {
+    ensureCharacter();
+    renderAll();
+  } else renderProblems();
+  if ($('files-dialog').open) renderFiles();
+}
+
+/** Forgets a remembered folder and takes its pack out straight away. */
+async function forgetAndUnload(key) {
+  await forgetFolder(key);
+  const packs = state.library.packs.filter((p) => p.folderKey === key);
+  for (const p of packs) unloadPack(p.name);
+  return packs.length;
 }
 
 /** Opens remembered folders; asks for access where needed (only inside a click). */
@@ -2171,16 +2223,19 @@ async function renderRecentInto(box, note) {
       open.addEventListener('click', () => reopenFolders([f], true));
       const forget = el('button', { type: 'button', className: 'forget', textContent: '×', title: `Forget ${f.key}` });
       forget.addEventListener('click', async () => {
-        await forgetFolder(f.key);
+        const removed = await forgetAndUnload(f.key);
         renderRecentFolders();
+        toast(removed ? `Forgot "${f.key}" and took its parts out.` : `Forgot "${f.key}".`);
       });
       box.append(el('span', { className: 'folder' }, [open, forget]));
     }
   }
   const forgetAll = el('button', { className: 'forget', textContent: folders.length > 1 ? 'Forget all' : 'Forget', title: 'Forget these folders' });
   forgetAll.addEventListener('click', async () => {
-    for (const f of folders) await forgetFolder(f.key);
+    let removed = 0;
+    for (const f of folders) removed += await forgetAndUnload(f.key);
     renderRecentFolders();
+    toast(removed ? `Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and took their parts out.` : 'Forgot the folders.');
   });
   box.append(forgetAll);
 }
