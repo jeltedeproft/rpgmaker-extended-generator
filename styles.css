@@ -144,7 +144,11 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .small-button { margin-top: 8px; padding: 3px 9px; font-size: 12px; }
 .recent { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; }
 .recent .forget { padding: 2px 7px; font-size: 12px; color: var(--muted); }
-.recent .folder { display: inline-flex; gap: 0; }
+.recent .folder { display: inline-flex; gap: 0; max-width: 100%; min-width: 0; }
+/* A long folder name is cut short with "…" (the full name shows on hover); its × stays visible. */
+.recent .folder > button:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent .folder > .forget { flex-shrink: 0; }
+.recent > button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recent-side { justify-content: flex-start; margin-top: 10px; font-size: 12px; }
 .recent-side button { padding: 3px 8px; font-size: 12px; }
 .recent .folder > button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }

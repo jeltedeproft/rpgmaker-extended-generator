@@ -3749,6 +3749,7 @@ async function renderRecentInto(box, note) {
   note.textContent = 'Opened folders are remembered. When the browser asks, choose "Allow on every visit" and they reopen by themselves after a reload.';
   if (!folders.length) return;
   const openAll = el('button', { className: 'primary', textContent: folders.length > 1 ? `Reopen all ${folders.length}` : `Reopen ${folders[0].key}` });
+  if (folders.length === 1) openAll.title = `Reopen ${folders[0].key}`;
   openAll.addEventListener('click', () => reopenFolders(folders, true));
   box.replaceChildren(el('span', { className: 'muted small', textContent: 'Last time:' }), openAll);
   if (folders.length > 1) {

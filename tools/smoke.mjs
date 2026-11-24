@@ -388,6 +388,7 @@ try {
     await sleep(4000);
     check('remembered folder reopens after a reload', await evaluate(`[...document.querySelectorAll('#packs div')].some((d) => d.textContent.includes('Remembered kit'))`));
     check('remembered folders listed in the sidebar', await evaluate(`!document.getElementById('recent-folders-side').hidden && document.getElementById('recent-folders-side').textContent.includes('Remembered kit')`));
+    check('a long folder name stays inside the sidebar, with its ×', await evaluate(`(() => { const box = document.getElementById('recent-folders-side'); const chip = document.createElement('span'); chip.className = 'folder'; chip.innerHTML = '<button type="button">SomeNewWorkGeneratorPackExUpdate1VeryLongFolderNameThatKeepsGoing</button><button type="button" class="forget">×</button>'; box.append(chip); const b = box.getBoundingClientRect(), x = chip.querySelector('.forget').getBoundingClientRect(); chip.remove(); return x.right <= b.right + 1 && x.width > 10; })()`));
     await evaluate(`[...document.querySelectorAll('#recent-folders-side .forget')].at(-1).click()`);
     await sleep(1200);
     check('forgetting a folder takes its parts out', await evaluate(`![...document.querySelectorAll('#packs div')].some((d) => d.textContent.includes('Remembered kit')) && !document.getElementById('welcome').hidden`));
