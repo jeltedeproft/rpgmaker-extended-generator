@@ -998,6 +998,17 @@ try {
     await evaluate(`(() => { const r = document.querySelector('#files-list .body-row'); r.querySelector('.body-from').value = 'Kid'; r.querySelector('.body-to').value = 'Male'; r.querySelector('.body-to').dispatchEvent(new Event('change')); r.querySelector('button').click(); })()`);
     await sleep(8000);
     check('a whole body type moves into another', !(await evaluate(`[...document.getElementById('body-type').options].some(o => o.value === 'Kid')`)), await evaluate(`document.getElementById('toast').textContent`));
+    // The emptied folder: asked about, and removed from the lists.
+    check('an emptied folder asks to be removed', await evaluate(`document.getElementById('empty-folder-dialog').open && /"Kid"/.test(document.getElementById('empty-folder-text').textContent)`));
+    await evaluate(`document.querySelector('#empty-folder-dialog button[value="remove"]').click()`);
+    await sleep(600);
+    check('a removed empty folder is no longer offered', !(await evaluate(`[...document.querySelectorAll('#files-list .body-to option')].some(o => o.value === 'Kid')`)));
+    // Remove folder next to Create folder: a created, empty folder goes.
+    await evaluate(`(() => { const r = document.querySelector('#files-list .folder-new'); r.querySelector('input').value = 'Smoke folder'; [...r.querySelectorAll('button')].find(b => b.textContent === 'Create folder').click(); })()`);
+    await sleep(400);
+    await evaluate(`(() => { const r = [...document.querySelectorAll('#files-list .folder-new')].find(r => /Remove a body type folder/.test(r.textContent)); const s = r.querySelector('select'); s.value = 'Smoke folder'; s.dispatchEvent(new Event('change')); r.querySelector('button').click(); })()`);
+    await sleep(400);
+    check('an empty folder can be removed next to Create folder', !(await evaluate(`[...document.querySelectorAll('#files-list .body-to option')].some(o => o.value === 'Smoke folder')`)));
     if (await evaluate(`document.getElementById('files-dialog').open`)) await evaluate(`document.querySelector('#files-dialog button[value="close"]').click()`);
   }
   if (process.env.MARK_PACK) {

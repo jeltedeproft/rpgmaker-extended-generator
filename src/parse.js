@@ -27,7 +27,8 @@ function normaliseBodyType(name) {
 }
 
 /** Destinations exist independently of whether any parts have been assigned there yet. */
-export function assignmentBodies(library, created = []) {
+/** removed: empty folders the user removed; they come back when files are assigned to them. */
+export function assignmentBodies(library, created = [], removed = []) {
   const names = new Set(['Male', 'Female', 'Kid', ...library.bodyTypes.keys(), ...created]);
   for (const file of library.unrecognized) {
     const dirs = file.path.split(/[\\/]/).slice(0, -1);
@@ -36,6 +37,7 @@ export function assignmentBodies(library, created = []) {
       names.add(normaliseBodyType(parent));
     }
   }
+  for (const name of removed || []) if (!library.bodyTypes.has(name)) names.delete(name);
   return [...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }) || (a < b ? -1 : a > b ? 1 : 0));
 }
 

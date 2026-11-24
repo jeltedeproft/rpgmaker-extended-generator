@@ -11,6 +11,8 @@ test('assignment folders include empty standards, custom and pending body types 
     { path: 'TV/Robots/??? .png', src: {} },
   ]);
   const bodies = assignmentBodies(lib, ['Very long folder name', 'Kid']);
+  // A removed empty folder isn't offered, unless parts were assigned to it again.
+  assert.ok(!assignmentBodies(lib, [], ['Kid']).includes('Kid'));
   assert.deepEqual(bodies, ['Female', 'Kid', 'Male', 'Robots', 'Very long folder name', 'Wolves']);
   assert.equal(suggestedBody('Facepalm Eyes/FEMALE/Face', bodies), 'Female');
   assert.equal(suggestedBody('male-accessories/Face', bodies), '');

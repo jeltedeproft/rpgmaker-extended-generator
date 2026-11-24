@@ -230,6 +230,7 @@ async function importEntriesNow(entries, packName) {
   // they are back in the "To assign" list.
   const toAssign = state.library.unrecognized.filter((u) => u.pack === pack.name).length;
   const assignNote = toAssign ? ` ${toAssign} file${toAssign > 1 ? 's' : ''} to assign: see "Files…".` : '';
+  syncKnownBodies();
   if (pack.setup) offerSetup(pack);
   if (!addedParts) {
     toast(toAssign
@@ -1855,7 +1856,7 @@ async function openAssignDialog(entry, queue = null) {
   assignQueue = queue;
   const fileName = entry.path.split('/').pop();
   const stem = fileName.replace(/\.png$/i, '');
-  const bodies = assignmentBodies(state.library, state.settings.createdBodies);
+  const bodies = bodyChoices();
   const folderBody = suggestedBody(dirOf(entry.path), bodies);
   const loaded = entry.variant ? entry : null;
   $('assign-title').textContent = loaded ? 'Reassign a file' : 'Assign a file';
@@ -2060,7 +2061,54 @@ function dropMissingParts() {
   }
 }
 
+/** The body type folders files can go to: found, created by you, minus the empty ones you removed. */
+function bodyChoices() {
+  return assignmentBodies(state.library, state.settings.createdBodies, state.settings.removedBodies);
+}
+
+/** The body types that have parts now; a change that leaves one without parts asks about the folder. */
+let knownBodies = new Set();
+function syncKnownBodies() {
+  knownBodies = new Set(state.library.bodyTypes.keys());
+}
+
+/** Body types emptied by moving, reassigning or removing files: ask whether to remove their folders. */
+function askAboutEmptied() {
+  const emptied = [...knownBodies].filter((b) => !state.library.bodyTypes.has(b));
+  syncKnownBodies();
+  if (!emptied.length) return;
+  const names = emptied.map((b) => `"${b}"`).join(', ');
+  $('empty-folder-text').textContent = emptied.length > 1
+    ? `${names} have no parts left. Remove the empty folders?`
+    : `${names} has no parts left. Remove the empty folder?`;
+  $('empty-folder-dialog').onclose = () => {
+    if ($('empty-folder-dialog').returnValue === 'remove') removeEmptyBodies(emptied);
+    else keepEmptyBodies(emptied);
+  };
+  if (!$('empty-folder-dialog').open) $('empty-folder-dialog').showModal();
+}
+
+/** Empty folders out of the lists: no longer offered for assigning or moving. */
+function removeEmptyBodies(bodies) {
+  const gone = bodies.filter((b) => !state.library.bodyTypes.has(b));
+  if (!gone.length) return;
+  state.settings.createdBodies = (state.settings.createdBodies || []).filter((b) => !gone.includes(b));
+  state.settings.removedBodies = [...new Set([...(state.settings.removedBodies || []), ...gone])];
+  saveSettings();
+  if ($('files-dialog').open) renderFiles();
+  toast(`Removed the empty folder${gone.length > 1 ? 's' : ''} ${gone.join(', ')}. Creating one with the same name brings it back.`, 6000);
+}
+
+/** Kept: the folder stays listed, empty, ready for files. */
+function keepEmptyBodies(bodies) {
+  const kept = bodies.filter((b) => !state.library.bodyTypes.has(b));
+  state.settings.createdBodies = [...new Set([...(state.settings.createdBodies || []), ...kept])];
+  saveSettings();
+  if ($('files-dialog').open) renderFiles();
+}
+
 function afterFilesChanged() {
+  askAboutEmptied();
   // Assigned or unassigned files can leave a picture without a colour mask, or give it one.
   for (const v of state.library.variants.values()) applyAutoMask(v);
   thumbCache.clear();
@@ -2384,7 +2432,7 @@ $('assign-dialog').addEventListener('close', () => {
       return;
     }
     const readAs = buildPartName(f);
-    const bodyType = $('assign-body').value || newBodyName($('assign-new-body').value, assignmentBodies(state.library, state.settings.createdBodies));
+    const bodyType = $('assign-body').value || newBodyName($('assign-new-body').value, bodyChoices());
     if (!bodyType) return;
     if (!parsePartPath(`${bodyType}/${readAs}`)) {
       toast(`"${readAs}" is not a valid part name.`);
@@ -2515,9 +2563,10 @@ function renderFiles() {
     $('files-more').hidden = true;
     $('files-note').textContent = TAB_NOTES.folders;
     const rows = folderList().filter((d) => !query || `${d.pack} ${d.dir}`.toLowerCase().includes(query));
-    const bodies = assignmentBodies(state.library, state.settings.createdBodies);
+    const bodies = bodyChoices();
     const empty = bodies.filter((b) => state.settings.createdBodies?.includes(b) && !state.library.bodyTypes.has(b) && b.toLowerCase().includes(query));
-    $('files-list').replaceChildren(createBodyRow(bodies), bodyTypeRow(bodies), ...empty.map(emptyBodyRow), ...rows.map((d) => folderRow(d, bodies)));
+    const unused = bodies.filter((b) => !state.library.bodyTypes.has(b));
+    $('files-list').replaceChildren(createBodyRow(bodies), removeBodyRow(unused), bodyTypeRow(bodies), ...empty.map(emptyBodyRow), ...rows.map((d) => folderRow(d, bodies)));
     if (!rows.length && !empty.length) $('files-list').append(el('p', { className: 'muted', textContent: 'No folder matches.' }));
     return;
   }
@@ -2609,10 +2658,6 @@ async function moveFiles(loaded, bodyType, what) {
   if (state.character && !lib.bodyTypes.has(state.character.bodyType) && state.character.bodyType !== ALL_BODIES && lib.bodyTypes.has(bodyType)) {
     state.character.bodyType = bodyType;
   }
-  if (state.settings.createdBodies) {
-    const movedFrom = new Set(files.map((f) => f.variant.bodyType));
-    state.settings.createdBodies = state.settings.createdBodies.filter((b) => !movedFrom.has(b) || lib.bodyTypes.has(b));
-  }
   saveSettings();
   afterFilesChanged();
   const merged = await withBusy('Looking for duplicates', () => findSameFiles(null, true));
@@ -2656,11 +2701,7 @@ const bodyOptions = (names) => names.map((value) => el('option', { value, textCo
 
 function emptyBodyRow(body) {
   const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove empty folder' });
-  remove.addEventListener('click', () => {
-    state.settings.createdBodies = state.settings.createdBodies.filter((b) => b !== body);
-    saveSettings();
-    renderFiles();
-  });
+  remove.addEventListener('click', () => removeEmptyBodies([body]));
   return el('div', { className: 'folder-row' }, [
     el('div', {}, [el('b', { textContent: body }), el('span', { className: 'muted small', textContent: 'No files assigned yet' })]), remove,
   ]);
@@ -2674,6 +2715,7 @@ function createBodyRow(bodies) {
     if (!value) return toast('Enter a body type name without path separators or sheet folder names.');
     if (bodies.includes(value)) return toast(`The folder "${value}" already exists.`);
     (state.settings.createdBodies ||= []).push(value);
+    state.settings.removedBodies = (state.settings.removedBodies || []).filter((b) => b !== value);
     saveSettings();
     renderFiles();
     toast(`Created "${value}". It is available for file assignments and folder moves.`);
@@ -2684,6 +2726,21 @@ function createBodyRow(bodies) {
   });
   return el('div', { className: 'folder-row folder-new' }, [
     el('b', { textContent: 'New body type folder' }), el('div', { className: 'file-buttons' }, [name, create]),
+  ]);
+}
+
+/** Next to "Create folder": removes an empty body type folder (one with parts is emptied first). */
+function removeBodyRow(unused) {
+  const pick = el('select', { title: 'Empty folder to remove' }, unused.length
+    ? [el('option', { value: '', textContent: 'Choose empty folder…' }), ...bodyOptions(unused)]
+    : [el('option', { value: '', textContent: 'No empty folders' })]);
+  const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove folder', disabled: true,
+    title: 'Only empty folders can be removed: move a folder\'s parts elsewhere (or remove them) first' });
+  pick.addEventListener('change', () => { remove.disabled = !pick.value; });
+  remove.addEventListener('click', () => removeEmptyBodies([pick.value]));
+  return el('div', { className: 'folder-row folder-new' }, [
+    el('div', {}, [el('b', { textContent: 'Remove a body type folder' }), el('span', { className: 'muted small', textContent: 'Empty folders only; one with parts is emptied by moving its parts first' })]),
+    el('div', { className: 'file-buttons' }, [pick, remove]),
   ]);
 }
 
@@ -3591,6 +3648,7 @@ async function importHandleNow(handle) {
  */
 function unloadPack(name) {
   removePack(state.library, name);
+  syncKnownBodies();
   state.fileGradients = state.fileGradients.filter((g) => g.pack !== name);
   state.loadedGradientFiles = state.library.gradientFiles.length;
   state.lookalikes = state.lookalikes.filter((f) => f.variant.pack !== name);
