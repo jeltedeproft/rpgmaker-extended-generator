@@ -279,6 +279,32 @@ test('same picture with other colour areas is not a picture difference', async (
   assert.equal(r.maskDiffer, 4);
 });
 
+test('masks that recolour the same way are not a difference', async () => {
+  const { compareVariants } = await import('../src/lookalike.js');
+  const { createImage } = await import('../src/recolor.js');
+  const lib = createLibrary();
+  addPack(lib, 'P', [
+    { path: 'TV/Male/TV_Body_p01.png', src: 'a' }, { path: 'TV/Male/TV_Body_p01_c.png', src: 'am' },
+    { path: 'TV/Male/TV_Body_p01 (2).png', src: 'b' }, { path: 'TV/Male/TV_Body_p01_c (2).png', src: 'bm' },
+  ]);
+  const img = (pixels) => { const i = createImage(2, 2); pixels.forEach((p, n) => i.data.set(p, n * 4)); return i; };
+  const [a, b] = ['P/Male/Body/p01', 'P/Male/Body/p01 (2)'].map((id) => lib.variants.get(id).layers[0]);
+  const skin = [0xf9, 0xc1, 0x9d, 255];
+  const hair = [0xfc, 0xcb, 0x0a, 255];
+  // Two drawn pixels, two empty ones.
+  a.base.pixels = img([[90, 90, 90, 255], [90, 90, 90, 255], [0, 0, 0, 0], [0, 0, 0, 0]]);
+  b.base.pixels = img([[90, 90, 90, 255], [90, 90, 90, 255], [0, 0, 0, 0], [0, 0, 0, 0]]);
+  // The masks differ only where nothing is drawn.
+  a.mask.pixels = img([skin, skin, skin, [0, 0, 0, 0]]);
+  b.mask.pixels = img([skin, skin, hair, hair]);
+  const same = compareVariants(lib.variants.get('P/Male/Body/p01 (2)'), lib.variants.get('P/Male/Body/p01'));
+  assert.equal(same.maskDiffer, 0);
+  assert.equal(same.identical, true);
+  // A drawn pixel in another colour area is a difference.
+  b.mask.pixels = img([skin, hair, hair, hair]);
+  assert.equal(compareVariants(lib.variants.get('P/Male/Body/p01 (2)'), lib.variants.get('P/Male/Body/p01')).maskDiffer, 1);
+});
+
 test('a pack can be taken out again, leaving the others', () => {
   const lib = createLibrary();
   addPack(lib, 'A', [{ path: 'TV/Male/TV_Body_p01.png', src: 1 }, { path: 'odd.png', src: 2 }, { path: 'grad_hair.png', src: 3 }]);

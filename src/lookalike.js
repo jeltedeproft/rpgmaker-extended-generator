@@ -1,7 +1,7 @@
 // Look-alikes: copies ("p01 (2)") and alternates ("p17 (alt)") that look the same as, or almost
 // the same as, their original or another copy. Pure: works on decoded layers.
 
-import { SHEET_KEYS } from './format.js';
+import { SHEET_KEYS, SLOT_BY_RGB } from './format.js';
 
 /** "p01 (2)" -> "p01", "p17 (alt)" -> "p17", "p01 (2, alt)" -> "p01"; null for plain pids. */
 export function copyBase(pid) {
@@ -100,6 +100,31 @@ function compareImages(a, b) {
   return { differ, visible };
 }
 
+/** The colour area a mask gives a pixel: its slot, its own colour if it is no slot's, or null. */
+function areaAt(mask, i) {
+  if (!mask || !mask.data[i + 3]) return null;
+  const rgb = (mask.data[i] << 16) | (mask.data[i + 1] << 8) | mask.data[i + 2];
+  return SLOT_BY_RGB.get(rgb)?.id ?? rgb;
+}
+
+/**
+ * Pixels that recolour differently: drawn in either picture, and put in another colour area by
+ * the two masks. Mask pixels where nothing is drawn, or other shades of the same area, change
+ * nothing you can see.
+ */
+function compareMasks(maskA, maskB, baseA, baseB) {
+  const size = (img) => img && `${img.width}x${img.height}`;
+  const sizes = new Set([maskA, maskB, baseA, baseB].filter(Boolean).map(size));
+  if (sizes.size > 1) return compareImages(maskA, maskB).differ;
+  let differ = 0;
+  const length = (maskA || maskB || baseA || baseB)?.data.length || 0;
+  for (let i = 0; i < length; i += 4) {
+    if (!baseA?.data[i + 3] && !baseB?.data[i + 3]) continue;
+    if (areaAt(maskA, i) !== areaAt(maskB, i)) differ++;
+  }
+  return differ;
+}
+
 /**
  * Compares the images a copy has with the same images of the other variant (a copy that lacks a
  * sheet would borrow it or show nothing, so only its own images count). Masks count too: the
@@ -117,7 +142,9 @@ export function compareVariants(variant, other) {
     const d = compareImages(layer.base?.pixels, match?.base?.pixels);
     differ += d.differ;
     visible += d.visible;
-    maskDiffer += compareImages(layer.mask?.pixels, match?.mask?.pixels).differ;
+    if (layer.mask?.pixels || match?.mask?.pixels) {
+      maskDiffer += compareMasks(layer.mask?.pixels, match?.mask?.pixels, layer.base?.pixels, match?.base?.pixels);
+    }
   }
   const sheet = SHEET_KEYS.find((s) => variant.layers.some((l) => l.sheet === s) && other.layers.some((l) => l.sheet === s)) || null;
   const ratio = visible ? differ / visible : 1;
