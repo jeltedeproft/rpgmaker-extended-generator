@@ -814,6 +814,10 @@ try {
     check('duplicates can be looked for by their files', await evaluate(`/duplicate/.test(document.getElementById('toast').textContent)`), await evaluate(`document.getElementById('toast').textContent`));
     check('hiding is remembered', await evaluate(`JSON.parse(localStorage.getItem('xgen-settings')).lookalikes[[...Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).lookalikes)].find(k => k.endsWith('/Male/Body/p01 (2)'))] === 'hide'`));
     await evaluate(`document.querySelector('#alike-dialog button[value="close"]').click()`);
+    // Reloaded: the list was seen, so it doesn't open again.
+    await send('Page.navigate', { url: `${URL_UNDER_TEST}&pack=${encodeURIComponent(process.env.ALIKE_PACK)}` });
+    await sleep(9000);
+    check('look-alikes don\'t open again after a reload', !(await evaluate(`document.getElementById('alike-dialog').open`)));
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
     await sleep(600);
     const bodies = await evaluate(`[...document.querySelectorAll('#variants .variant span')].map(s => s.textContent).join(',')`);

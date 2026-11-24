@@ -162,7 +162,7 @@ async function importEntriesNow(entries, packName) {
   // The same folder opened twice (or a copy of it) would add every part again.
   const keys = folderKeys(pngs);
   const twin = sameFolder(state.library.packs, keys);
-  if (twin && !(await askOpenAgain(packName, twin))) {
+  if (twin && !(await openAgainAnswer(packName, twin))) {
     toast(`Skipped "${packName}": it has the same files as "${twin.pack.name}".`);
     return 0;
   }
@@ -266,8 +266,13 @@ async function importEntriesNow(entries, packName) {
 /** A folder with a setup file in it: ask before using it. */
 function offerSetup(pack) {
   const { data, fileName } = pack.setup;
+  // Asked once: the answer (and the setup, when used) stays until the folder is forgotten.
+  const asked = `${fileName}|${data.name || ''}`;
+  if (state.settings.setupAnswers?.[pack.name] === asked) return;
   $('setup-offer-text').textContent = `"${pack.name}" comes with ${fileName}: "${data.name || 'a setup'}"${data.author ? ` by ${data.author}` : ''}.${data.note ? ` ${data.note}` : ''}`;
   $('setup-offer').onclose = () => {
+    (state.settings.setupAnswers ||= {})[pack.name] = asked;
+    saveSettings();
     if ($('setup-offer').returnValue === 'apply') useSetup(data, [pack.name]);
   };
   if (!$('setup-offer').open) $('setup-offer').showModal();
@@ -2755,6 +2760,17 @@ $('files-start').addEventListener('click', () => {
 // ---------- look-alikes ----------
 
 /** Asks whether to open a folder whose files match one already open. Resolves true to open it. */
+/** "Open anyway" or "Skip it", asked once for a pair of folders; the answer stays until one is forgotten. */
+async function openAgainAnswer(packName, twin) {
+  const key = `${packName}|${twin.pack.name}`;
+  const saved = state.settings.openAgain?.[key];
+  if (saved !== undefined) return saved;
+  const open = await askOpenAgain(packName, twin);
+  (state.settings.openAgain ||= {})[key] = open;
+  saveSettings();
+  return open;
+}
+
 function askOpenAgain(packName, twin) {
   const same = twin.same === twin.total ? `all ${twin.total}` : `${twin.same} of its ${twin.total}`;
   $('same-text').textContent = `"${packName}" looks like "${twin.pack.name}", which is already open: ${same} images have the same name and size.`;
@@ -2837,7 +2853,11 @@ async function checkLookalikesNow(packName) {
   }
   state.lookalikes = [...state.lookalikes.filter((f) => f.variant.pack !== packName), ...found];
   updateAlikesButton();
-  const undecided = found.filter((f) => !f.result.identical && f.result.ratio <= LOOKALIKE_RATIO && !choices[f.variant.id]);
+  const asked = (state.settings.lookalikesAsked ||= {});
+  const undecided = found.filter((f) => !f.result.identical && f.result.ratio <= LOOKALIKE_RATIO && !choices[f.variant.id] && !asked[f.variant.id]);
+  // Shown once: closing the list keeps them as they are, and it doesn't open again after a reload.
+  for (const f of undecided) asked[f.variant.id] = true;
+  if (undecided.length) saveSettings();
   if (autoHidden) renderEditor();
   if (undecided.length && !document.querySelector('dialog[open]')) openAlikesDialog();
   else if (undecided.length || autoHidden) {
@@ -3595,7 +3615,8 @@ function unloadPack(name) {
 
 /**
  * Forgets what was saved for a pack: files assigned, unassigned or removed by hand, parts removed
- * and look-alike choices. Opened again, the folder is read from scratch.
+ * look-alike choices and the answers to "Use this setup?" and "Folder already open?". Opened again,
+ * the folder is read from scratch.
  */
 function forgetPackSettings(name) {
   const s = state.settings;
@@ -3607,6 +3628,10 @@ function forgetPackSettings(name) {
   drop(s.removedParts, `${name}/`);
   drop(s.lookalikes, `${name}/`);
   drop(s.autoMasks, `${name}/`);
+  drop(s.lookalikesAsked, `${name}/`);
+  drop(s.openAgain, `${name}|`);
+  for (const key of Object.keys(s.openAgain || {})) if (key.endsWith(`|${name}`)) delete s.openAgain[key];
+  if (s.setupAnswers) delete s.setupAnswers[name];
   saveSettings();
 }
 
