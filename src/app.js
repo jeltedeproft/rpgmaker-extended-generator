@@ -369,6 +369,8 @@ async function renderEditor() {
   $('variants').replaceChildren();
   $('other-variants').replaceChildren();
   $('other-bodies').hidden = true;
+  // The image sections belong to a part's list: All colours and pieces have none.
+  $('variant-tabs').hidden = true;
   if (isPiece) {
     renderOffsets();
   } else if (!isColours) {

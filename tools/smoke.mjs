@@ -844,6 +844,11 @@ try {
       check('the damage section lists only parts with a damage picture', damage.length < all && damage.some((t) => t.endsWith('/Clothing/pMAGE')) && damage.some((t) => t.endsWith('/Clothing/pMAGE (2)')), `${all} -> ${damage.length}`);
       check('damage tiles are drawn as the damage picture', await evaluate(`(() => { const c = [...document.querySelectorAll('#variants .variant')].find(b => b.title.endsWith('/Clothing/pMAGE'))?.querySelector('canvas'); return !!c && c.width === 48 && c.height === 48; })()`));
       await shot('5d-damage-section.png');
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('All colours')).click()`);
+      await sleep(600);
+      check('All colours shows no image sections', await evaluate(`document.getElementById('variant-tabs').hidden`));
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Clothing')).click()`);
+      await sleep(600);
       await evaluate(`[...document.querySelectorAll('#variant-tabs button')].find(b => b.textContent.startsWith('All')).click()`);
       await sleep(500);
     }
