@@ -5,7 +5,7 @@ import { gradientFromStops, splitGradientImage, gradientsToImage, adjustGradient
 import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces, piecesPerSheet, sheetLayout, placeOnSheet } from '../src/compose.js';
 import { islandLabels } from '../src/islands.js';
 import { solidOf, insideOutline, applyClip } from '../src/clip.js';
-import { randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter, creditsFor, creditsText, makeSet, applySet } from '../src/character.js';
+import { shiftShape, randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter, creditsFor, creditsText, makeSet, applySet } from '../src/character.js';
 import { createLibrary, addPack } from '../src/parse.js';
 
 function solid(w, h, [r, g, b, a]) {
@@ -399,6 +399,14 @@ test('character sets: save some items with their colours, put them on another ch
   assert.equal(character.colors.skin, 'dark'); // skin isn't used by hair: kept
   assert.deepEqual(character.offsets.FrontHair, { face: { x: 1, y: 0 } });
   assert.equal(target.parts.FrontHair, undefined); // the original isn't changed
+});
+
+test('parts moved together get the same change', () => {
+  const moved = shiftShape({ x: 2, y: -1, rot: 10, scale: 90 }, { x: 0, y: 0 }, { x: 3, y: 1, rot: 5, scale: 110, flipX: true });
+  assert.deepEqual(moved, { x: 5, y: 0, rot: 15, scale: 100, flipX: true, flipY: false });
+  assert.deepEqual(shiftShape(undefined, { x: 60 }, { x: 64 }), { x: 4, y: 0, rot: 0, scale: 100, flipX: false, flipY: false });
+  assert.equal(shiftShape({ x: 62 }, {}, { x: 5 }).x, 64); // stays inside the range
+  assert.equal(shiftShape({ rot: 170 }, {}, { rot: 20 }).rot, -170);
 });
 
 test('randomize rules: wear chances, parts that never go together, colour links, sets', () => {

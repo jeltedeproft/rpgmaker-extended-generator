@@ -92,6 +92,28 @@ function pick(list, rng) {
   return list[Math.floor(rng() * list.length)];
 }
 
+const PLAIN_SHAPE = { x: 0, y: 0, rot: 0, scale: 100, flipX: false, flipY: false };
+
+/**
+ * Moving parts together: the change from `before` to `after` (one part's position on one image)
+ * made to another part's position: moved, turned and resized by as much, mirrored or flipped when
+ * that one was. Returns the new shape.
+ */
+export function shiftShape(shape, before, after) {
+  const s = { ...PLAIN_SHAPE, ...(shape || {}) };
+  const b = { ...PLAIN_SHAPE, ...(before || {}) };
+  const a = { ...PLAIN_SHAPE, ...(after || {}) };
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  return {
+    x: clamp(s.x + a.x - b.x, -64, 64),
+    y: clamp(s.y + a.y - b.y, -64, 64),
+    rot: ((s.rot + a.rot - b.rot + 540) % 360) - 180 || 0,
+    scale: clamp(s.scale + a.scale - b.scale, 10, 400),
+    flipX: a.flipX !== b.flipX ? !s.flipX : s.flipX,
+    flipY: a.flipY !== b.flipY ? !s.flipY : s.flipY,
+  };
+}
+
 /**
  * Rules for randomizing. All optional:
  * - chances: {part: 0..100} chance a part is worn (default 50, Body/Face 100)

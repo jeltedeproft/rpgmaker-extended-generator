@@ -679,6 +679,20 @@ try {
       await click('#unsplit-item');
       await sleep(900);
       check('pieces join again', (await evaluate(`document.querySelectorAll('#part-list button.piece').length`)) === 0);
+      // Move two parts together: the eyes and the face.
+      await sleep(600);
+      await evaluate(`(() => { const c = [...document.querySelectorAll('#move-group label')].find(l => l.textContent.trim() === 'Face').querySelector('input'); c.checked = true; c.dispatchEvent(new Event('change')); })()`);
+      const eyesX = Number(await evaluate(`document.getElementById('off-face-x').value`));
+      await evaluate(`(() => { const i = document.getElementById('off-face-x'); i.value = ${eyesX + 2}; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(600);
+      await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Face')).click()`);
+      await sleep(600);
+      check('parts ticked to move together move together', await evaluate(`document.getElementById('off-face-x').value === '2' && [...document.querySelectorAll('#move-group input')].some(i => i.checked)`),
+        await evaluate(`document.getElementById('off-face-x').value`));
+      // Back where they were: the face moved back with the eyes.
+      await evaluate(`(() => { const i = document.getElementById('off-face-x'); i.value = 0; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(300);
+      await evaluate(`[...document.querySelectorAll('#move-group input')].filter(i => i.checked).forEach(i => { i.checked = false; i.dispatchEvent(new Event('change')); })`);
     }
   // Split all / Join all, in All colours (the eyes worn here fall apart in two).
   {

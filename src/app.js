@@ -16,7 +16,7 @@ import { lookalikePairs, pairLayers, findLookalikes, compareVariants, difference
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, isGeneratorSettings, itemKeys, addItem, removeItem, creditsFor, creditsText,
-  makeSet, applySet, DEFAULT_RULES, wearChance,
+  makeSet, applySet, DEFAULT_RULES, wearChance, shiftShape,
 } from './character.js';
 import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage, pngSize, fileBytes,
@@ -949,6 +949,7 @@ function renderOffsets() {
   }
   $('cell-box').hidden = !hasSprite;
   if (hasSprite) renderCellOptions();
+  renderMoveGroup();
   renderLink();
   renderPiecePreview();
 }
@@ -1212,10 +1213,59 @@ function updateCellOffset() {
 
 function updateOffset() {
   const offsets = (state.character.offsets ||= {});
-  offsets[state.selectedPart] = { ...offsets[state.selectedPart], face: readShape('off-face'), sprite: readShape('off-sprite') };
-  syncPartner(state.selectedPart);
+  const key = state.selectedPart;
+  const before = offsets[key] || {};
+  offsets[key] = { ...before, face: readShape('off-face'), sprite: readShape('off-sprite') };
+  syncPartner(key);
+  // Parts moved together get the same change.
+  if (moveGroup.has(key)) {
+    for (const other of moveGroup) {
+      if (other === key || !wornKeys().includes(other)) continue;
+      const o = offsets[other] || {};
+      offsets[other] = { ...o, face: shiftShape(o.face, before.face, offsets[key].face), sprite: shiftShape(o.sprite, before.sprite, offsets[key].sprite) };
+      syncPartner(other);
+    }
+  }
   renderPreview();
   renderPiecePreview();
+}
+
+/**
+ * Parts that move together: ticked under Position, a change to one of them (moved, turned,
+ * resized, mirrored, flipped) is made to all of them. For this session.
+ */
+const moveGroup = new Set();
+/** The worn items and split pieces, in part-list order. */
+function wornKeys() {
+  const keys = [];
+  for (const [key, id] of Object.entries(state.character.parts)) {
+    if (!id) continue;
+    const pieces = state.character.split?.[key] ? pieceKeys(state.character, key) : [];
+    keys.push(...(pieces.length ? pieces : [key]));
+  }
+  return keys;
+}
+function renderMoveGroup() {
+  const key = state.selectedPart;
+  const others = wornKeys().filter((k) => k !== key);
+  const box = $('move-group');
+  box.hidden = !others.length || key === ALL_COLOURS;
+  box.replaceChildren(el('span', { className: 'small', textContent: 'Move together with:' }), ...others.map((other) => {
+    const box = el('input', { type: 'checkbox', checked: moveGroup.has(key) && moveGroup.has(other) });
+    box.addEventListener('change', () => {
+      if (box.checked) {
+        // Joining: this part and the ticked one are one group.
+        if (!moveGroup.has(key)) moveGroup.clear();
+        moveGroup.add(key);
+        moveGroup.add(other);
+      } else {
+        moveGroup.delete(other);
+        if (moveGroup.size < 2) moveGroup.clear();
+      }
+      renderMoveGroup();
+    });
+    return el('label', { className: 'lock move-chip' }, [box, ` ${other}`]);
+  }));
 }
 
 /** The item whose own colours the swatches edit, or null for the character's shared colours. */
