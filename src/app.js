@@ -528,8 +528,9 @@ function iconThumbnail(key, variant) {
   return thumbCache.get(cacheKey);
 }
 
-function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source = false) {
+function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source = false, library = state.library) {
   // source: the picture as drawn in the file, no gradients (to compare files, not colours).
+  // library: another view of the parts (see ownPicture).
   const alone = {
     ...state.character, parts: { [key]: variant.id }, offsets: {}, split: {}, clip: {}, drawOrder: {},
     sheetParts: {}, hidden: {}, sheetTransform: {}, ...(source ? { colors: {}, itemColors: {} } : {}),
@@ -542,10 +543,10 @@ function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source 
       let best = null;
       let bestCount = 0;
       for (const sheet of sheets) {
-        const layers = sheetLayers(variant, sheet, state.library);
+        const layers = sheetLayers(variant, sheet, library);
         if (!layers.length) continue;
         await ensureLayers(layers);
-        const { image, frame } = composeSheet(sheet, alone, state.library, source ? new Map() : gradientsById(), state.settings);
+        const { image, frame } = composeSheet(sheet, alone, library, source ? new Map() : gradientsById(), state.settings);
         if (!image) continue;
         const f = frameOf(sheet, image, frame);
         // The portrait, or the middle walk frame facing down, or the first battler frame.
@@ -2586,6 +2587,17 @@ function putPixels(canvas, pixels) {
   canvas.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(pixels.data), pixels.width, pixels.height), 0, 0);
 }
 
+/**
+ * A part drawn from its own files only, as look-alikes compare it: an alternate ("p17 (alt)")
+ * is otherwise drawn over the part it borrows the rest from.
+ */
+function ownPicture(variant, sheets) {
+  if (!variant.alt) return partThumbnail(variant.part, variant, sheets, true);
+  const own = { ...variant, alt: false, id: `${variant.id}|own` };
+  const library = { ...state.library, variants: new Map([[own.id, own]]) };
+  return partThumbnail(variant.part, own, sheets, true, library);
+}
+
 /** One copy next to the part it looks like, with a picture of where they differ. */
 function alikeCard(f) {
   const { variant, other, result } = f;
@@ -2600,7 +2612,7 @@ function alikeCard(f) {
   const sheets = result.sheet ? [result.sheet] : undefined;
   // The files as drawn, not recoloured: a different colour area (mask) would look like a
   // completely different picture.
-  Promise.all([partThumbnail(variant.part, other, sheets, true), partThumbnail(variant.part, variant, sheets, true)]).then(([pa, pb]) => {
+  Promise.all([ownPicture(other, sheets), ownPicture(variant, sheets)]).then(([pa, pb]) => {
     putPixels(a.canvas, pa);
     putPixels(b.canvas, pb);
     if (pa && pb) putPixels(d.canvas, differenceImage(pa, pb));
