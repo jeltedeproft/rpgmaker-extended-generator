@@ -313,6 +313,15 @@ function variantByNumber(library, part, pid, bodyType, pack = null, onlyPack = f
   return (pack && find(pack)) || (onlyPack ? null : find(null));
 }
 
+/** True for a gradient row that is one colour from end to end. */
+function isFlat(colors) {
+  if (!colors?.length) return false;
+  for (let i = 4; i < colors.length; i += 4) {
+    if (colors[i] !== colors[0] || colors[i + 1] !== colors[1] || colors[i + 2] !== colors[2]) return false;
+  }
+  return true;
+}
+
 const gradientPack = (g) => g.pack ?? g.id.slice(0, g.id.lastIndexOf('/'));
 
 /**
@@ -385,6 +394,9 @@ export function fromGeneratorSettings(data, library, gradients = [], name = 'Cha
     if (!slot || !Number.isInteger(row)) continue;
     const rows = rowsFor(preferredCategory(slot.id));
     const gradient = rows.find((g) => g.id.endsWith(`#${row}`));
+    // A row of one flat colour (MZ's grad_common.png starts with an all-white row) is "no colour":
+    // the part keeps the colours it is drawn in, like grey glasses frames.
+    if (gradient && isFlat(gradient.colors)) continue;
     if (gradient) character.colors[slot.id] = gradient.id;
     else if (character.parts[slot.part]) missing.push(`${slot.label} colour ${row + 1}`);
   }

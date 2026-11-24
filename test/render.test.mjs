@@ -524,6 +524,20 @@ test('a generator preset takes its parts from the folder it was made with', () =
   assert.equal(character.colors.hair, 'MZ/grad_hair#23');
 });
 
+test('a preset colour on a flat white row keeps the source colours', () => {
+  const lib = createLibrary();
+  addPack(lib, 'MZ', [{ path: 'g/Face/Male/FG_Glasses_p02_c1_m020.png', src: 'glasses' }]);
+  const white = new Uint8ClampedArray(256 * 4).fill(255);
+  const ramp = new Uint8ClampedArray(256 * 4).map((_, i) => (i % 4 === 3 ? 255 : 255 - Math.floor(i / 4)));
+  const gradients = [
+    { id: 'MZ/grad_common#0', pack: 'MZ', category: 'common', source: 'file', colors: white },
+    { id: 'MZ/grad_common#1', pack: 'MZ', category: 'common', source: 'file', colors: ramp },
+  ];
+  const preset = (row) => JSON.stringify({ identity: 'CharacterGeneratorSettings', gender: 'male', patterns: { glasses: 'p02' }, colors: { '#999999': row } });
+  assert.equal(deserializeCharacter(preset(0), lib, gradients, 'a.json').character.colors.glasses, undefined);
+  assert.equal(deserializeCharacter(preset(1), lib, gradients, 'a.json').character.colors.glasses, 'MZ/grad_common#1');
+});
+
 test('a renamed copy "p07 (2)" does not borrow the damage sprite of p07', () => {
   const lib = createLibrary();
   addPack(lib, 'MV', [
