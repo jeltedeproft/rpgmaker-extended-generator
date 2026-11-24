@@ -3942,6 +3942,15 @@ function renderTemplates() {
 }
 renderTemplates();
 
+for (const [id, setting] of [['make-room', 'makeRoom'], ['smooth-pixels', 'smoothPixels']]) {
+  $(id).checked = !!state.settings[setting];
+  $(id).addEventListener('change', (e) => {
+    state.settings[setting] = e.target.checked;
+    saveSettings();
+    if (state.character) renderPreview();
+  });
+}
+
 $('flip-gradient').checked = state.settings.flipGradient;
 $('flip-gradient').addEventListener('change', (e) => {
   state.settings.flipGradient = e.target.checked;

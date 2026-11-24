@@ -94,3 +94,42 @@ test('whole-image transforms move and mirror every frame', () => {
   const same = transformSheet(img, 'FG', null, { x: 0, y: 0, rot: 0, scale: 100, flipX: false, flipY: false });
   assert.equal(same, img);
 });
+
+test('Scale2x rounds off a stair step instead of blowing up square pixels', async () => {
+  const { scale2x, createImage } = await import('../src/recolor.js');
+  // A 2x2 diagonal: top-left and bottom-right drawn.
+  const img = createImage(2, 2);
+  img.data.set([255, 0, 0, 255], 0);
+  img.data.set([255, 0, 0, 255], 12);
+  const up = scale2x(img);
+  assert.equal(up.width, 4);
+  const alpha = (x, y) => up.data[(y * 4 + x) * 4 + 3];
+  // The corners of the drawn pixels stay, the diagonal is filled in between them.
+  assert.equal(alpha(0, 0), 255);
+  assert.equal(alpha(3, 3), 255);
+  assert.equal(alpha(2, 1), 255);
+  assert.equal(alpha(3, 0), 0);
+});
+
+test('smooth transforms sample the Scale2x picture; a plain flip stays exact', async () => {
+  const { transformFrames, createImage } = await import('../src/recolor.js');
+  const img = createImage(16, 16);
+  for (let y = 4; y < 12; y++) for (let x = 4; x < 12; x++) img.data.set([0, 0, 255, 255], (y * 16 + x) * 4);
+  const turned = transformFrames(img, { rot: 30, smooth: true });
+  const plain = transformFrames(img, { rot: 30 });
+  const count = (i) => i.data.filter((_, k) => k % 4 === 3 && i.data[k]).length;
+  assert.ok(Math.abs(count(turned) - count(plain)) < 12);
+  const flipped = transformFrames(img, { flipX: true, smooth: true });
+  assert.deepEqual([...flipped.data], [...transformFrames(img, { flipX: true }).data]);
+});
+
+test('make room grows sprite frames so an enlarged part is not cut off', async () => {
+  const { roomNeeded } = await import('../src/compose.js');
+  const frame = { w: 48, h: 48, cols: 3, rows: 4 };
+  const draws = [{ item: 'FrontHair' }];
+  assert.equal(roomNeeded({ offsets: {} }, draws, 'TV', frame), 0);
+  assert.equal(roomNeeded({ offsets: { FrontHair: { sprite: { scale: 150 } } } }, draws, 'TV', frame), 12);
+  assert.equal(roomNeeded({ offsets: { FrontHair: { sprite: { y: 5 } } } }, draws, 'TV', frame), 5);
+  // Portraits keep their size.
+  assert.equal(roomNeeded({ offsets: { FrontHair: { face: { scale: 200 } } } }, draws, 'FG', { w: 144, h: 144, cols: 1, rows: 1 }), 0);
+});

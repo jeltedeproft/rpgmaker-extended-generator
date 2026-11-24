@@ -208,6 +208,10 @@
         <button id="pause-anim" class="small-button" title="Stop the walk and battler animations">⏸ Pause</button>
         <button id="stand-anim" class="small-button" title="Show the standing pose (the middle frame) instead of animating">Stand still</button>
         <label class="lock"><input type="checkbox" id="walk-all"> All walk directions</label>
+        <label class="lock" title="Sprite frames grow so moved, enlarged and turned parts fit instead of being cut off at the frame's edge. The preview and the exported sheets get the bigger frames (RPG Maker reads them from the sheet size; walk sheets keep their $ prefix). Portraits stay 144px.">
+          <input type="checkbox" id="make-room"> Make room: bigger frames so nothing is cut off</label>
+        <label class="lock" title="Parts turned by an angle or made bigger are drawn from a smoothed 4x picture (Scale2x, like RotSprite) instead of blowing up square pixels.">
+          <input type="checkbox" id="smooth-pixels"> Pixel-art smoothing for turned and enlarged parts</label>
       </div>
       <details id="sheet-view" class="settings">
         <summary>Whole sheet</summary>

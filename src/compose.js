@@ -314,15 +314,55 @@ export function templateFor(sheet, settings) {
 }
 
 /** Size and frame grid of a sheet: from its template, else from the parts. */
-export function sheetLayout(sheet, draws, settings) {
+export function sheetLayout(sheet, draws, settings, character = null) {
   const t = templateFor(sheet, settings);
+  let layout;
   if (!t) {
     const size = sheetSize(sheet, draws);
-    return { size, frame: frameFor(sheet, size) };
+    layout = { size, frame: frameFor(sheet, size) };
+  } else {
+    const size = { w: t.fw * t.cols, h: t.fh * t.rows };
+    const frame = t.cols * t.rows > 1 ? { w: t.fw, h: t.fh, cols: t.cols, rows: t.rows } : null;
+    layout = { size, frame };
   }
-  const size = { w: t.fw * t.cols, h: t.fh * t.rows };
-  const frame = t.cols * t.rows > 1 ? { w: t.fw, h: t.fh, cols: t.cols, rows: t.rows } : null;
-  return { size, frame };
+  return settings?.makeRoom && character ? withRoom(layout, sheet, roomNeeded(character, draws, sheet, layout.frame)) : layout;
+}
+
+/**
+ * "Make room": how many pixels each sprite frame must grow on every side so moved, enlarged and
+ * turned parts are not cut off at the frame's edge (0 = they fit). Portraits keep their size.
+ */
+export function roomNeeded(character, draws, sheet, frame) {
+  const grid = SHEETS[sheet].frame;
+  if (sheet === 'FG' || !frame || !grid || frame.cols !== grid.cols || frame.rows !== grid.rows) return 0;
+  const side = Math.max(frame.w, frame.h);
+  const grown = (t, rot = t.rot) => {
+    const r = ((rot || 0) * Math.PI) / 180;
+    const f = ((t.scale ?? 100) / 100) * (Math.abs(Math.cos(r)) + Math.abs(Math.sin(r)));
+    return (side * Math.max(0, f - 1)) / 2;
+  };
+  let room = 0;
+  for (const item of new Set(draws.map((d) => d.item))) {
+    const o = partOffset(character, item, sheet);
+    let cell = 0;
+    let turn = o.rot;
+    for (const c of cellOffsets(character, item, sheet).values()) {
+      cell = Math.max(cell, Math.abs(c.x || 0), Math.abs(c.y || 0));
+      if (Math.abs(o.rot + (c.rot || 0)) % 180 > Math.abs(turn) % 180) turn = o.rot + (c.rot || 0);
+    }
+    room = Math.max(room, grown(o, turn) + Math.max(Math.abs(o.x), Math.abs(o.y)) + cell);
+  }
+  const whole = sheetTransformOf(character, sheet);
+  room += grown(whole) + Math.max(Math.abs(whole.x), Math.abs(whole.y));
+  return Math.min(side * 2, Math.ceil(room));
+}
+
+/** The layout with every frame grown by `room` pixels on each side (the parts drawn in its middle). */
+function withRoom(layout, sheet, room) {
+  if (!room) return layout;
+  const { frame } = layout;
+  const big = { ...frame, w: frame.w + room * 2, h: frame.h + room * 2 };
+  return { size: { w: big.w * frame.cols, h: big.h * frame.rows }, frame: big, room, inner: { w: frame.w, h: frame.h } };
 }
 
 /**
@@ -331,7 +371,7 @@ export function sheetLayout(sheet, draws, settings) {
  * centred and standing on the frame's bottom. Anything else: centred on the sheet.
  * @returns {{image:object, tiled:boolean}} tiled = the image is laid out in the sheet's frames
  */
-export function placeOnSheet(img, sheet, { size, frame }) {
+export function placeOnSheet(img, sheet, { size, frame, room = 0, inner = frame }) {
   if (img.width === size.w && img.height === size.h) return { image: img, tiled: !!frame };
   const grid = SHEETS[sheet].frame;
   if (frame && grid && frame.cols === grid.cols && frame.rows === grid.rows
@@ -339,8 +379,9 @@ export function placeOnSheet(img, sheet, { size, frame }) {
     const sw = img.width / grid.cols;
     const sh = img.height / grid.rows;
     const out = createImage(size.w, size.h);
-    const dx = Math.round((frame.w - sw) / 2);
-    const dy = frame.h - sh;
+    // Centred, standing on the bottom (of the frame inside the room made around it).
+    const dx = room + Math.round((inner.w - sw) / 2);
+    const dy = room + inner.h - sh;
     for (let row = 0; row < grid.rows; row++) {
       for (let col = 0; col < grid.cols; col++) {
         for (let y = 0; y < sh; y++) {
@@ -406,7 +447,7 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
   const problems = [];
   if (!layers.length) return { image: null, problems };
 
-  const layout = sheetLayout(sheet, layers, settings);
+  const layout = sheetLayout(sheet, layers, settings, character);
   const { size, frame } = layout;
   const out = createImage(size.w, size.h);
   const islands = new Map();
@@ -473,9 +514,10 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
       const own = placed.filter((q) => q.item === p.item && q.frame === p.frame);
       centres.set(key, frameCentres(own.map((q) => q.image), p.frame));
     }
+    const smooth = !!settings?.smoothPixels;
     const transform = cellTurns
-      ? (fx, fy) => ({ ...p.offset, rot: p.offset.rot + (p.cells.get(`${fx / p.frame.w},${fy / p.frame.h}`)?.rot || 0) })
-      : p.offset;
+      ? (fx, fy) => ({ ...p.offset, smooth, rot: p.offset.rot + (p.cells.get(`${fx / p.frame.w},${fy / p.frame.h}`)?.rot || 0) })
+      : { ...p.offset, smooth };
     p.image = transformFrames(p.image, transform, p.frame, centres.get(key));
   }
   const draw = (target, p) => {
@@ -512,7 +554,8 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     const moved = draw(createImage(size.w, size.h), p);
     blendOver(out, applyClip(moved, region, clip.mode));
   }
-  return { image: transformSheet(out, sheet, frame, sheetTransformOf(character, sheet)), problems, frame };
+  const whole = { ...sheetTransformOf(character, sheet), smooth: !!settings?.smoothPixels };
+  return { image: transformSheet(out, sheet, frame, whole), problems, frame };
 }
 
 /**

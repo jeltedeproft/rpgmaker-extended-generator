@@ -230,6 +230,41 @@ export function frameCentres(images, frame = null) {
   return centres;
 }
 
+/**
+ * Scale2x (EPX): doubles a pixel-art image, rounding off its stair steps instead of blowing up
+ * square pixels. Twice gives the 4x picture that smooth turning and enlarging sample from.
+ */
+export function scale2x(image) {
+  const { width: w, height: h } = image;
+  const src = new Uint32Array(image.data.buffer, image.data.byteOffset, w * h);
+  const out = createImage(w * 2, h * 2);
+  const dst = new Uint32Array(out.data.buffer);
+  const at = (x, y) => src[Math.max(0, Math.min(h - 1, y)) * w + Math.max(0, Math.min(w - 1, x))];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const e = src[y * w + x];
+      const b = at(x, y - 1);
+      const d = at(x - 1, y);
+      const f = at(x + 1, y);
+      const hh = at(x, y + 1);
+      const o = (y * 2) * w * 2 + x * 2;
+      const same = b === hh || d === f;
+      dst[o] = !same && d === b ? d : e;
+      dst[o + 1] = !same && b === f ? f : e;
+      dst[o + w * 2] = !same && d === hh ? d : e;
+      dst[o + w * 2 + 1] = !same && hh === f ? f : e;
+    }
+  }
+  return out;
+}
+
+/** The 4x Scale2x picture of an image, made once per image. */
+const smoothCache = new WeakMap();
+function smoothed(image) {
+  if (!smoothCache.has(image)) smoothCache.set(image, scale2x(scale2x(image)));
+  return smoothCache.get(image);
+}
+
 /** A transform that changes nothing. */
 export const NO_TRANSFORM = Object.freeze({ rot: 0, scale: 100, flipX: false, flipY: false });
 
@@ -267,6 +302,7 @@ export function transformFrames(image, transform, frame = null, centres = frameC
   const fh = frame?.h || image.height;
   const out = createImage(image.width, image.height);
   const s = image.data;
+  let up = null;
   for (let fy = 0; fy + fh <= image.height; fy += fh) {
     for (let fx = 0; fx + fw <= image.width; fx += fw) {
       const centre = centres.get(`${fx},${fy}`);
@@ -287,17 +323,31 @@ export function transformFrames(image, transform, frame = null, centres = frameC
       const k = 100 / Math.max(1, t.scale ?? 100);
       const mx = t.flipX ? -1 : 1;
       const my = t.flipY ? -1 : 1;
+      // Smooth: turned (not by a quarter) or enlarged pixel art is sampled from its 4x Scale2x
+      // picture (like RotSprite), so edges stay clean lines instead of jagged blocks.
+      const smooth = t.smooth && ((t.rot || 0) % 90 !== 0 || (t.scale ?? 100) > 100);
+      if (smooth) up ||= smoothed(image);
       for (let y = fy; y < fy + fh; y++) {
         for (let x = fx; x < fx + fw; x++) {
           // Inverse mapping: which source pixel lands here (turn back, shrink back, flip back).
           const dx = x - cx;
           const dy = y - cy;
-          const sx = Math.round(cx + (dx * cos + dy * sin) * k * mx);
-          const sy = Math.round(cy + (-dx * sin + dy * cos) * k * my);
+          const u = cx + (dx * cos + dy * sin) * k * mx;
+          const v = cy + (-dx * sin + dy * cos) * k * my;
+          const sx = Math.round(u);
+          const sy = Math.round(v);
           if (sx < fx || sx >= fx + fw || sy < fy || sy >= fy + fh) continue;
+          const di = (y * image.width + x) * 4;
+          if (smooth) {
+            const ux = Math.min(sx * 4 + 3, Math.max(sx * 4, Math.floor((u + 0.5) * 4)));
+            const uy = Math.min(sy * 4 + 3, Math.max(sy * 4, Math.floor((v + 0.5) * 4)));
+            const ui = (uy * up.width + ux) * 4;
+            if (!up.data[ui + 3]) continue;
+            out.data.set(up.data.subarray(ui, ui + 4), di);
+            continue;
+          }
           const si = (sy * image.width + sx) * 4;
           if (!s[si + 3]) continue;
-          const di = (y * image.width + x) * 4;
           out.data[di] = s[si];
           out.data[di + 1] = s[si + 1];
           out.data[di + 2] = s[si + 2];

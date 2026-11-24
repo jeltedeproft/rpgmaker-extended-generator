@@ -18,6 +18,7 @@ const PORT = 9333;
 mkdirSync(OUT, { recursive: true });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const walkSigOf = (id) => `[...document.getElementById('${id}').getContext('2d').getImageData(0,0,document.getElementById('${id}').width,document.getElementById('${id}').height).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`;
 const chrome = spawn(CHROME, [
   '--headless=new', '--disable-gpu', `--remote-debugging-port=${PORT}`, '--window-size=1400,1000',
   `--user-data-dir=${mkdtempSync(join(tmpdir(), 'xgen-profile-'))}`, 'about:blank',
@@ -239,6 +240,29 @@ try {
   await evaluate(`(() => { for (const i of [...document.querySelectorAll('#template-grid input')].slice(4, 6)) { i.value = ''; i.dispatchEvent(new Event('change')); } })()`);
   await sleep(1200);
   check('template can be cleared', await evaluate(`document.getElementById('walk-canvas').width === 48`));
+  // Make room: a part made bigger gets bigger frames instead of being cut off; smoothing redraws it.
+  {
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
+    await sleep(500);
+    const setField = (id, v) => evaluate(`(() => { const i = document.getElementById('${id}'); i.value = ${v}; i.dispatchEvent(new Event('input')); })()`);
+    const toggle = (id, on) => evaluate(`(() => { const c = document.getElementById('${id}'); c.checked = ${on}; c.dispatchEvent(new Event('change')); })()`);
+    await setField('off-sprite-scale', 150);
+    await setField('off-sprite-rot', 20);
+    await sleep(900);
+    const roomless = await evaluate(walkSigOf('walk-canvas'));
+    await toggle('make-room', true);
+    await sleep(900);
+    check('make room gives bigger frames to an enlarged part', await evaluate(`document.getElementById('walk-canvas').width > 48`), await evaluate(`document.getElementById('walk-canvas').width`));
+    await toggle('make-room', false);
+    await toggle('smooth-pixels', true);
+    await sleep(900);
+    check('pixel-art smoothing redraws a turned part', (await evaluate(walkSigOf('walk-canvas'))) !== roomless);
+    await toggle('smooth-pixels', false);
+    await setField('off-sprite-scale', 100);
+    await setField('off-sprite-rot', 0);
+    await sleep(900);
+    check('frames are back to 48px', await evaluate(`document.getElementById('walk-canvas').width === 48`));
+  }
 
   // Preview controls: pause, stand still, all directions, whole sheet.
   const walkSig = (id) => `[...document.getElementById('${id}').getContext('2d').getImageData(0,0,document.getElementById('${id}').width,document.getElementById('${id}').height).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`;
