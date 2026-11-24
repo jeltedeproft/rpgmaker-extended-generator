@@ -441,6 +441,10 @@ try {
     await sleep(900);
     check('assign dialog shows the image', await evaluate(`document.getElementById('assign-preview').width > 0`));
     check('one by one offers skip', await evaluate(`!document.getElementById('assign-skip').hidden`));
+    check('one by one shows only add, skip and cancel', (await evaluate(`[...document.querySelectorAll('#assign-dialog .dialog-actions button')].filter(b => b.offsetParent).map(b => b.value).join()`)) === 'cancel,skip,ok',
+      await evaluate(`[...document.querySelectorAll('#assign-dialog .dialog-actions button')].filter(b => b.offsetParent).map(b => b.value).join()`));
+    check('one by one shows only the picture, part, body type and colour slot', await evaluate(`[...document.querySelectorAll('#assign-dialog label.field')].filter(l => l.offsetParent).map(l => l.firstChild.textContent.trim().split(' ')[0]).join() === 'Part,Body,Colour'`),
+      await evaluate(`[...document.querySelectorAll('#assign-dialog label.field')].filter(l => l.offsetParent).map(l => l.firstChild.textContent.trim()).join(' | ')`));
     const assignSizes = [await evaluate(`(() => { const r = document.querySelector('#assign-dialog').getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })()`)];
     await sleep(2500);
     assignSizes.push(await evaluate(`(() => { const r = document.querySelector('#assign-dialog').getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })()`));
@@ -466,11 +470,11 @@ try {
     await sleep(2500);
     if (await evaluate(`document.getElementById('assign-dialog').open`)) assignSizes.push(await evaluate(`(() => { const r = document.querySelector('#assign-dialog').getBoundingClientRect(); return Math.round(r.width) + 'x' + Math.round(r.height); })()`));
     check('the assign dialog keeps one size', new Set(assignSizes).size === 1, assignSizes.join(' '));
-    // Remove a file straight from the assign dialog.
-    if (!(await evaluate(`document.getElementById('assign-dialog').open`))) {
-      await evaluate(`document.getElementById('files-start').click()`);
-      await sleep(1500);
-    }
+    // Remove a file straight from the assign dialog (one file, not one by one).
+    if (await evaluate(`document.getElementById('assign-dialog').open`)) await evaluate(`document.querySelector('#assign-dialog button[value="cancel"]').click()`);
+    await sleep(300);
+    await evaluate(`[...document.querySelectorAll('#files-list .file-card button')].find(b => b.textContent.startsWith('Assign')).click()`);
+    await sleep(1500);
     {
       const before = await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').textContent`);
       await evaluate(`document.getElementById('assign-remove').click()`);

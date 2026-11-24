@@ -249,6 +249,9 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .assign-info p { min-height: 1.4em; margin: 0 0 4px; }
 #assign-file { word-break: break-all; }
 .assign-variable { min-height: 74px; }
+/* One by one: only the picture, part name, body type and colour slot; Add, Skip or Cancel. */
+#assign-dialog.one-by-one .full-only { display: none !important; }
+#assign-dialog.one-by-one .assign-variable { min-height: 0; }
 .assign-variable #assign-mask-note { min-height: 2.6em; margin: 2px 0 0; }
 .assign-form h3 { margin-top: 0; }
 .assign-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 10px; }

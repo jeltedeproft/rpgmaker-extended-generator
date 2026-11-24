@@ -1807,7 +1807,10 @@ function updateAssignPreview() {
   const isFace = f.sheet === 'FG';
   $('assign-mask').parentElement.hidden = isFace || f.sheet === 'icon';
   $('assign-mask-note').hidden = $('assign-mask').parentElement.hidden;
-  $('assign-face-fields').hidden = !isFace;
+  // One by one keeps the colour slot's place, so the dialog doesn't jump between pictures.
+  const oneByOne = $('assign-dialog').classList.contains('one-by-one');
+  $('assign-face-fields').hidden = !isFace && !oneByOne;
+  $('assign-face-fields').style.visibility = isFace ? '' : 'hidden';
   const creating = !$('assign-body').value;
   $('assign-new-body').hidden = !creating;
   const body = $('assign-body').value || $('assign-new-body').value.trim();
@@ -1854,6 +1857,8 @@ let assignQueue = null;
 async function openAssignDialog(entry, queue = null) {
   assigning = entry;
   assignQueue = queue;
+  // One by one (a queue): the short form, with the rest filled in from the file and its size.
+  $('assign-dialog').classList.toggle('one-by-one', !!queue);
   const fileName = entry.path.split('/').pop();
   const stem = fileName.replace(/\.png$/i, '');
   const bodies = bodyChoices();

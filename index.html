@@ -497,11 +497,11 @@
         <div class="assign-preview"><canvas id="assign-preview" width="0" height="0"></canvas></div>
         <div class="assign-info">
           <p class="small"><code id="assign-file"></code> <span id="assign-size" class="muted"></span></p>
-          <p class="small" id="assign-current"></p>
+          <p class="small full-only" id="assign-current"></p>
           <p class="small muted" id="assign-queue"></p>
         </div>
       </div>
-      <label class="field">Sheet
+      <label class="field full-only">Sheet
         <select id="assign-sheet">
           <option value="FG">Portrait (FG, face picture)</option>
           <option value="TV">Walk (TV)</option>
@@ -515,10 +515,10 @@
         <datalist id="assign-part-list"></datalist>
       </label>
       <div class="assign-row">
-        <label class="field">Layer number (optional)
+        <label class="field full-only">Layer number (optional)
           <input id="assign-layer" type="text" maxlength="2" placeholder="e.g. 1 or 2">
         </label>
-        <label class="field">Variation
+        <label class="field full-only">Variation
           <input id="assign-pid" type="text" maxlength="30">
         </label>
         <label class="field">Body type
@@ -527,10 +527,10 @@
         </label>
       </div>
       <div class="assign-variable">
-      <label class="lock"><input type="checkbox" id="assign-mask"> This is a colour mask (<code>_c</code>) for the image with the same name</label>
-      <p id="assign-mask-note" class="muted small"></p>
+      <label class="lock full-only"><input type="checkbox" id="assign-mask"> This is a colour mask (<code>_c</code>) for the image with the same name</label>
+      <p id="assign-mask-note" class="muted small full-only"></p>
       <div id="assign-face-fields" class="assign-row">
-        <label class="field">Portrait cell
+        <label class="field full-only">Portrait cell
           <select id="assign-cell"><option>c1</option><option>c2</option><option>c3</option><option>c4</option><option>c5</option><option>c6</option></select>
         </label>
         <label class="field">Colour slot
@@ -538,11 +538,11 @@
         </label>
       </div>
       </div>
-      <div id="assign-suggest" class="assign-suggest small"></div>
-      <p class="small">Read as <code id="assign-result"></code></p>
-      <label class="lock"><input type="checkbox" id="assign-remember" checked> Remember for this pack</label>
+      <div id="assign-suggest" class="assign-suggest small full-only"></div>
+      <p class="small full-only">Read as <code id="assign-result"></code></p>
+      <label class="lock full-only"><input type="checkbox" id="assign-remember" checked> Remember for this pack</label>
       <div class="dialog-actions">
-        <button value="remove" id="assign-remove" title="Take this file out of the generator (the file on your computer stays). Put it back in Files… → Removed">Remove file</button>
+        <button value="remove" id="assign-remove" class="full-only" title="Take this file out of the generator (the file on your computer stays). Put it back in Files… → Removed">Remove file</button>
         <button value="cancel">Cancel</button>
         <button value="skip" id="assign-skip">Skip</button>
         <button value="ok" class="primary" id="assign-ok">Add</button>
