@@ -3344,12 +3344,27 @@ async function renderRecentInto(box, note) {
     }
   }
   const forgetAll = el('button', { className: 'forget', textContent: folders.length > 1 ? 'Forget all' : 'Forget',
-    title: 'Forget these folders, and what you assigned, removed or decided about look-alikes in them' });
+    title: 'Forget these folders, what you assigned, removed or decided about look-alikes in them, and your saved characters (Gallery) and sets' });
   forgetAll.addEventListener('click', async () => {
     let removed = 0;
     for (const f of folders) removed += await forgetAndUnload(f.key);
+    // Everything goes: saved characters and sets too. Undo brings those two back.
+    const gallery = galleryEntries();
+    const sets = state.settings.sets || [];
+    saveGallery([]);
+    state.settings.sets = [];
+    saveSettings();
+    renderSets();
     renderRecentFolders();
-    toast(removed ? `Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and what you assigned in them, and took their parts out.` : 'Forgot the folders and what you assigned in them.');
+    const kept = gallery.length || sets.length;
+    toast(`Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and what you assigned in them${removed ? ', and took their parts out' : ''}${kept ? `, and your ${gallery.length} saved character${gallery.length === 1 ? '' : 's'} and ${sets.length} set${sets.length === 1 ? '' : 's'}` : ''}.`,
+      10000, kept ? { label: 'Undo', run: () => {
+        saveGallery(gallery);
+        state.settings.sets = sets;
+        saveSettings();
+        renderSets();
+        toast('Your saved characters and sets are back.');
+      } } : undefined);
   });
   box.append(forgetAll);
 }
