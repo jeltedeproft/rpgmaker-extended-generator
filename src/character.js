@@ -297,18 +297,41 @@ export function isGeneratorSettings(data) {
   return data?.identity === 'CharacterGeneratorSettings' && typeof data.patterns === 'object';
 }
 
-/** The variant of a part with this number ("p04" also finds "p4" or "p004"), own body type first. */
-function variantByNumber(library, part, pid, bodyType) {
-  const exact = resolveVariant(library, part, pid, bodyType);
-  if (exact) return exact;
+/**
+ * The variant of a part with this number ("p04" also finds "p4" or "p004"), own body type first.
+ * pack: look in that pack first (onlyPack: only there).
+ */
+function variantByNumber(library, part, pid, bodyType, pack = null, onlyPack = false) {
   const n = Number(pid.replace(/\D/g, ''));
   const order = [bodyType, ...[...library.bodyTypes.keys()].filter((b) => b !== bodyType)];
-  for (const name of order) {
-    for (const [id, v] of library.bodyTypes.get(name)?.parts.get(part) || []) {
-      if (v.basePid === v.pid && Number(v.pid.replace(/\D/g, '')) === n) return id;
-    }
+  const find = (inPack) => {
+    const candidates = order.flatMap((name) => [...(library.bodyTypes.get(name)?.parts.get(part) || [])])
+      .filter(([, v]) => !inPack || v.pack === inPack);
+    return candidates.find(([, v]) => v.pid === pid)?.[0]
+      || candidates.find(([, v]) => v.basePid === v.pid && Number(v.pid.replace(/\D/g, '')) === n)?.[0] || null;
+  };
+  return (pack && find(pack)) || (onlyPack ? null : find(null));
+}
+
+const gradientPack = (g) => g.pack ?? g.id.slice(0, g.id.lastIndexOf('/'));
+
+/**
+ * The opened folder a generator preset was made with: the one that has the most of its parts,
+ * then one with RPG Maker MZ's gradient sheets (grad_hair.png, ...; MV has one gradients.png),
+ * then the first opened. Several generators (MV, MZ, DLC) share part numbers with other pictures.
+ */
+function presetPack(data, library, bodyType, partByLower, gradients) {
+  const wanted = Object.entries(data.patterns || {}).filter(([, pid]) => pid)
+    .map(([key, pid]) => [partByLower.get(key.toLowerCase()), String(pid)]).filter(([part]) => part);
+  const mz = new Set(gradients.filter((g) => g.source === 'file' && g.category !== 'all').map(gradientPack));
+  let best = null;
+  let bestScore = -1;
+  for (const { name } of library.packs || []) {
+    const has = wanted.filter(([part, pid]) => variantByNumber(library, part, pid, bodyType, name, true)).length;
+    const score = has * 2 + (mz.has(name) ? 1 : 0);
+    if (score > bestScore) [best, bestScore] = [name, score];
   }
-  return null;
+  return best;
 }
 
 /**
@@ -328,6 +351,7 @@ export function fromGeneratorSettings(data, library, gradients = [], name = 'Cha
   for (const p of library.bodyTypes.get(bodyType)?.parts.keys() || []) partByLower.set(p.toLowerCase(), p);
 
   const character = { ...createCharacter(bodyType), name };
+  const pack = presetPack(data, library, bodyType, partByLower, gradients);
   for (const [key, pid] of Object.entries(data.patterns || {})) {
     const part = partByLower.get(key.toLowerCase());
     if (!part) {
@@ -338,15 +362,23 @@ export function fromGeneratorSettings(data, library, gradients = [], name = 'Cha
       character.parts[part] = null;
       continue;
     }
-    const id = variantByNumber(library, part, String(pid), bodyType);
+    const id = variantByNumber(library, part, String(pid), bodyType, pack);
     if (!id) missing.push(`${part} ${pid}`);
     character.parts[part] = id;
   }
 
-  // Row n of the slot's gradient sheet. RPG Maker MZ sheets come first, then any pack's.
+  // Row n of the slot's gradient sheet: the sheet for that colour (grad_hair, ...) of the preset's
+  // folder, else of any folder; else a sheet for every colour, the preset's folder first.
   const rowsFor = (category) => {
-    const sheets = gradients.filter((g) => g.source === 'file' && g.category === category);
-    return sheets.length ? sheets : gradients.filter((g) => g.source === 'file' && g.category === 'all');
+    const files = gradients.filter((g) => g.source === 'file');
+    const own = files.filter((g) => gradientPack(g) === pack);
+    for (const cat of [category, 'all']) {
+      for (const list of [own, files]) {
+        const sheets = list.filter((g) => g.category === cat);
+        if (sheets.length) return sheets;
+      }
+    }
+    return [];
   };
   for (const [hex, row] of Object.entries(data.colors || {})) {
     const slot = SLOT_BY_RGB.get(parseInt(String(hex).replace('#', ''), 16));

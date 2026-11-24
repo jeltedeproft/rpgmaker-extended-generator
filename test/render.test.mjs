@@ -501,6 +501,29 @@ test('reads RPG Maker MZ generator presets (CharacterGeneratorSettings)', () => 
   assert.deepEqual(missing, ['Beard p09']);
 });
 
+test('a generator preset takes its parts from the folder it was made with', () => {
+  const lib = createLibrary();
+  // MV opened first, with other pictures under the same numbers; the DLC lacks the face.
+  addPack(lib, 'MV', [
+    { path: 'g/Face/Male/FG_Face_p06_c1_m001.png', src: 'mvFace' },
+    { path: 'g/Face/Male/FG_FrontHair_p10_c1_m003.png', src: 'mvHair' },
+  ]);
+  addPack(lib, 'DLC', [{ path: 'g/Face/Male/FG_FrontHair_p10_c1_m003.png', src: 'dlcHair' }]);
+  addPack(lib, 'MZ', [
+    { path: 'g/Face/Male/FG_Face_p06_c1_m001.png', src: 'mzFace' },
+    { path: 'g/Face/Male/FG_FrontHair_p10_c1_m003.png', src: 'mzHair' },
+  ]);
+  const gradients = [
+    ...Array.from({ length: 30 }, (_, i) => ({ id: `MV/gradients#${i}`, pack: 'MV', category: 'all', source: 'file' })),
+    ...Array.from({ length: 30 }, (_, i) => ({ id: `MZ/grad_hair#${i}`, pack: 'MZ', category: 'hair', source: 'file' })),
+  ];
+  const json = JSON.stringify({ identity: 'CharacterGeneratorSettings', gender: 'male', patterns: { face: 'p06', fronthair: 'p10' }, colors: { '#FCCB0A': 23 } });
+  const { character } = deserializeCharacter(json, lib, gradients, 'Scholar_male.json');
+  assert.equal(character.parts.Face, 'MZ/Male/Face/p06');
+  assert.equal(character.parts.FrontHair, 'MZ/Male/FrontHair/p10');
+  assert.equal(character.colors.hair, 'MZ/grad_hair#23');
+});
+
 test('a renamed copy "p07 (2)" does not borrow the damage sprite of p07', () => {
   const lib = createLibrary();
   addPack(lib, 'MV', [
