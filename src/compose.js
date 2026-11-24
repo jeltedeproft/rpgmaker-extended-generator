@@ -248,7 +248,8 @@ export function layersForSheet(sheet, character, library) {
       pieces.forEach((piece, i) => draws.push({ layer, item: piece, piece: { of: key, n: i + 1 } }));
     }
   }
-  const sorted = draws
+  // character.only: just this item or piece (a piece on its own, to see which one it is).
+  const sorted = draws.filter((d) => !character.only || d.item === character.only)
     .map((draw, i) => ({ draw, i, order: orderIndex(sheet, draw.layer.key, draw.layer.part) }))
     // Same position: the recoloured layer goes above a fixed one (see FG_Beard_p07_c1 vs _c1_m003).
     .sort((a, b) => b.order - a.order || !!a.draw.layer.slotId - !!b.draw.layer.slotId || a.i - b.i)

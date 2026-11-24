@@ -612,7 +612,8 @@ try {
     if (pieces >= 2) {
       const beforePiece = await evaluate(faceSig);
       await evaluate(`document.querySelectorAll('#part-list button.piece')[1].click()`);
-      await sleep(500);
+      await sleep(1200);
+      check('a selected piece is shown on its own', await evaluate(`!document.getElementById('piece-preview').hidden && document.querySelectorAll('#piece-preview canvas').length >= 1`));
       await evaluate(`(() => { const i = document.getElementById('off-face-x'); i.value = 4; i.dispatchEvent(new Event('input')); })()`);
       await sleep(900);
       check('one piece moves on its own', (await evaluate(faceSig)) !== beforePiece);

@@ -878,6 +878,43 @@ function renderOffsets() {
   $('cell-box').hidden = !hasSprite;
   if (hasSprite) renderCellOptions();
   renderLink();
+  renderPiecePreview();
+}
+
+/**
+ * A split piece on its own, on every image: which part of the picture it is, where it sits. The
+ * walk and battler show one frame, the damage sprite its three frames.
+ */
+let piecePreviewToken = 0;
+async function renderPiecePreview() {
+  const key = state.selectedPart;
+  const box = $('piece-preview');
+  const token = ++piecePreviewToken;
+  if (!pieceInfo(key)) {
+    box.hidden = true;
+    return;
+  }
+  await ensureVariants(variantsToDecode(state.character, state.library));
+  if (token !== piecePreviewToken) return;
+  const alone = { ...state.character, only: key };
+  const pictures = [];
+  for (const sheet of ['FG', 'TV', 'TVD', 'SV']) {
+    const { image, frame } = composeSheet(sheet, alone, state.library, gradientsById(), state.settings);
+    if (!image || !image.data.some((v, i) => i % 4 === 3 && v)) continue;
+    const f = frameOf(sheet, image, frame);
+    // One frame: the walk facing down (standing), the battler's first; damage and portrait whole.
+    const crop = sheet === 'TV' || sheet === 'SV' ? { x: f.cols === 3 ? f.w : 0, y: 0, w: f.w, h: f.h } : { x: 0, y: 0, w: image.width, h: image.height };
+    const part = createImage(crop.w, crop.h);
+    for (let y = 0; y < crop.h; y++) {
+      const start = ((crop.y + y) * image.width + crop.x) * 4;
+      part.data.set(image.data.subarray(start, start + crop.w * 4), y * crop.w * 4);
+    }
+    const canvas = toCanvas(part);
+    canvas.className = `piece-pic piece-${sheet}`;
+    pictures.push(el('figure', {}, [canvas, el('figcaption', { className: 'muted small', textContent: SHEET_NAMES[sheet] })]));
+  }
+  box.replaceChildren(el('div', { className: 'small', textContent: `${key} on its own` }), el('div', { className: 'piece-pics' }, pictures));
+  box.hidden = !pictures.length;
 }
 
 const SHAPE_FIELDS = ['x', 'y', 'rot', 'scale', 'flipx', 'flipy'];
@@ -1106,6 +1143,7 @@ function updateOffset() {
   offsets[state.selectedPart] = { ...offsets[state.selectedPart], face: readShape('off-face'), sprite: readShape('off-sprite') };
   syncPartner(state.selectedPart);
   renderPreview();
+  renderPiecePreview();
 }
 
 /** The item whose own colours the swatches edit, or null for the character's shared colours. */

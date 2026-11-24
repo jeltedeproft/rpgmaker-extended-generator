@@ -123,6 +123,14 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 
 .other-bodies { margin-top: 10px; }
 .variant-tabs { margin-bottom: 8px; }
+.piece-preview { margin-bottom: 10px; }
+.piece-pics { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; padding: 8px; margin-top: 4px; border-radius: 6px;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 12px 12px; }
+.piece-pics figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.piece-pic { image-rendering: pixelated; }
+.piece-FG { width: 108px; }
+.piece-TV, .piece-SV { width: 96px; }
+.piece-TVD { width: 216px; }
 .variant-tabs .tab-gap { width: 12px; }
 .variant.vx { position: relative; }
 .variant.vx::after { content: 'VX Ace'; position: absolute; top: 3px; right: 3px; font-size: 9px; line-height: 1; padding: 2px 3px;
