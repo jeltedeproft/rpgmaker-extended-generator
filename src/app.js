@@ -3561,11 +3561,12 @@ $('rules-reset').addEventListener('click', () => {
   openRulesDialog();
 });
 
-// Larger preview: pointing at a part tile, a picture in the per-image picker or in Files… shows
-// it big, next to it, so small and dark parts can be seen.
+// Larger preview: pointing at a part tile, a picture in the per-image picker, in Files… or in
+// Look-alikes shows it big, next to it, so small and dark parts can be seen. Inside a window
+// (Files…, Look-alikes) it goes in that window, or it would open behind it.
 const bigPreview = el('div', { className: 'big-preview', hidden: true });
 document.body.append(bigPreview);
-const PREVIEWED = '.variant canvas, .sheet-pick canvas, .file-card canvas';
+const PREVIEWED = '.variant canvas, .sheet-pick canvas, .file-card canvas, .alike-pics canvas';
 document.addEventListener('mouseover', (e) => {
   const small = e.target.closest?.(PREVIEWED);
   if (!small || !small.width || !small.height) return;
@@ -3575,6 +3576,8 @@ document.addEventListener('mouseover', (e) => {
   big.style.width = `${small.width * scale}px`;
   big.style.height = `${small.height * scale}px`;
   bigPreview.replaceChildren(big);
+  const host = small.closest('dialog[open]') || document.body;
+  if (bigPreview.parentElement !== host) host.append(bigPreview);
   bigPreview.hidden = false;
   const r = small.getBoundingClientRect();
   const w = small.width * scale + 18;

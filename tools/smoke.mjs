@@ -695,6 +695,14 @@ try {
     check('look-alikes are listed', cards >= 2, `${cards} cards`);
     check('exact duplicate is hidden', await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].some(c => c.textContent.includes('p01 (3)') && c.textContent.includes('same pixels') && c.classList.contains('hidden-part'))`));
     await sleep(1500);
+    {
+      // The larger preview opens inside the window, not behind it.
+      const r = await evaluate(`(() => { const c = document.querySelector('#alike-list .alike-pics canvas'); const b = c.getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; })()`);
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r[0], y: r[1] });
+      await sleep(300);
+      check('the larger preview opens inside a window', await evaluate(`(() => { const p = document.querySelector('.big-preview'); return !p.hidden && !!p.closest('#alike-dialog'); })()`));
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 2, y: 2 });
+    }
     check('look-alikes have pictures and differences', await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].every(c => [...c.querySelectorAll('canvas')].every(x => x.width > 0))`));
     await shot('5-lookalikes.png');
     // Hide the near copy, then check the part list.
