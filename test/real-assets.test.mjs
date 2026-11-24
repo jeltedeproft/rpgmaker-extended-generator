@@ -131,4 +131,11 @@ test('vxace: every VX Ace generator file is read, and painted colours pick cells
   assert.notEqual(sig(red), sig(face));
   const darkSkin = composeSheet('TV', { ...character, colors: { 'vx:skin': 'painted:3' } }, lib, new Map(), {}).image;
   assert.notEqual(sig(darkSkin), sig(walk.image));
+  // Colour sync: no painted colour picked, so the hair takes the MV/MZ hair gradient.
+  const ramp = new Uint8ClampedArray(256 * 4).map((_, i) => [200, 20, 40, 255][i % 4]);
+  const byId = new Map([['red', { colors: ramp }]]);
+  const synced = composeSheet('FG', { ...character, colors: { hair: 'red' } }, lib, byId, {}).image;
+  assert.notEqual(sig(synced), sig(face));
+  assert.equal(sig(composeSheet('FG', { ...character, colors: { hair: 'red', 'vx:hair': 'painted:0' } }, lib, byId, {}).image), sig(face));
+  assert.equal(sig(composeSheet('FG', { ...character, colors: { hair: 'red' } }, lib, byId, { syncColours: false }).image), sig(face));
 });

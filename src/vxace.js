@@ -40,6 +40,22 @@ export const PAINTED_SLOTS = [
 ].map((s) => ({ ...s, painted: true, part: null }));
 export const PAINTED_SLOT_BY_ID = new Map(PAINTED_SLOTS.map((s) => [s.id, s]));
 
+/**
+ * Colour sync: the MV/MZ colour a painted slot follows when no painted colour is picked, so VX Ace
+ * parts change colour together with the MV/MZ parts (hair with hair, skin with skin).
+ */
+export const PAINTED_FOLLOWS = {
+  'vx:skin': 'skin', 'vx:hair': 'hair', 'vx:eyes': 'eyes', 'vx:Clothing': 'clothing', 'vx:Cloak': 'cloak',
+  'vx:AccA': 'accA', 'vx:AccB': 'accB', 'vx:Glasses': 'glasses', 'vx:BeastEars': 'beastEars',
+  'vx:FacialMark': 'mark', 'vx:Tail': 'tail', 'vx:Wing': 'wing',
+};
+
+/** The MV/MZ slot a painted layer takes its colour from now: none once a painted colour is picked, or with sync off. */
+export function followedSlot(slotId, colourId, settings) {
+  if (settings?.syncColours === false || /^painted:/.test(colourId || '')) return null;
+  return PAINTED_FOLLOWS[slotId] || null;
+}
+
 /** The cell a painted colour id picks: "painted:3" -> 3; anything else -> 0 (the first colour). */
 export function paintedIndex(colourId) {
   const m = /^painted:(\d+)$/.exec(colourId || '');

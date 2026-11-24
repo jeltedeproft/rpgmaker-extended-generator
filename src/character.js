@@ -1,7 +1,7 @@
 // Character model: which variant per part (from any body type), which gradient per colour slot,
 // and per-part pixel offsets.
 
-import { PAINTED_SLOTS } from './vxace.js';
+import { PAINTED_SLOTS, PAINTED_FOLLOWS } from './vxace.js';
 import { selectable } from './parse.js';
 import { PART_ORDER, REQUIRED_PARTS, SLOTS, SLOT_BY_RGB, ALL_BODIES } from './format.js';
 import { preferredCategory, preferredCategories, customGradientToJson, customGradientFromJson, uniqueGradients } from './gradients.js';
@@ -116,7 +116,7 @@ export function wearChance(part, rules = DEFAULT_RULES) {
  * @param {object} options.rules see DEFAULT_RULES
  * @param {object[]} options.sets saved character sets, for rules.setChance
  */
-export function randomize(character, library, gradients, { rng = Math.random, locked = new Set(), rules = DEFAULT_RULES, sets = [] } = {}) {
+export function randomize(character, library, gradients, { rng = Math.random, locked = new Set(), rules = DEFAULT_RULES, sets = [], syncColours = true } = {}) {
   let next = { ...character, parts: { ...character.parts }, colors: { ...character.colors }, split: { ...(character.split || {}) } };
   const changed = (part, id) => {
     if (next.parts[part] !== id) delete next.split[part]; // pieces belong to the old variant
@@ -148,8 +148,11 @@ export function randomize(character, library, gradients, { rng = Math.random, lo
 
   // VX Ace parts: a random painted colour (cell) for each painted slot.
   const vxace = library.packs.some((p) => p.format === 'vxace');
+  // With colour sync and MV/MZ colours to follow, they follow those instead.
   for (const slot of vxace ? PAINTED_SLOTS : []) {
-    if (!locked.has(slot.id)) next.colors[slot.id] = `painted:${Math.floor(rng() * slot.count)}`;
+    if (locked.has(slot.id)) continue;
+    if (syncColours && gradients.length && PAINTED_FOLLOWS[slot.id]) delete next.colors[slot.id];
+    else next.colors[slot.id] = `painted:${Math.floor(rng() * slot.count)}`;
   }
 
   if (sets.length && rng() < (rules.setChance || 0) / 100) {

@@ -9,7 +9,7 @@ import {
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
-import { PAINTED_SLOTS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
+import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
 import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, compareVariants, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
 import {
@@ -1118,7 +1118,7 @@ function slotWords(slot) {
 }
 
 function slotsForEditor() {
-  if (state.selectedPart === ALL_COLOURS) return usedSlots(state.character, state.library);
+  if (state.selectedPart === ALL_COLOURS) return withFollowedSlots(usedSlots(state.character, state.library));
   const variant = state.library.variants.get(state.character.parts[itemOfKey(state.selectedPart)]);
   if (!variant) return [];
   const ids = new Set();
@@ -1126,7 +1126,33 @@ function slotsForEditor() {
     if (layer.slotId) ids.add(layer.slotId);
     layer.mask?.slots?.forEach((s) => ids.add(s));
   }
-  return [...SLOTS.filter((s) => ids.has(s.id)), ...PAINTED_SLOTS.filter((s) => ids.has(s.id))];
+  return withFollowedSlots([...SLOTS.filter((s) => ids.has(s.id)), ...PAINTED_SLOTS.filter((s) => ids.has(s.id))]);
+}
+
+/** Colour sync is on, and there are VX Ace parts and MV/MZ parts to sync. */
+const hasBothKinds = () => state.library.packs.some((p) => p.format === 'vxace') && state.library.packs.some((p) => p.format !== 'vxace');
+const syncingColours = () => state.settings.syncColours !== false && hasBothKinds();
+
+/** With colour sync, the MV/MZ colours that VX Ace parts follow are offered too (hair for VX hair). */
+function withFollowedSlots(slots) {
+  if (!syncingColours()) return slots;
+  const ids = new Set(slots.map((s) => s.id));
+  for (const s of slots) if (s.painted && PAINTED_FOLLOWS[s.id]) ids.add(PAINTED_FOLLOWS[s.id]);
+  return [...SLOTS.filter((s) => ids.has(s.id)), ...slots.filter((s) => s.painted)];
+}
+
+/** "Sync colours": VX Ace parts follow the MV/MZ colours, unless a painted colour is picked. */
+function syncColoursToggle() {
+  const box = el('input', { type: 'checkbox', className: 'sync-colours', checked: state.settings.syncColours !== false });
+  box.addEventListener('change', () => {
+    state.settings.syncColours = box.checked;
+    saveSettings();
+    thumbCache.clear();
+    renderAll();
+    refreshTiles();
+  });
+  return el('label', { className: 'lock', title: 'A VX Ace part takes the colour picked for its kind (hair, skin, clothing...), gradient or hue, saturation and brightness, like the MV/MZ parts. Picking one of its painted colours keeps that colour instead.' },
+    [box, ' Sync colours: VX Ace parts follow the MV/MZ colours (unless you pick a painted colour)']);
 }
 
 /**
@@ -1138,19 +1164,26 @@ function paintedSwatches(slot) {
   const layers = keys.map((k) => state.library.variants.get(state.character.parts[k])).filter(Boolean)
     .flatMap((v) => v.layers).filter((l) => l.slotId === slot.id && l.base?.full);
   const count = Math.max(0, ...layers.map((l) => cellCount(l.base)));
-  const chosen = paintedIndex(slotColour(slot.id));
-  return Array.from({ length: count }, (_, i) => {
+  // With colour sync, no painted colour = following the MV/MZ colour (its own swatch).
+  const follows = syncingColours() && SLOT_BY_ID.get(PAINTED_FOLLOWS[slot.id]);
+  const current = slotColour(slot.id);
+  const chosen = /^painted:/.test(current || '') || !follows ? paintedIndex(current) : -1;
+  const pick = (value) => {
+    setSlotColour(slot.id, value);
+    renderSlots();
+    renderPreview();
+    refreshTiles();
+  };
+  const followButton = follows ? [el('button', { className: 'swatch add follow' + (chosen === -1 ? ' selected' : ''), textContent: `Same as ${follows.label.toLowerCase()}`,
+    title: `Take the ${follows.label.toLowerCase()} colour of the MV/MZ parts` })] : [];
+  followButton[0]?.addEventListener('click', () => pick(null));
+  return [...followButton, ...Array.from({ length: count }, (_, i) => {
     const colour = layers.map((l) => (i < cellCount(l.base) ? averageColour(cellOf(l.base, i)) : null)).find(Boolean) || '#888888';
     const b = el('button', { className: 'swatch painted' + (i === chosen ? ' selected' : ''), title: `Painted colour ${i + 1}` });
     b.style.background = colour;
-    b.addEventListener('click', () => {
-      setSlotColour(slot.id, i ? `painted:${i}` : null);
-      renderSlots();
-      renderPreview();
-      refreshTiles();
-    });
+    b.addEventListener('click', () => pick(i || follows ? `painted:${i}` : null));
     return b;
-  });
+  })];
 }
 
 const swatchCache = new WeakMap();
@@ -1204,7 +1237,8 @@ function renderSlots() {
     splitButton.addEventListener('click', splitAll);
     const joinButton = el('button', { className: 'small-button', textContent: 'Join all', hidden: !Object.keys(state.character.split || {}).length, title: 'Make every split part one piece again' });
     joinButton.addEventListener('click', joinAll);
-    head.push(el('div', { className: 'source-reset' }, [reset, splitButton, joinButton]), splitEverythingToggle(), recolourAllToggle());
+    head.push(el('div', { className: 'source-reset' }, [reset, splitButton, joinButton]), splitEverythingToggle(), recolourAllToggle(),
+      ...(hasBothKinds() ? [syncColoursToggle()] : []));
   }
   box.replaceChildren(...head, ...(auto ? [auto] : []), ...slots.map((slot) => {
     if (slot.painted) {
@@ -3733,7 +3767,7 @@ $('randomize').addEventListener('click', () => {
     }
   }
   state.character = randomize(state.character, state.library, allGradients(), {
-    locked: state.locked, rules: rules(), sets: state.settings.sets || [],
+    locked: state.locked, rules: rules(), sets: state.settings.sets || [], syncColours: syncingColours(),
   });
   renderAll();
 });

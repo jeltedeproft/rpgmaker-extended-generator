@@ -4,7 +4,7 @@ import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
 import { createImage, recolorLayer, blendOver, blendFrames, transformFrames, frameCentres, gridCentres, isTransformed, swapFrameRows } from './recolor.js';
 import { islandLabels, keepIsland } from './islands.js';
 import { solidOf, insideOutline, applyClip } from './clip.js';
-import { VX_ORDER, cellOf, paintedIndex } from './vxace.js';
+import { VX_ORDER, cellOf, paintedIndex, followedSlot } from './vxace.js';
 
 /**
  * Position in the draw order, 0 = top-most. Unknown layers fall back to the first entry for the
@@ -434,7 +434,8 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     };
     // VX Ace parts are painted, not recoloured: the colour picks a cell of the file.
     const painted = !!layer.base.cells;
-    const base = painted && layer.base.pixels ? cellOf(layer.base, paintedIndex(itemColor(character, item, layer.slotId))) : layer.base.pixels;
+    const paintedColour = painted ? itemColor(character, item, layer.slotId) : null;
+    const base = painted && layer.base.pixels ? cellOf(layer.base, paintedIndex(paintedColour)) : layer.base.pixels;
     if (!base) {
       problems.push(`${layer.base.path}: not decoded`);
       continue;
@@ -443,7 +444,12 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     if (mask && (mask.width !== base.width || mask.height !== base.height)) {
       problems.push(`${layer.mask.path}: mask is ${mask.width}x${mask.height}, image is ${base.width}x${base.height}`);
     }
-    const onSheet = placeOnSheet(painted ? base : recolorLayer(base, mask, layer.slotId, gradientFor, settings), sheet, layout);
+    // Colour sync: a VX Ace part with no painted colour picked takes the MV/MZ colour it follows
+    // (a gradient, or a hue, saturation and brightness shift), over its whole picture.
+    const follow = painted ? followedSlot(layer.slotId, paintedColour, settings) : null;
+    const recoloured = !painted ? recolorLayer(base, mask, layer.slotId, gradientFor, settings)
+      : follow ? recolorLayer(base, null, follow, gradientFor, settings) : base;
+    const onSheet = placeOnSheet(recoloured, sheet, layout);
     let image = onSheet.image;
     if (piece) {
       const labels = islandsOf(piece.of);
