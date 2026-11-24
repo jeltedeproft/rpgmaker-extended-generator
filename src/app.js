@@ -11,7 +11,7 @@ import {
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
-import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp } from './automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp, closeUpMask } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, compareVariants, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -602,7 +602,10 @@ function iconThumbnail(key, variant, character = state.character) {
         // The grey figure every icon is drawn on is not part of the part: it keeps its colours
         // (a grey head took the clothing's colours, in stripes).
         const figure = mask && await silhouetteFor(variant);
-        return (figure && !isCloseUp(icon, figure) && iconPart(icon, figure, mask)) || mask;
+        if (!mask || !figure) return mask;
+        if (!isCloseUp(icon, figure)) return iconPart(icon, figure, mask) || mask;
+        // A close-up: the face behind the part keeps its colours.
+        return closeUpMask(icon, mask, await backdropFor(variant));
       })();
       const mask = await variant.iconMask;
       if (!mask) return icon;
@@ -1648,6 +1651,20 @@ function silhouetteFor(variant) {
     })());
   }
   return silhouettes.get(key);
+}
+
+/** What a part's close-up icons are drawn on: the picture most of them share (3 icons or more). */
+const backdrops = new Map();
+function backdropFor(variant) {
+  const key = `${variant.pack}|${variant.bodyType}|${variant.part}`;
+  if (!backdrops.has(key)) {
+    backdrops.set(key, (async () => {
+      const own = [...state.library.variants.values()].filter((v) => v.pack === variant.pack && v.bodyType === variant.bodyType && v.part === variant.part && v.icon);
+      const icons = (await Promise.all(own.slice(0, 24).map((v) => ensureImage(v.icon).catch(() => null)))).filter(Boolean);
+      return icons.length >= 3 ? iconSilhouette(icons) : null;
+    })());
+  }
+  return backdrops.get(key);
 }
 
 /**

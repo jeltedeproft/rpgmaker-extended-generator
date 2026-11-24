@@ -239,6 +239,25 @@ export function isCloseUp(icon, silhouette) {
 }
 
 /**
+ * The colour mask of a close-up icon (see isCloseUp) without the face it is drawn on: pixels the
+ * part's other icons share (the backdrop, see iconSilhouette) and plain greys (the grey face, black
+ * lines, white shines) stay as drawn. The face took the part's colours in blocks: brown squares
+ * behind mouths, a yellow face behind eyes.
+ * @param {object|null} backdrop most icons of the part, pixel by pixel; null when there are too few
+ */
+export function closeUpMask(icon, mask, backdrop) {
+  const out = { width: mask.width, height: mask.height, data: new Uint8ClampedArray(mask.data) };
+  const a = icon.data;
+  const f = backdrop && backdrop.width === icon.width && backdrop.height === icon.height ? backdrop.data : null;
+  for (let i = 0; i < a.length; i += 4) {
+    const grey = Math.max(a[i], a[i + 1], a[i + 2]) - Math.min(a[i], a[i + 1], a[i + 2]) <= 6;
+    const behind = f && f[i + 3] >= 16 && near(a, i, f, i);
+    if (grey || behind) out.data[i + 3] = 0;
+  }
+  return out;
+}
+
+/**
  * A part cut out of its Variation icon: the pixels that differ from the figure (see
  * iconSilhouette), taken from `drawn` (the icon recoloured, same size). Null if the sizes differ.
  */

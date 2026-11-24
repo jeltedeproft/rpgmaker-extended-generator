@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp } from '../src/automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp, closeUpMask } from '../src/automask.js';
 import { createImage, recolorLayer } from '../src/recolor.js';
 import { SLOT_BY_ID } from '../src/format.js';
 
@@ -113,4 +113,20 @@ test('a part is cut out of its Variation icon and laid on the shared figure', ()
   const smallFigure = wide([grey, grey, none, none]);
   assert.equal(isCloseUp(wide([grey, grey, hat, none]), smallFigure), false); // a wing: a bit beside
   assert.equal(isCloseUp(wide([grey, grey, hat, hat]), smallFigure), true); // as big as the figure
+});
+
+test('a close-up icon keeps the face it is drawn on as drawn', () => {
+  const wide = (pixels) => ({ width: 4, height: 1, data: new Uint8ClampedArray(pixels.flat()) });
+  const skin = [240, 190, 160, 255];
+  const glow = [200, 170, 150, 255];
+  const lips = [200, 40, 60, 255];
+  const slot = [249, 193, 157, 255];
+  // A grey face, a skin glow every mouth icon has, and the mouth itself.
+  const icon = wide([[90, 90, 90, 255], glow, lips, skin]);
+  const mask = wide([slot, slot, slot, slot]);
+  const backdrop = wide([[90, 90, 90, 255], glow, glow, glow]);
+  const out = closeUpMask(icon, mask, backdrop);
+  assert.deepEqual([0, 1, 2, 3].map((x) => out.data[x * 4 + 3]), [0, 0, 255, 255]);
+  // Without a backdrop (two icons): only the greys stay as drawn.
+  assert.deepEqual([0, 1, 2, 3].map((x) => closeUpMask(icon, mask, null).data[x * 4 + 3]), [0, 255, 255, 255]);
 });
