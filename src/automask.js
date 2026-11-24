@@ -215,6 +215,29 @@ export function iconSilhouette(icons) {
   return out;
 }
 
+const near = (a, i, b, j) => Math.abs(a[i] - b[j]) <= 24 && Math.abs(a[i + 1] - b[j + 1]) <= 24 && Math.abs(a[i + 2] - b[j + 2]) <= 24;
+
+/**
+ * A close-up icon, not drawn on the figure (see iconSilhouette): it covers the figure (a face
+ * icon), or draws a big picture beside it (MZ and MV draw the ears, eyes, nose and mouth big, on
+ * a face behind the figure). Wings, cloaks and long hair reach past the figure too, but much less.
+ */
+export function isCloseUp(icon, silhouette) {
+  if (icon.width !== silhouette.width || icon.height !== silhouette.height) return true;
+  const a = icon.data;
+  const f = silhouette.data;
+  let figure = 0;
+  let shown = 0;
+  let off = 0;
+  for (let i = 0; i < f.length; i += 4) {
+    if (f[i + 3] >= 16) {
+      figure++;
+      if (a[i + 3] >= 16 && near(a, i, f, i)) shown++;
+    } else if (a[i + 3] >= 16) off++;
+  }
+  return figure > 0 && (shown / figure < 0.15 || off / figure > 0.65);
+}
+
 /**
  * A part cut out of its Variation icon: the pixels that differ from the figure (see
  * iconSilhouette), taken from `drawn` (the icon recoloured, same size). Null if the sizes differ.

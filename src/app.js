@@ -10,7 +10,7 @@ import {
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
-import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart } from './automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, compareVariants, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -511,7 +511,11 @@ function iconThumbnail(key, variant, character = state.character) {
         const layers = variant.layers.filter((l) => l.base && l.mask && !l.base.cells);
         if (!layers.length) return null;
         await ensureLayers(layers);
-        return iconMask(icon, layers.map((l) => ({ image: l.base.pixels, mask: l.mask.pixels })));
+        const mask = iconMask(icon, layers.map((l) => ({ image: l.base.pixels, mask: l.mask.pixels })));
+        // The grey figure every icon is drawn on is not part of the part: it keeps its colours
+        // (a grey head took the clothing's colours, in stripes).
+        const figure = mask && await silhouetteFor(variant);
+        return (figure && !isCloseUp(icon, figure) && iconPart(icon, figure, mask)) || mask;
       })();
       const mask = await variant.iconMask;
       if (!mask) return icon;
@@ -1510,7 +1514,12 @@ function silhouetteFor(variant) {
         if (list.length < 4) byPart.set(v.part, [...list, v]);
       }
       const icons = (await Promise.all([...byPart.values()].flat().map((v) => ensureImage(v.icon).catch(() => null)))).filter(Boolean);
-      return icons.length >= 3 ? iconSilhouette(icons) : null;
+      if (icons.length < 3) return null;
+      // Close-ups (the face, ears, eyes, nose and mouth are drawn big, beside the figure) are not
+      // on it: the figure is made again from the icons that are.
+      const first = iconSilhouette(icons);
+      const onFigure = icons.filter((i) => !isCloseUp(i, first));
+      return onFigure.length >= 3 ? iconSilhouette(onFigure) : first;
     })());
   }
   return silhouettes.get(key);
@@ -1533,7 +1542,8 @@ async function setIcon(set) {
   let parts = 0;
   for (const { key, variant } of items) {
     const [icon, drawn] = await Promise.all([ensureImage(variant.icon), iconThumbnail(key, variant, character)]);
-    const part = icon && drawn && iconPart(icon, figure, drawn);
+    // Close-up icons (face, eyes...) aren't drawn on the figure: left out like parts without one.
+    const part = icon && drawn && !isCloseUp(icon, figure) && iconPart(icon, figure, drawn);
     if (!part) continue;
     blendOver(out, part);
     parts++;

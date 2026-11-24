@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart } from '../src/automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp } from '../src/automask.js';
 import { createImage, recolorLayer } from '../src/recolor.js';
 import { SLOT_BY_ID } from '../src/format.js';
 
@@ -106,4 +106,11 @@ test('a part is cut out of its Variation icon and laid on the shared figure', ()
   const red = icon([[1, 1, 1, 255], [200, 0, 0, 255], [1, 1, 1, 255], none]);
   assert.deepEqual([...iconPart(icons[0], figure, red).data.slice(4, 8)], [200, 0, 0, 255]);
   assert.equal(iconPart({ width: 3, height: 1, data: new Uint8ClampedArray(12) }, figure), null);
+  // Drawn on the figure, or a close-up: covering the figure, or a big picture beside it.
+  assert.equal(isCloseUp(icon([grey, none, grey, none]), figure), false);
+  assert.equal(isCloseUp(icon([hat, hat, hat, hat]), figure), true);
+  const wide = (pixels) => ({ width: 4, height: 1, data: new Uint8ClampedArray(pixels.flat()) });
+  const smallFigure = wide([grey, grey, none, none]);
+  assert.equal(isCloseUp(wide([grey, grey, hat, none]), smallFigure), false); // a wing: a bit beside
+  assert.equal(isCloseUp(wide([grey, grey, hat, hat]), smallFigure), true); // as big as the figure
 });
