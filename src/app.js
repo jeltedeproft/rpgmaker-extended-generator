@@ -2142,11 +2142,17 @@ function recolourAllToggle() {
  */
 function applyAutoMask(variant) {
   const plan = autoMaskPlan(variant);
-  const layers = variant.layers.filter(unmasked);
-  for (const l of layers) if (l.mask?.auto) l.mask = null;
+  const unmaskedLayers = variant.layers.filter(unmasked);
+  for (const l of unmaskedLayers) if (l.mask?.auto) l.mask = null;
   delete variant.autoGroups;
   delete variant.autoSlots;
   delete variant.iconMask;
+  // Recolour all leaves a picture as drawn when the same image of the part has a recolourable
+  // one: RPG Maker's eyes are the iris (_m002) plus lashes and whites that keep their colours.
+  const recolourable = (l) => l.base && (l.slotId || (l.mask && !l.mask.auto));
+  const layers = plan?.automatic
+    ? unmaskedLayers.filter((l) => !variant.layers.some((o) => o !== l && o.sheet === l.sheet && recolourable(o)))
+    : unmaskedLayers;
   if (!plan || !layers.length) return;
   // One set of colour groups for all the part's pictures, so portrait and sprites match.
   let groups = null;
