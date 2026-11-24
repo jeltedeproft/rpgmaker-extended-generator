@@ -1,6 +1,6 @@
 {
   "name": "rpgmaker-extended-generator",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "description": "Browser-based extended character generator for RPG Maker MV/MZ generator assets.",
   "type": "module",
