@@ -279,6 +279,23 @@ test('same picture with other colour areas is not a picture difference', async (
   assert.equal(r.maskDiffer, 4);
 });
 
+test('a second mask goes to the alternate it is named after', () => {
+  const lib = createLibrary();
+  addPack(lib, 'MZ', [
+    { path: 'TVD/Male/TVD_Clothing_p03.png', src: 'a' }, { path: 'TVD/Male/TVD_Clothing_p03_c.png', src: 'am' },
+    { path: 'TVD/Male/TV_Clothing_p03.png', src: 'b' }, { path: 'TVD/Male/TV_Clothing_p03_c.png', src: 'bm' },
+  ]);
+  // TV_Clothing_p03.png and its mask are damage sprites by their size (144x48): read as TVD.
+  for (const v of lib.variants.values()) for (const l of v.layers) for (const ref of [l.base, l.mask]) if (ref) ref.size = { w: 144, h: 48 };
+  fixWrongSheets(lib, 'MZ');
+  const alt = [...lib.variants.values()].find((v) => v.alt);
+  assert.ok(alt, 'the second picture is an alternate');
+  assert.equal(alt.layers[0].base.src, 'b');
+  assert.equal(alt.layers[0].mask?.src, 'bm');
+  assert.equal(lib.variants.get('MZ/Male/Clothing/p03').layers[0].mask.src, 'am');
+  assert.ok(!lib.warnings.some((w) => w.includes('duplicate mask')));
+});
+
 test('masks that recolour the same way are not a difference', async () => {
   const { compareVariants } = await import('../src/lookalike.js');
   const { createImage } = await import('../src/recolor.js');

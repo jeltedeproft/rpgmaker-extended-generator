@@ -386,6 +386,7 @@ export function assignFile(library, packName, path, src, readAs, bodyType) {
   library.readAs.set(`${packName}|${path}`, { readAs, bodyType: parsed.bodyType, how: 'hand' });
   // A mask assigned before its image waits for it (layers without an image aren't drawn).
   addParsed(library, packName, parsed, path, src);
+  claimSpareMasks(library, packName);
   return null;
 }
 
@@ -620,7 +621,8 @@ function addParsed(library, name, parsed, path, src) {
   }
   if (parsed.isMask) {
     // A real mask replaces one made by the generator.
-    if (layer.mask && !layer.mask.auto) library.warnings.push(`${path}: duplicate mask, keeping the first`);
+    // A second mask: kept aside for the alternate it may be named after (see claimSpareMasks).
+    if (layer.mask && !layer.mask.auto) (library.spareMasks ||= []).push({ pack: name, path, src });
     else layer.mask = { src, pixels: null, path };
   } else {
     if (layer.base) library.warnings.push(`${path}: duplicate layer, keeping the first`);
@@ -673,8 +675,34 @@ export function fitMasks(pairs) {
   return moved;
 }
 
+/**
+ * Second masks for one layer go to the picture they are named after: RPG Maker MZ ships
+ * TVD/Male/TV_Clothing_p03.png (read as "p03 (alt)") with TV_Clothing_p03_c.png next to
+ * TVD_Clothing_p03.png and TVD_Clothing_p03_c.png. Masks no picture is named for are dropped.
+ */
+function claimSpareMasks(library, name) {
+  const spare = (library.spareMasks || []).filter((m) => m.pack === name);
+  if (!spare.length) return;
+  library.spareMasks = library.spareMasks.filter((m) => m.pack !== name);
+  const stem = (path) => path.toLowerCase().replace(/(_c)?\.png$/, '');
+  // Plain parts first: a mask taken from one of them can then go to its alternate.
+  const variants = [...library.variants.values()].filter((v) => v.pack === name).sort((a, b) => !!a.alt - !!b.alt);
+  for (const variant of variants) {
+    for (const layer of variant.layers) {
+      if (!layer.base || layer.slotId || (layer.mask && stem(layer.mask.path) === stem(layer.base.path))) continue;
+      const i = spare.findIndex((m) => stem(m.path) === stem(layer.base.path));
+      if (i < 0) continue;
+      const [mask] = spare.splice(i, 1);
+      if (layer.mask && !layer.mask.auto) spare.push({ pack: name, path: layer.mask.path, src: layer.mask.src });
+      layer.mask = { src: mask.src, pixels: null, path: mask.path };
+    }
+  }
+  for (const m of spare) library.warnings.push(`${m.path}: duplicate mask, keeping the first`);
+}
+
 /** Masks without a base image can't be drawn: drop them (with a warning). */
 function finishPack(library, name) {
+  claimSpareMasks(library, name);
   for (const body of library.bodyTypes.values()) {
     for (const variants of body.parts.values()) {
       for (const variant of variants.values()) {
