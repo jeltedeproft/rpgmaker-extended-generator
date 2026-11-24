@@ -40,6 +40,16 @@ export const PAINTED_SLOTS = [
 ].map((s) => ({ ...s, painted: true, part: null }));
 export const PAINTED_SLOT_BY_ID = new Map(PAINTED_SLOTS.map((s) => [s.id, s]));
 
+/** A part's style: 'vxace' for VX Ace parts (painted, 4-frame sprites), else 'mvmz'. */
+export function styleOf(variant) {
+  return variant?.layers?.some((l) => l.vxace) ? 'vxace' : 'mvmz';
+}
+
+/** Parts of one style ('vxace' or 'mvmz'); '' or 'any' keeps them all. */
+export function ofStyle(variants, style) {
+  return !style || style === 'any' ? variants : variants.filter((v) => styleOf(v) === style);
+}
+
 /**
  * Colour sync: the MV/MZ colour a painted slot follows when no painted colour is picked, so VX Ace
  * parts change colour together with the MV/MZ parts (hair with hair, skin with skin).

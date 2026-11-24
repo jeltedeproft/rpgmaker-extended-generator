@@ -9,7 +9,7 @@ import {
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
-import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
+import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
 import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, compareVariants, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
 import {
@@ -375,7 +375,13 @@ async function renderEditor() {
     renderOffsets();
   } else if (!isColours) {
     renderPieces();
-    const { own, others } = variantsForPart(state.library, part, state.character.bodyType, state.character.parts[key]);
+    const listed = variantsForPart(state.library, part, state.character.bodyType, state.character.parts[key]);
+    // VX Ace or MV/MZ parts only, when both kinds are open (the chosen part always stays).
+    const kinds = new Set([...listed.own, ...listed.others].map(styleOf));
+    const style = kinds.size > 1 ? state.settings.partStyle || '' : '';
+    const keep = (list) => (style ? list.filter((v) => styleOf(v) === style || v.id === state.character.parts[key]) : list);
+    const own = keep(listed.own);
+    const others = keep(listed.others);
     // Sections per image (portrait, walk, damage, battler): the parts that have a picture for it,
     // drawn as that picture. A part with only a damage sprite shows up under Damage.
     const imagesOf = new Map([...own, ...others].map((v) => [v, SHEET_KEYS.filter((s) => sheetLayers(v, s, state.library).length)]));
@@ -383,12 +389,23 @@ async function renderEditor() {
     const tab = counts[state.tileSheet] ? state.tileSheet : '';
     const shown = (v) => !tab || imagesOf.get(v).includes(tab);
     const tabs = [['', `All (${imagesOf.size})`], ...SHEET_KEYS.filter((s) => counts[s]).map((s) => [s, `${SHEET_NAMES[s]} (${counts[s]})`])];
-    $('variant-tabs').hidden = tabs.length < 3;
-    $('variant-tabs').replaceChildren(...tabs.map(([s, label]) => {
+    const styleCount = (s) => [...listed.own, ...listed.others].filter((v) => styleOf(v) === s).length;
+    const styleTabs = kinds.size > 1 ? [['', 'Both styles'], ['mvmz', `MV/MZ (${styleCount('mvmz')})`], ['vxace', `VX Ace (${styleCount('vxace')})`]] : [];
+    $('variant-tabs').hidden = tabs.length < 3 && !styleTabs.length;
+    $('variant-tabs').replaceChildren(...(tabs.length < 3 ? [] : tabs).map(([s, label]) => {
       const b = el('button', { type: 'button', className: s === tab ? 'active' : '', textContent: label,
         title: s ? `Only the ${part} parts that have a ${SHEET_NAMES[s].toLowerCase()} picture, shown as that picture` : `Every ${part} part` });
       b.addEventListener('click', () => {
         state.tileSheet = s;
+        renderEditor();
+      });
+      return b;
+    }), ...(styleTabs.length ? [el('span', { className: 'tab-gap' })] : []), ...styleTabs.map(([s, label]) => {
+      const b = el('button', { type: 'button', className: 'style-tab' + (s === style ? ' active' : ''), textContent: label,
+        title: s ? `Only the ${s === 'vxace' ? 'VX Ace' : 'MV/MZ'} parts (VX Ace parts are painted and drawn smaller)` : 'VX Ace and MV/MZ parts together' });
+      b.addEventListener('click', () => {
+        state.settings.partStyle = s;
+        saveSettings();
         renderEditor();
       });
       return b;
@@ -418,7 +435,8 @@ async function renderEditor() {
 function variantTile(key, variant, sheets = undefined) {
   const selected = (state.character.parts[key] || null) === (variant?.id || null);
   const label = variant ? variantLabel(state.library, variant, state.character.bodyType) : 'None';
-  const tile = el('button', { className: 'variant' + (selected ? ' selected' : ''), title: variant ? `${label}
+  const vx = variant && styleOf(variant) === 'vxace' && state.library.packs.some((p) => p.format !== 'vxace');
+  const tile = el('button', { className: 'variant' + (selected ? ' selected' : '') + (vx ? ' vx' : ''), title: variant ? `${label}${vx ? ' (VX Ace part)' : ''}
 ${variant.id}` : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
   tile.append(thumb, el('span', { textContent: label }));
@@ -3761,6 +3779,7 @@ function openRulesDialog() {
     return el('label', { className: 'rule-chance' }, [el('span', { textContent: part }), input, '%']);
   }));
   $('rule-mix').checked = !!ruleDraft.mixBodyTypes;
+  $('rule-style').value = ruleDraft.style || 'any';
   $('rule-any-colour').checked = !!ruleDraft.anyColour;
   $('rule-set-chance').value = ruleDraft.setChance || 0;
   const slotOptions = SLOTS.map((s) => [s.id, s.label]);
@@ -3776,6 +3795,7 @@ $('random-rules').addEventListener('click', openRulesDialog);
 $('rules-dialog').addEventListener('close', () => {
   if ($('rules-dialog').returnValue !== 'ok' || !ruleDraft) return;
   ruleDraft.mixBodyTypes = $('rule-mix').checked;
+  ruleDraft.style = $('rule-style').value;
   ruleDraft.anyColour = $('rule-any-colour').checked;
   ruleDraft.setChance = Math.max(0, Math.min(100, Number($('rule-set-chance').value) || 0));
   state.settings.randomRules = ruleDraft;

@@ -1,7 +1,7 @@
 // Character model: which variant per part (from any body type), which gradient per colour slot,
 // and per-part pixel offsets.
 
-import { PAINTED_SLOTS, PAINTED_FOLLOWS } from './vxace.js';
+import { PAINTED_SLOTS, PAINTED_FOLLOWS, styleOf } from './vxace.js';
 import { selectable } from './parse.js';
 import { PART_ORDER, REQUIRED_PARTS, SLOTS, SLOT_BY_RGB, ALL_BODIES } from './format.js';
 import { preferredCategory, preferredCategories, customGradientToJson, customGradientFromJson, uniqueGradients } from './gradients.js';
@@ -101,7 +101,7 @@ function pick(list, rng) {
  * - apart: [[partA, partB]] never worn together (the second one is dropped)
  * - setChance: 0..100 chance to put a random saved set on top, from `sets`
  */
-export const DEFAULT_RULES = { chances: {}, mixBodyTypes: false, anyColour: false, links: [], apart: [], setChance: 0 };
+export const DEFAULT_RULES = { chances: {}, mixBodyTypes: false, anyColour: false, links: [], apart: [], setChance: 0, style: 'any' };
 
 /** Chance (0..1) that a part is worn under the rules. */
 export function wearChance(part, rules = DEFAULT_RULES) {
@@ -127,9 +127,16 @@ export function randomize(character, library, gradients, { rng = Math.random, lo
   // All body types: parts of every body type, like "mix body types".
   if (character.bodyType === ALL_BODIES) rules = { ...rules, mixBodyTypes: true };
   if (rules.mixBodyTypes) for (const b of library.bodyTypes.values()) b.parts.forEach((_, p) => parts.add(p));
+  // VX Ace and MV/MZ parts: mixed ('any'), one style per character ('same'), or only one of them.
+  let style = rules.style && rules.style !== 'any' ? rules.style : null;
+  if (style === 'same') {
+    const kept = [...locked].map((p) => library.variants.get(next.parts[p])).find(Boolean);
+    const styles = [...new Set([...library.variants.values()].filter(selectable).map(styleOf))];
+    style = kept ? styleOf(kept) : styles.length > 1 ? pick(styles, rng) : null;
+  }
   for (const part of parts) {
     if (locked.has(part)) continue;
-    const ids = (b) => [...(b?.parts.get(part)?.values() || [])].filter(selectable).map((v) => v.id);
+    const ids = (b) => [...(b?.parts.get(part)?.values() || [])].filter((v) => selectable(v) && (!style || styleOf(v) === style)).map((v) => v.id);
     const pool = rules.mixBodyTypes ? [...library.bodyTypes.values()].flatMap(ids) : ids(own);
     if (!pool.length) continue;
     changed(part, rng() < wearChance(part, rules) ? pick(pool, rng) : null);
