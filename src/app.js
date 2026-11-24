@@ -395,8 +395,11 @@ async function renderEditor() {
     for (const variant of [null, ...own.filter(shown)]) $('variants').append(variantTile(key, variant, sheets));
     if (others.some(shown)) {
       $('other-bodies').hidden = false;
-      // Keep it open when the current choice comes from another body type.
-      if (others.some((v) => v.id === state.character.parts[key])) $('other-bodies').open = true;
+      // Folded away at first for every part; it stays open while you look at the same part.
+      if (state.otherBodiesPart !== key) $('other-bodies').open = false;
+      state.otherBodiesPart = key;
+      const chosenThere = others.some((v) => v.id === state.character.parts[key]);
+      $('other-bodies-label').textContent = `Parts from other body types (${others.filter(shown).length})${chosenThere ? ': your choice is one of these' : ''}`;
       for (const variant of others.filter(shown)) $('other-variants').append(variantTile(key, variant, sheets));
     }
     renderOffsets();
