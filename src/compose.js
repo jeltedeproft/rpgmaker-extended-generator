@@ -556,7 +556,51 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     blendOver(out, applyClip(moved, region, clip.mode));
   }
   const whole = { ...sheetTransformOf(character, sheet), smooth: !!settings?.smoothPixels };
-  return { image: transformSheet(out, sheet, frame, whole), problems, frame };
+  const image = transformSheet(out, sheet, frame, whole);
+  if (layout.room) {
+    const fitted = fitRoom(image, frame, layout.room, layout.inner);
+    return { image: fitted.image, problems, frame: fitted.frame };
+  }
+  return { image, problems, frame };
+}
+
+/**
+ * "Make room", fitted: every frame keeps only the room the drawing needs. RPG Maker stands a
+ * character with the bottom of its frame on the tile, so the feet stay on the bottom unless
+ * something hangs below them; the sides grow alike, so the character stays centred; the rest of
+ * the room goes on top. All frames keep one size, so the sheet still divides into RPG Maker's grid
+ * (3 x 4 walk frames, 9 x 6 battler frames).
+ * @param {number} room the room made on every side of each frame
+ * @param {{w:number,h:number}} inner the frame size without the room
+ */
+export function fitRoom(image, frame, room, inner) {
+  let side = 0;
+  let top = 0;
+  let bottom = 0;
+  for (let fy = 0; fy + frame.h <= image.height; fy += frame.h) {
+    for (let fx = 0; fx + frame.w <= image.width; fx += frame.w) {
+      for (let y = 0; y < frame.h; y++) {
+        for (let x = 0; x < frame.w; x++) {
+          if (!image.data[((fy + y) * image.width + fx + x) * 4 + 3]) continue;
+          side = Math.max(side, room - x, x - (room + inner.w - 1));
+          top = Math.max(top, room - y);
+          bottom = Math.max(bottom, y - (room + inner.h - 1));
+        }
+      }
+    }
+  }
+  const fitted = { ...frame, w: inner.w + side * 2, h: inner.h + top + bottom };
+  const out = createImage(fitted.w * frame.cols, fitted.h * frame.rows);
+  for (let row = 0; row < frame.rows; row++) {
+    for (let col = 0; col < frame.cols; col++) {
+      for (let y = 0; y < fitted.h; y++) {
+        const sy = row * frame.h + room - top + y;
+        const start = (sy * image.width + col * frame.w + room - side) * 4;
+        out.data.set(image.data.subarray(start, start + fitted.w * 4), ((row * fitted.h + y) * out.width + col * fitted.w) * 4);
+      }
+    }
+  }
+  return { image: out, frame: fitted };
 }
 
 /**

@@ -133,3 +133,24 @@ test('make room grows sprite frames so an enlarged part is not cut off', async (
   // Portraits keep their size.
   assert.equal(roomNeeded({ offsets: { FrontHair: { face: { scale: 200 } } } }, draws, 'FG', { w: 144, h: 144, cols: 1, rows: 1 }), 0);
 });
+
+test('make room keeps the feet on the frame bottom and only the room the drawing needs', async () => {
+  const { fitRoom } = await import('../src/compose.js');
+  const { createImage } = await import('../src/recolor.js');
+  // 2 x 1 frames of 4x4 inside, made 3 px of room on every side: 10x10 frames.
+  const frame = { w: 10, h: 10, cols: 2, rows: 1 };
+  const image = createImage(20, 10);
+  const dot = (x, y) => image.data.set([9, 9, 9, 255], (y * 20 + x) * 4);
+  dot(3, 6); // the feet: bottom-left of the inner frame
+  dot(3, 1); // a hat 2 px above the inner frame
+  dot(10 + 1, 4); // in the second frame: 2 px left of the inner frame
+  const { image: out, frame: f } = fitRoom(image, frame, 3, { w: 4, h: 4 });
+  assert.deepEqual([f.w, f.h, f.cols, f.rows], [8, 6, 2, 1]); // sides 2 each, 2 on top, none below
+  assert.equal(out.width, 16);
+  assert.equal(out.height, 6);
+  assert.equal(out.width % f.cols, 0);
+  const alpha = (x, y) => out.data[(y * out.width + x) * 4 + 3];
+  assert.equal(alpha(3 - 3 + 2, 5), 255); // the feet are on the bottom row
+  assert.equal(alpha(2, 0), 255); // the hat on the top row
+  assert.equal(alpha(8 + 0, 3), 255); // the second frame's dot at its left edge
+});

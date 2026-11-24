@@ -260,7 +260,7 @@ try {
     await sleep(500);
     const setField = (id, v) => evaluate(`(() => { const i = document.getElementById('${id}'); i.value = ${v}; i.dispatchEvent(new Event('input')); })()`);
     const toggle = (id, on) => evaluate(`(() => { const c = document.getElementById('${id}'); c.checked = ${on}; c.dispatchEvent(new Event('change')); })()`);
-    await setField('off-sprite-scale', 150);
+    await setField('off-sprite-scale', 300);
     await setField('off-sprite-rot', 20);
     await sleep(900);
     const roomless = await evaluate(walkSigOf('walk-canvas'));
