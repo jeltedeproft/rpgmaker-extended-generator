@@ -449,8 +449,13 @@ try {
       await sleep(800);
       await evaluate(`(() => { const p = document.getElementById('assign-part'); p.value = 'AccC'; p.dispatchEvent(new Event('input')); document.getElementById('assign-remember').checked = false; })()`);
       check('assign dialog previews the name', (await evaluate(`document.getElementById('assign-result').textContent`)).includes('_AccC_p'));
+      check('assign from the import report is the quick form', await evaluate(`document.getElementById('assign-dialog').classList.contains('one-by-one')`));
       await evaluate(`document.querySelector('#assign-dialog button[value="ok"]').click()`);
       await sleep(900);
+      // One by one: the next file follows.
+      check('quick assign goes on to the next file', await evaluate(`document.getElementById('assign-dialog').open`));
+      await evaluate(`document.querySelector('#assign-dialog button[value="cancel"]').click()`);
+      await sleep(300);
       check('assigned file shows up as a new part', await evaluate(`[...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('AccC'))`));
     }
     // Files dialog: the queue of skipped files, with pictures, one by one.
@@ -497,6 +502,7 @@ try {
     await sleep(300);
     await evaluate(`[...document.querySelectorAll('#files-list .file-card button')].find(b => b.textContent.startsWith('Assign')).click()`);
     await sleep(1500);
+    check('all options opens the full form', await evaluate(`(() => { document.getElementById('assign-more').click(); return !document.getElementById('assign-dialog').classList.contains('one-by-one') && !!document.getElementById('assign-remove').offsetParent; })()`));
     {
       const before = await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').textContent`);
       await evaluate(`document.getElementById('assign-remove').click()`);

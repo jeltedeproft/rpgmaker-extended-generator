@@ -1589,13 +1589,13 @@ function unknownMaskColours() {
 function renderProblems() {
   const lib = state.library;
   const skipped = lib.unrecognized.slice(0, 30).map((u) => {
-    const assign = el('button', { className: 'small-button assign', textContent: 'Assign…', title: 'Tell the generator what this file is' });
-    assign.addEventListener('click', () => openAssignDialog(u));
+    const assign = el('button', { className: 'small-button assign', textContent: 'Assign…', title: 'Tell the generator what this file is, then the next one' });
+    assign.addEventListener('click', () => assignOneByOne(u));
     return el('li', {}, [`Skipped ${u.path} (${u.reason}) `, assign]);
   });
   if (lib.unrecognized.length > 30) skipped.push(el('li', { textContent: `… and ${lib.unrecognized.length - 30} more skipped files (see Files…).` }));
-  const queue = el('button', { className: 'small-button primary', textContent: `Assign skipped files (${lib.unrecognized.length})…` });
-  queue.addEventListener('click', () => openFilesDialog('queue'));
+  const queue = el('button', { className: 'small-button primary', textContent: `Assign skipped files one by one (${lib.unrecognized.length})…` });
+  queue.addEventListener('click', () => assignOneByOne(lib.unrecognized[0]));
   const lines = [
     ...lib.warnings,
     ...state.problems,
@@ -1870,6 +1870,22 @@ async function drawFile(canvas, file) {
 let assigning = null;
 /** Assigning one by one: the files still to go, in order. */
 let assignQueue = null;
+
+/**
+ * Quick assign: the short form for this file (picture, part, body type, colour slot; Add, Skip or
+ * Cancel), then the next file to assign, and so on.
+ */
+function assignOneByOne(entry) {
+  const list = state.library.unrecognized;
+  if (!entry) return;
+  const at = list.indexOf(entry);
+  openAssignDialog(entry, at < 0 ? list.filter((u) => u !== entry) : [...list.slice(at + 1), ...list.slice(0, at)]);
+}
+
+$('assign-more').addEventListener('click', () => {
+  $('assign-dialog').classList.remove('one-by-one');
+  updateAssignPreview();
+});
 
 async function openAssignDialog(entry, queue = null) {
   assigning = entry;
@@ -2530,7 +2546,7 @@ function fileCard(file, observer) {
     reading = file.removedPart ? `${file.variant.bodyType} · ${file.variant.part} ${file.variant.pid} · part removed by you` : 'File removed by you';
   } else {
     const assign = el('button', { type: 'button', className: 'small-button', textContent: loaded ? 'Reassign…' : 'Assign…' });
-    assign.addEventListener('click', () => openAssignDialog(file));
+    assign.addEventListener('click', () => (loaded ? openAssignDialog(file) : assignOneByOne(file)));
     buttons.push(assign);
     if (loaded) {
       const unassign = el('button', { type: 'button', className: 'small-button', textContent: 'Unassign', title: 'Take it out of its part and put it in the "To assign" list' });
