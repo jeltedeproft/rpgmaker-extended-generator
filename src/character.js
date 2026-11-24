@@ -99,9 +99,10 @@ function pick(list, rng) {
  * - anyColour: any gradient for any slot (default: the slot's suggested colours)
  * - links: [{slot, follows}] a slot always gets the same colour as another (eyebrows = hair)
  * - apart: [[partA, partB]] never worn together (the second one is dropped)
+ * - notOn: [[part, bodyType]] never worn by that body type (no beards on Kid or Female)
  * - setChance: 0..100 chance to put a random saved set on top, from `sets`
  */
-export const DEFAULT_RULES = { chances: {}, mixBodyTypes: false, anyColour: false, links: [], apart: [], setChance: 0, style: 'any' };
+export const DEFAULT_RULES = { chances: {}, mixBodyTypes: false, anyColour: false, links: [], apart: [], notOn: [], setChance: 0, style: 'any' };
 
 /** Chance (0..1) that a part is worn under the rules. */
 export function wearChance(part, rules = DEFAULT_RULES) {
@@ -143,6 +144,9 @@ export function randomize(character, library, gradients, { rng = Math.random, lo
   }
   for (const [a, b] of rules.apart || []) {
     if (next.parts[a] && next.parts[b] && !locked.has(b)) changed(b, null);
+  }
+  for (const [part, body] of rules.notOn || []) {
+    if (body === character.bodyType && next.parts[part] && !locked.has(part)) changed(part, null);
   }
 
   if (gradients.length) {

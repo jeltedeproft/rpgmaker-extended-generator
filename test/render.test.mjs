@@ -416,6 +416,10 @@ test('randomize rules: wear chances, parts that never go together, colour links,
     assert.equal(always.colors.accA, always.colors.hair);
     const mixed = randomize(base, lib, gradients, { rng, rules: { mixBodyTypes: true, chances: { AccA: 100 } } });
     assert.equal(mixed.parts.AccA, 'P/Female/AccA/p07'); // only the Female body type has one
+    const female = { ...base, bodyType: 'Female' };
+    const noHat = randomize(female, lib, gradients, { rng, rules: { mixBodyTypes: true, chances: { AccA: 100, FrontHair: 100 }, notOn: [['AccA', 'Female'], ['FrontHair', 'Male']] } });
+    assert.equal(noHat.parts.AccA, null); // never on Female
+    assert.ok(noHat.parts.FrontHair); // the Male rule leaves Female alone
   }
   const set = { name: 'Hat', parts: { AccA: 'P/Female/AccA/p07' }, colors: {} };
   const withSet = randomize(base, lib, gradients, { rng, rules: { setChance: 100 }, sets: [set] });

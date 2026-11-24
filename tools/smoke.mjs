@@ -191,6 +191,27 @@ try {
     hairless &&= (await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).querySelector('.value').textContent`)) === 'none';
   }
   check('randomize follows the rules', hairless);
+  // A part a body type never gets: always worn, but never on this body type.
+  await click('#random-rules');
+  await sleep(300);
+  const ruledOut = await evaluate(`(() => {
+    const row = [...document.querySelectorAll('.rule-chance')].find(r => !/^(Body|Face|FrontHair)/.test(r.textContent)); const i = row.querySelector('input'); i.value = 100; i.dispatchEvent(new Event('change'));
+    const name = row.querySelector('span').textContent;
+    document.getElementById('rule-add-not-on').click();
+    const [part, body] = document.querySelectorAll('#rule-not-on .rule-row select');
+    part.value = name; part.dispatchEvent(new Event('change'));
+    body.value = document.getElementById('body-type').value; body.dispatchEvent(new Event('change'));
+    document.querySelector('#rules-dialog button[value="ok"]').click();
+    return name;
+  })()`);
+  await sleep(300);
+  let beardless = true;
+  for (let i = 0; i < 3; i++) {
+    await click('#randomize');
+    await sleep(400);
+    beardless &&= (await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('${ruledOut}')).querySelector('.value').textContent`)) === 'none';
+  }
+  check('a body type never gets a part it is ruled out for', beardless, ruledOut + ' ' + await evaluate(`JSON.stringify(JSON.parse(localStorage.getItem('xgen-settings') || '{}').randomRules?.notOn)`));
   await click('#random-rules');
   await sleep(300);
   await click('#rule-add-link');

@@ -3953,17 +3953,17 @@ function rules() {
 }
 
 /** A small editable list of pairs: [select a] word [select b] ✕, plus an add button. */
-function pairList(box, pairs, options, word, toPair, fromPair) {
+function pairList(box, pairs, options, word, toPair, fromPair, optionsB = options) {
   const render = () => {
     box.replaceChildren(...pairs.map((pair, i) => {
       const [a, b] = fromPair(pair);
-      const select = (value) => {
-        const s = el('select', {}, options.map(([v, label]) => el('option', { value: v, textContent: label })));
+      const select = (value, list) => {
+        const s = el('select', {}, list.map(([v, label]) => el('option', { value: v, textContent: label })));
         s.value = value;
         return s;
       };
-      const sa = select(a);
-      const sb = select(b);
+      const sa = select(a, options);
+      const sb = select(b, optionsB);
       const update = () => (pairs[i] = toPair(sa.value, sb.value));
       sa.addEventListener('change', update);
       sb.addEventListener('change', update);
@@ -3977,7 +3977,7 @@ function pairList(box, pairs, options, word, toPair, fromPair) {
   };
   render();
   return () => {
-    pairs.push(toPair(options[0]?.[0], options[1]?.[0] ?? options[0]?.[0]));
+    pairs.push(toPair(options[0]?.[0], optionsB === options ? options[1]?.[0] ?? options[0]?.[0] : optionsB[0]?.[0]));
     render();
   };
 }
@@ -4001,6 +4001,9 @@ function openRulesDialog() {
     (slot, follows) => ({ slot, follows }), (l) => [l.slot, l.follows]);
   $('rule-add-apart').onclick = pairList($('rule-apart'), ruleDraft.apart, partOptions, 'never with',
     (a, b) => [a, b], (p) => p);
+  const bodyOptions = [...state.library.bodyTypes.keys()].filter((b) => b !== ALL_BODIES).map((b) => [b, b]);
+  $('rule-add-not-on').onclick = pairList($('rule-not-on'), (ruleDraft.notOn ||= []), partOptions, 'never on',
+    (part, body) => [part, body], (p) => p, bodyOptions);
   $('rules-dialog').showModal();
 }
 
