@@ -1551,16 +1551,46 @@ async function setIcon(set) {
   return parts ? out : null;
 }
 
+/** The character a set makes: the current character wearing it, in its colours. */
+function setCharacter(set) {
+  return applySet(state.character, set, state.library).character;
+}
+
+/** A set's picture for its row: the icon composite, or its portrait when no part has an icon. */
 function setPicture(set) {
-  const box = el('span', { className: 'set-icon placeholder', textContent: '?', title: 'No Variation icon for these parts' });
-  setIcon(set).then((pixels) => {
+  const box = el('button', { type: 'button', className: 'set-icon placeholder', textContent: '?', title: `See ${set.name} bigger` });
+  box.addEventListener('click', () => openSetView(set));
+  (async () => {
+    const pixels = (await setIcon(set)) || (state.character ? (await characterPicture(setCharacter(set), set.customGradients || [])).face : null);
     if (!pixels) return;
     const canvas = toCanvas(pixels);
-    canvas.className = 'set-icon';
-    box.replaceWith(canvas);
-  }).catch(() => {});
+    box.replaceChildren(canvas);
+    box.classList.remove('placeholder');
+  })().catch(() => {});
   return box;
 }
+
+/** A window with a set's icon composite, portrait and walk sprite, big. */
+async function openSetView(set) {
+  $('set-view-title').textContent = set.name;
+  $('set-view-parts').textContent = `Parts: ${Object.keys(set.parts).join(', ')}`;
+  const pics = $('set-view-pics');
+  pics.replaceChildren(el('p', { className: 'muted small', textContent: 'Drawing...' }));
+  if (!$('set-view').open) $('set-view').showModal();
+  const [icon, { face, sprite }] = await Promise.all([setIcon(set), characterPicture(setCharacter(set), set.customGradients || [])]);
+  const figure = (pixels, label, className) => el('figure', { className: 'set-view-pic' }, [
+    Object.assign(toCanvas(pixels), { className }), el('figcaption', { className: 'muted small', textContent: label }),
+  ]);
+  pics.replaceChildren(
+    icon ? figure(icon, 'Variation icons, layered', 'set-view-icon') : el('p', { className: 'muted small', textContent: 'None of these parts has a Variation icon.' }),
+    ...(face ? [figure(face, 'Portrait', 'set-view-face')] : []),
+    ...(sprite ? [figure(sprite, 'Walk', 'set-view-sprite')] : []),
+  );
+}
+$('set-view-use').addEventListener('click', () => {
+  const name = $('set-view-title').textContent;
+  [...document.querySelectorAll('#set-list .set-apply')].find((b) => b.textContent === name)?.click();
+});
 
 function renderSets() {
   renderPresets();

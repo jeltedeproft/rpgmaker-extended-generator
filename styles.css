@@ -253,7 +253,16 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .set-remove { padding: 0 7px; font-size: 11px; color: var(--muted); }
 .set-icon { width: 32px; height: 32px; flex: none; image-rendering: pixelated; border-radius: 4px;
   background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 8px 8px; }
+.set-icon { padding: 0; border: 0; cursor: zoom-in; overflow: hidden; }
+.set-icon canvas { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; display: block; }
 .set-icon.placeholder { display: grid; place-items: center; color: var(--muted); font-size: 14px; }
+.set-view-pics { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; padding: 12px; border-radius: 6px;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 12px 12px; }
+.set-view-pic { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.set-view-pic canvas { image-rendering: pixelated; }
+.set-view-icon { width: 256px; }
+.set-view-face { width: 216px; }
+.set-view-sprite { width: 144px; }
 .sets-io { display: flex; gap: 6px; margin-top: 6px; }
 .set-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; margin-bottom: 10px; }
 .rule-chances { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; margin-bottom: 10px; font-size: 12px; }

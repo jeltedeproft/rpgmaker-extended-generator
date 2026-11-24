@@ -214,6 +214,12 @@ try {
   await sleep(500);
   check('set saved', await evaluate(`[...document.querySelectorAll('.set-apply')].some(b => b.textContent === 'Smoke hair')`));
   check('a set has a picture (or ? without Variation icons)', await evaluate(`[...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Smoke hair'))?.querySelector('.set-icon') != null`));
+  await sleep(800);
+  check('a set without Variation icons shows its portrait', await evaluate(`!![...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Smoke hair'))?.querySelector('.set-icon canvas')`));
+  await evaluate(`[...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Smoke hair')).querySelector('.set-icon').click()`);
+  await sleep(1500);
+  check('a set opens bigger', await evaluate(`document.getElementById('set-view').open && document.querySelectorAll('#set-view-pics canvas').length >= 1`));
+  await evaluate(`document.getElementById('set-view').close()`);
   await click('#variants .variant:nth-child(1)');
   await sleep(500);
   await evaluate(`[...document.querySelectorAll('.set-apply')].find(b => b.textContent === 'Smoke hair').click()`);
