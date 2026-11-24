@@ -803,6 +803,28 @@ function renderClip() {
   if (clip?.by && others.includes(clip.by)) $('clip-by').value = clip.by;
   $('clip-by').disabled = !others.length;
   $('clip-by').hidden = !clip?.mode;
+  renderCovers(others);
+}
+
+/**
+ * The other way round: this part (a hood, hat or mask) hides what sticks out of it. Each ticked
+ * part only shows inside this part's outline ("only inside the outline of" set on that part).
+ */
+function renderCovers(others) {
+  const key = state.selectedPart;
+  const clips = state.character.clip || {};
+  $('cover-box').hidden = !others.length;
+  $('cover-box').replaceChildren(el('span', { className: 'small', textContent: 'Hides what sticks out of it:' }), ...others.map((other) => {
+    const box = el('input', { type: 'checkbox', checked: clips[other]?.mode === 'inside' && clips[other]?.by === key });
+    box.addEventListener('change', () => {
+      const all = (state.character.clip ||= {});
+      if (box.checked) all[other] = { mode: 'inside', by: key };
+      else if (all[other]?.by === key) delete all[other];
+      renderClip();
+      renderPreview();
+    });
+    return el('label', { className: 'lock move-chip', title: `${other} only shows inside the outline of ${key}` }, [box, ` ${other}`]);
+  }));
 }
 
 function updateClip() {

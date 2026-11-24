@@ -106,6 +106,15 @@ try {
   await evaluate(`(() => { const m = document.getElementById('clip-mode'); m.value = ''; m.dispatchEvent(new Event('change')); })()`);
   await sleep(900);
   check('clipping can be turned off', (await evaluate(faceHash)) === beforeClip);
+  // The other way round, set on the covering part: the face hides the hair that sticks out of it.
+  await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Face')).click()`);
+  await sleep(600);
+  const covered = await evaluate(`(() => { const ls = [...document.querySelectorAll('#cover-box label')]; const l = ls.find(l => l.textContent.trim() === 'FrontHair') || ls[0]; l.querySelector('input').checked = true; l.querySelector('input').dispatchEvent(new Event('change')); return l.textContent.trim(); })()`);
+  await sleep(900);
+  check('a part can hide what sticks out of it', (await evaluate(faceHash)) !== beforeClip, covered);
+  await evaluate(`(() => { const i = [...document.querySelectorAll('#cover-box input')].find(i => i.checked); i.checked = false; i.dispatchEvent(new Event('change')); })()`);
+  await sleep(900);
+  check('and show it again', (await evaluate(faceHash)) === beforeClip);
 
   // Every part tile has a picture (its Variation icon, or a render of the part itself).
   await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
