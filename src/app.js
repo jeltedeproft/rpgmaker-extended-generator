@@ -751,29 +751,61 @@ async function splitSelected(gap) {
   renderAll();
 }
 
-/** Split all: every worn part that falls apart (transparent gaps) is split into pieces. */
-async function splitAll() {
-  await ensureVariants(variantsToDecode(state.character, state.library));
+/** Parts kept whole while "Split every part" is on: "key|variant id|gap", joined by you or one piece. */
+const keptWhole = new Set();
+
+/** Splits every worn part that falls apart (transparent gaps). Layers must be decoded. */
+function splitWorn() {
   const gap = Math.max(0, Math.min(8, Number($('split-gap').value) || 0));
   let split = 0;
   let whole = 0;
   for (const key of Object.keys(state.character.parts)) {
-    if (!state.character.parts[key] || state.character.split?.[key]) continue;
+    const id = state.character.parts[key];
+    if (!id || state.character.split?.[key] || keptWhole.has(`${key}|${id}|${gap}`)) continue;
     const sheets = piecesPerSheet(state.character, state.library, key, gap, state.settings);
     const count = Math.max(0, ...Object.values(sheets));
     if (count < 2) {
+      keptWhole.add(`${key}|${id}|${gap}`);
       whole++;
       continue;
     }
     (state.character.split ||= {})[key] = { gap, count, sheets };
     split++;
   }
+  return { split, whole };
+}
+
+/** Split all: every worn part that falls apart (transparent gaps) is split into pieces. */
+async function splitAll() {
+  await ensureVariants(variantsToDecode(state.character, state.library));
+  keptWhole.clear();
+  const { split, whole } = splitWorn();
   renderAll();
   toast(split ? `Split ${split} part${split === 1 ? '' : 's'} into pieces${whole ? `; ${whole} ${whole === 1 ? 'is' : 'are'} one piece` : ''}.` : 'Every worn part is one piece already: nothing to split.');
 }
 
+/**
+ * "Split every part": every part is split as soon as you wear it (picked, randomized, loaded or
+ * put on with a set), not only the ones worn when you click Split all.
+ */
+function splitEverythingToggle() {
+  const box = el('input', { type: 'checkbox', className: 'split-everything', checked: !!state.settings.splitEverything });
+  box.addEventListener('change', () => {
+    state.settings.splitEverything = box.checked;
+    saveSettings();
+    if (box.checked) splitAll();
+  });
+  return el('label', { className: 'lock', title: 'Every part you wear is split into pieces where transparent gaps separate it, now and whenever you pick, randomize or load one. Joining a part keeps it whole.' },
+    [box, ' Split every part automatically, also the ones you pick later']);
+}
+
 /** Join all: every split part becomes one piece again. */
 function joinAll() {
+  if (state.settings.splitEverything) {
+    state.settings.splitEverything = false;
+    saveSettings();
+    toast('Joined every part, and turned off "Split every part automatically".');
+  }
   for (const key of Object.keys(state.character.split || {})) {
     for (const piece of pieceKeys(state.character, key)) {
       delete state.character.offsets?.[piece];
@@ -787,6 +819,8 @@ function joinAll() {
 
 function unsplitSelected() {
   const key = state.selectedPart;
+  // Joined by you: stays whole while "Split every part" is on.
+  keptWhole.add(`${key}|${state.character.parts[key]}|${state.character.split?.[key]?.gap ?? 0}`);
   for (const piece of pieceKeys(state.character, key)) {
     delete state.character.offsets?.[piece];
     delete state.character.itemColors?.[piece];
@@ -1170,7 +1204,7 @@ function renderSlots() {
     splitButton.addEventListener('click', splitAll);
     const joinButton = el('button', { className: 'small-button', textContent: 'Join all', hidden: !Object.keys(state.character.split || {}).length, title: 'Make every split part one piece again' });
     joinButton.addEventListener('click', joinAll);
-    head.push(el('div', { className: 'source-reset' }, [reset, splitButton, joinButton]), recolourAllToggle());
+    head.push(el('div', { className: 'source-reset' }, [reset, splitButton, joinButton]), splitEverythingToggle(), recolourAllToggle());
   }
   box.replaceChildren(...head, ...(auto ? [auto] : []), ...slots.map((slot) => {
     if (slot.painted) {
@@ -1253,6 +1287,11 @@ async function renderPreview() {
   const token = ++state.previewToken;
   const errors = await ensureVariants(variantsToDecode(state.character, state.library));
   if (token !== state.previewToken) return;
+  // Split every part: a part just put on is split before it is drawn.
+  if (state.settings.splitEverything && splitWorn().split) {
+    renderSidebar();
+    if (state.selectedPart !== ALL_COLOURS && !state.selectedPart.includes(' #')) renderPieces();
+  }
   const byId = gradientsById();
   const problems = [...errors, ...unknownMaskColours()];
   for (const sheet of SHEET_KEYS) {

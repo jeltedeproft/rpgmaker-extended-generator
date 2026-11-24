@@ -613,6 +613,25 @@ try {
     await evaluate(`[...document.querySelectorAll('#slots button')].find(b => b.textContent === 'Join all').click()`);
     await sleep(1200);
     check('join all joins them again', (await evaluate(`document.querySelectorAll('#part-list button.piece').length`)) === 0);
+    // Split every part: also the parts put on later.
+    await evaluate(`(() => { const b = document.querySelector('#slots .split-everything'); b.checked = true; b.dispatchEvent(new Event('change')); })()`);
+    await sleep(2500);
+    const before = await evaluate(`document.querySelectorAll('#part-list button.piece').length`);
+    // The eyes taken off and put on again: split as soon as they are worn.
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Eyes')).click()`);
+    await sleep(800);
+    const worn = await evaluate(`document.querySelector('#variants .variant.selected').title`);
+    await evaluate(`[...document.querySelectorAll('#variants .variant')].find(b => b.title === 'None').click()`);
+    await sleep(1500);
+    await evaluate(`[...document.querySelectorAll('#variants .variant')].find(b => b.title === ${JSON.stringify(worn)}).click()`);
+    await sleep(2500);
+    const eyesPieces = await evaluate(`(() => { const list = [...document.querySelectorAll('#part-list button')]; const i = list.findIndex(b => b.textContent.startsWith('Eyes')); return list.slice(i + 1).findIndex(b => !b.classList.contains('piece')); })()`);
+    check('split every part also splits parts worn later', before > 0 && eyesPieces > 1, `${before} pieces, then ${eyesPieces} for the new eyes`);
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('All colours')).click()`);
+    await sleep(500);
+    await evaluate(`[...document.querySelectorAll('#slots button')].find(b => b.textContent === 'Join all').click()`);
+    await sleep(1200);
+    check('join all turns automatic splitting off', (await evaluate(`document.querySelectorAll('#part-list button.piece').length`)) === 0 && !(await evaluate(`document.querySelector('#slots .split-everything').checked`)));
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Eyes')).click()`);
     await sleep(500);
   }
