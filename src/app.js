@@ -2651,17 +2651,40 @@ function alikeDecided(f) {
   return !!state.settings.lookalikes?.[f.variant.id] || f.result.identical;
 }
 
-function renderAlikes() {
+/** The words a look-alike is found by: its part, body type, name and folder, and the other's. */
+function alikeText({ variant, other }) {
+  return [variant.part, variant.bodyType, variant.pid, variant.pack, other.bodyType, other.pid, other.pack].join(' ').toLowerCase();
+}
+
+/** The look-alikes as listed now: ticked boxes, then the search and the chosen part. */
+function shownAlikes() {
   const all = $('alike-all').checked;
   const hideDecided = $('alike-hide-decided').checked;
   const listed = state.lookalikes.filter((f) => all || f.result.identical || f.result.ratio <= LOOKALIKE_RATIO || f.variant.hidden);
-  const decided = listed.filter(alikeDecided);
-  $('alike-decided-count').textContent = decided.length;
-  const list = hideDecided ? listed.filter((f) => !alikeDecided(f) || decidedNow.has(f.variant.id)) : listed;
-  const empty = hideDecided && listed.length
-    ? 'Every look-alike is decided. Untick "Hide the ones already decided" to see them.'
-    : 'No copy looks like another part. Tick the box above to compare them anyway.';
-  $('alike-list').replaceChildren(...(list.length ? list.map(alikeCard) : [el('p', { className: 'muted', textContent: empty })]));
+  const undecided = hideDecided ? listed.filter((f) => !alikeDecided(f) || decidedNow.has(f.variant.id)) : listed;
+  const part = $('alike-part').value;
+  const words = $('alike-search').value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const shown = undecided.filter((f) => (!part || f.variant.part === part) && words.every((w) => alikeText(f).includes(w)));
+  return { listed, undecided, shown };
+}
+
+function renderAlikes() {
+  const { listed, undecided, shown } = shownAlikes();
+  $('alike-decided-count').textContent = listed.filter(alikeDecided).length;
+  // Parts to choose from, with how many look-alikes each has.
+  const counts = new Map();
+  for (const f of undecided) counts.set(f.variant.part, (counts.get(f.variant.part) || 0) + 1);
+  const part = $('alike-part').value;
+  $('alike-part').replaceChildren(el('option', { value: '', textContent: `Every part (${undecided.length})` }),
+    ...[...new Set([...PART_ORDER, ...counts.keys()])].filter((p) => counts.has(p) || p === part).map((p) => el('option', { value: p, textContent: `${p} (${counts.get(p) || 0})` })));
+  $('alike-part').value = part;
+  $('alike-count').textContent = shown.length < undecided.length ? `Showing ${shown.length} of ${undecided.length}` : '';
+  const empty = shown.length < undecided.length || undecided.length
+    ? 'No look-alike matches the search or part.'
+    : $('alike-hide-decided').checked && listed.length
+      ? 'Every look-alike is decided. Untick "Hide the ones already decided" to see them.'
+      : 'No copy looks like another part. Tick the box above to compare them anyway.';
+  $('alike-list').replaceChildren(...(shown.length ? shown.map(alikeCard) : [el('p', { className: 'muted', textContent: empty })]));
   updateAlikesButton();
 }
 
@@ -2673,13 +2696,13 @@ function openAlikesDialog() {
 }
 $('open-alikes').addEventListener('click', openAlikesDialog);
 $('alike-all').addEventListener('change', renderAlikes);
+$('alike-search').addEventListener('input', renderAlikes);
+$('alike-part').addEventListener('change', renderAlikes);
 $('alike-find').addEventListener('click', () => withBusy('Looking for duplicates', () => findSameFiles(null, false)));
 // Hide all listed copies: every copy in the list (as filtered now) is hidden, remembered per part.
 $('alike-hide-all').addEventListener('click', () => {
-  const all = $('alike-all').checked;
-  const listed = state.lookalikes.filter((f) => all || f.result.identical || f.result.ratio <= LOOKALIKE_RATIO);
   let hidden = 0;
-  for (const f of listed) {
+  for (const f of shownAlikes().shown) {
     if (f.variant.hidden) continue;
     f.variant.hidden = true;
     (state.settings.lookalikes ||= {})[f.variant.id] = 'hide';

@@ -360,6 +360,11 @@
         <button type="button" id="alike-hide-all" class="small-button" title="Hide every copy listed below at once">Hide all listed copies</button>
       </div>
       <label class="lock"><input type="checkbox" id="alike-hide-decided"> Hide the ones already decided (<span id="alike-decided-count">0</span>): hidden or shown by you, or exact duplicates hidden for you</label>
+      <div class="files-tools">
+        <input id="alike-search" type="search" placeholder="Filter by name, body type or folder, e.g. p07 or Female">
+        <select id="alike-part" title="Only the look-alikes of one part"><option value="">Every part</option></select>
+        <span id="alike-count" class="muted small"></span>
+      </div>
       <div id="alike-list" class="alike-list"></div>
     </form>
   </dialog>

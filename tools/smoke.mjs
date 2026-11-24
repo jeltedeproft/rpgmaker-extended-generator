@@ -705,6 +705,21 @@ try {
     }
     check('look-alikes have pictures and differences', await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].every(c => [...c.querySelectorAll('canvas')].every(x => x.width > 0))`));
     await shot('5-lookalikes.png');
+    {
+      // Search and part filter.
+      const total = await evaluate(`document.querySelectorAll('#alike-list .alike-card').length`);
+      await evaluate(`(() => { const i = document.getElementById('alike-search'); i.value = 'p01 female'; i.dispatchEvent(new Event('input')); })()`);
+      await sleep(500);
+      const found = await evaluate(`[...document.querySelectorAll('#alike-list .alike-card b')].map(b => b.textContent)`);
+      await evaluate(`(() => { const i = document.getElementById('alike-search'); i.value = ''; i.dispatchEvent(new Event('input')); const s = document.getElementById('alike-part'); s.value = s.options[1].value; s.dispatchEvent(new Event('change')); })()`);
+      await sleep(500);
+      const part = await evaluate(`document.getElementById('alike-part').value`);
+      const clothing = await evaluate(`[...document.querySelectorAll('#alike-list .alike-card b')].map(b => b.textContent)`);
+      await evaluate(`(() => { const s = document.getElementById('alike-part'); s.value = ''; s.dispatchEvent(new Event('change')); })()`);
+      await sleep(800);
+      check('look-alikes can be searched and filtered by part', found.length > 0 && found.length < total && found.every((t) => t.includes('p01'))
+        && clothing.length > 0 && !!part && clothing.every((t) => t.includes(` ${part} `)), `${total}: ${found.length} / ${part} ${clothing.length}`);
+    }
     // Hide the near copy, then check the part list.
     await evaluate(`[...document.querySelectorAll('#alike-list .alike-card')].find(c => c.textContent.startsWith('Male Body p01 (2)')).querySelector('button').click()`);
     await sleep(500);
