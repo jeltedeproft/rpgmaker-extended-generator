@@ -7,10 +7,10 @@ import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
   layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
-import { createImage, scanMask, matchSlot, recolorLayer } from './recolor.js';
+import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour } from './vxace.js';
-import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask } from './automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, compareVariants, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
@@ -499,8 +499,8 @@ function cutFrame(image, f, col, row) {
  * A part's Variation icon in the current colours: recoloured like the part, through a colour mask
  * read from the part's own pictures and masks. Icons of parts without any mask stay as drawn.
  */
-function iconThumbnail(key, variant) {
-  const colours = JSON.stringify([state.character.colors, state.character.itemColors?.[key], state.settings.templates]);
+function iconThumbnail(key, variant, character = state.character) {
+  const colours = JSON.stringify([character.colors, character.itemColors?.[key], state.settings.templates]);
   const cacheKey = `icon|${key}|${variant.id}|${colours}`;
   if (!thumbCache.has(cacheKey)) {
     if (thumbCache.size > 600) thumbCache.clear();
@@ -517,7 +517,7 @@ function iconThumbnail(key, variant) {
       if (!mask) return icon;
       const byId = gradientsById();
       const gradientFor = (slotId) => {
-        const id = itemColor(state.character, key, slotId);
+        const id = itemColor(character, key, slotId);
         const g = id ? byId.get(id) : null;
         if (g?.shiftSource) return (g.shiftRef ||= { shift: g.adjust });
         return g?.colors ?? null;
@@ -1492,6 +1492,66 @@ function renderPresets() {
   }));
 }
 
+/** Icons drawn back to front: the figure's own parts first, then clothes, hair and accessories. */
+const ICON_ORDER = ['Body', 'Face', 'Ears', 'Eyes', 'Eyebrows', 'Nose', 'Mouth', 'FacialMark', 'Beard', 'Clothing', 'Cloak',
+  'RearHair', 'FrontHair', 'BeastEars', 'Tail', 'Wing', 'AccA', 'AccB', 'Glasses'];
+
+/** The figure of a folder and body type's Variation icons, made once (see iconSilhouette). */
+const silhouettes = new Map();
+function silhouetteFor(variant) {
+  const key = `${variant.pack}|${variant.bodyType}`;
+  if (!silhouettes.has(key)) {
+    silhouettes.set(key, (async () => {
+      // Icons of many different parts, so no part is taken for the figure.
+      const byPart = new Map();
+      for (const v of state.library.variants.values()) {
+        if (v.pack !== variant.pack || v.bodyType !== variant.bodyType || !v.icon) continue;
+        const list = byPart.get(v.part) || [];
+        if (list.length < 4) byPart.set(v.part, [...list, v]);
+      }
+      const icons = (await Promise.all([...byPart.values()].flat().map((v) => ensureImage(v.icon).catch(() => null)))).filter(Boolean);
+      return icons.length >= 3 ? iconSilhouette(icons) : null;
+    })());
+  }
+  return silhouettes.get(key);
+}
+
+/**
+ * A set's picture: its parts cut out of their Variation icons and layered on one figure, in the
+ * set's colours. Parts without an icon are left out; null when none has one.
+ */
+async function setIcon(set) {
+  if (!state.character || !state.library.variants.size) return null;
+  const { character } = applySet(state.character, set, state.library);
+  const order = (key) => ICON_ORDER.indexOf(partOfKey(key));
+  const items = Object.keys(set.parts).map((key) => ({ key, variant: state.library.variants.get(character.parts[key]) }))
+    .filter((i) => i.variant?.icon).sort((a, b) => order(a.key) - order(b.key));
+  if (!items.length) return null;
+  const figure = await silhouetteFor(items[0].variant);
+  if (!figure) return null;
+  const out = { width: figure.width, height: figure.height, data: new Uint8ClampedArray(figure.data) };
+  let parts = 0;
+  for (const { key, variant } of items) {
+    const [icon, drawn] = await Promise.all([ensureImage(variant.icon), iconThumbnail(key, variant, character)]);
+    const part = icon && drawn && iconPart(icon, figure, drawn);
+    if (!part) continue;
+    blendOver(out, part);
+    parts++;
+  }
+  return parts ? out : null;
+}
+
+function setPicture(set) {
+  const box = el('span', { className: 'set-icon placeholder', textContent: '?', title: 'No Variation icon for these parts' });
+  setIcon(set).then((pixels) => {
+    if (!pixels) return;
+    const canvas = toCanvas(pixels);
+    canvas.className = 'set-icon';
+    box.replaceWith(canvas);
+  }).catch(() => {});
+  return box;
+}
+
 function renderSets() {
   renderPresets();
   const sets = state.settings.sets || [];
@@ -1512,7 +1572,7 @@ function renderSets() {
       saveSettings();
       renderSets();
     });
-    return el('div', { className: 'set' }, [apply, remove]);
+    return el('div', { className: 'set' }, [setPicture(set), apply, remove]);
   }) : [el('div', { className: 'muted small', textContent: 'None yet. A set is a group of parts with their colours, to put on any character.' })]));
   $('export-sets').disabled = !sets.length;
 }

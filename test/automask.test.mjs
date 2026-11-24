@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD, iconMask } from '../src/automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart } from '../src/automask.js';
 import { createImage, recolorLayer } from '../src/recolor.js';
 import { SLOT_BY_ID } from '../src/format.js';
 
@@ -88,4 +88,22 @@ test('a Variation icon gets the mask colours its colours have in the part', () =
   assert.equal(at(1), SLOT_BY_ID.get('clothing').rgb);
   assert.equal(out.data[2 * 4 + 3], 0); // blue is kept as drawn in the part, so on the icon too
   assert.equal(iconMask(icon, []), null);
+});
+
+test('a part is cut out of its Variation icon and laid on the shared figure', () => {
+  const icon = (pixels) => ({ width: 2, height: 2, data: new Uint8ClampedArray(pixels.flat()) });
+  const grey = [90, 90, 90, 255];
+  const none = [0, 0, 0, 0];
+  const hair = [250, 200, 10, 255];
+  const hat = [30, 30, 200, 255];
+  // Three icons on the same figure (left column grey), each with its own part on the right.
+  const icons = [icon([grey, hair, grey, none]), icon([grey, none, grey, hat]), icon([grey, none, grey, none])];
+  const figure = iconSilhouette(icons);
+  assert.deepEqual([...figure.data], [...grey, ...none, ...grey, ...none]);
+  const part = iconPart(icons[0], figure);
+  assert.deepEqual([...part.data], [...none, ...hair, ...none, ...none]);
+  // Recoloured: the part's pixels come from the recoloured icon.
+  const red = icon([[1, 1, 1, 255], [200, 0, 0, 255], [1, 1, 1, 255], none]);
+  assert.deepEqual([...iconPart(icons[0], figure, red).data.slice(4, 8)], [200, 0, 0, 255]);
+  assert.equal(iconPart({ width: 3, height: 1, data: new Uint8ClampedArray(12) }, figure), null);
 });

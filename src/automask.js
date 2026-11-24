@@ -190,3 +190,45 @@ export function defaultGroupSlots(part, count, groups = null) {
   let next = 0;
   return keep.map((k) => (k ? null : list[next++] || main));
 }
+
+/**
+ * The figure the Variation icons of a body type are drawn on: per pixel, the colour most of the
+ * icons have there (the grey silhouette; each icon adds its own part to it).
+ * @param {object[]} icons decoded icons; those of another size than the first are left out
+ */
+export function iconSilhouette(icons) {
+  const { width, height } = icons[0];
+  const same = icons.filter((i) => i.width === width && i.height === height);
+  const out = { width, height, data: new Uint8ClampedArray(width * height * 4) };
+  for (let i = 0; i < out.data.length; i += 4) {
+    const counts = new Map();
+    let best = -1;
+    let bestCount = 0;
+    for (const { data: d } of same) {
+      const key = d[i + 3] < 16 ? -1 : (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+      const n = (counts.get(key) || 0) + 1;
+      counts.set(key, n);
+      if (n > bestCount) [best, bestCount] = [key, n];
+    }
+    if (best >= 0) out.data.set([(best >> 16) & 255, (best >> 8) & 255, best & 255, 255], i);
+  }
+  return out;
+}
+
+/**
+ * A part cut out of its Variation icon: the pixels that differ from the figure (see
+ * iconSilhouette), taken from `drawn` (the icon recoloured, same size). Null if the sizes differ.
+ */
+export function iconPart(icon, silhouette, drawn = icon) {
+  if (icon.width !== silhouette.width || icon.height !== silhouette.height || drawn.width !== icon.width || drawn.height !== icon.height) return null;
+  const out = { width: icon.width, height: icon.height, data: new Uint8ClampedArray(icon.data.length) };
+  const a = icon.data;
+  const f = silhouette.data;
+  for (let i = 0; i < a.length; i += 4) {
+    if (a[i + 3] < 16) continue;
+    const onFigure = f[i + 3] >= 16 && Math.abs(a[i] - f[i]) <= 24 && Math.abs(a[i + 1] - f[i + 1]) <= 24 && Math.abs(a[i + 2] - f[i + 2]) <= 24;
+    if (onFigure) continue;
+    out.data.set(drawn.data.subarray(i, i + 4), i);
+  }
+  return out;
+}

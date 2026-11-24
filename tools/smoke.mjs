@@ -213,6 +213,7 @@ try {
   await evaluate(`(() => { document.getElementById('set-name').value = 'Smoke hair'; for (const i of document.querySelectorAll('#set-items input')) i.checked = i.value === 'FrontHair'; document.querySelector('#set-dialog button[value="ok"]').click(); })()`);
   await sleep(500);
   check('set saved', await evaluate(`[...document.querySelectorAll('.set-apply')].some(b => b.textContent === 'Smoke hair')`));
+  check('a set has a picture (or ? without Variation icons)', await evaluate(`[...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Smoke hair'))?.querySelector('.set-icon') != null`));
   await click('#variants .variant:nth-child(1)');
   await sleep(500);
   await evaluate(`[...document.querySelectorAll('.set-apply')].find(b => b.textContent === 'Smoke hair').click()`);
