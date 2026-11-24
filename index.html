@@ -284,6 +284,12 @@
         <h3>Sheet templates</h3>
         <p class="muted small">Frame size (and grid) of each sheet. Leave empty for automatic: the body's size and RPG Maker's grid. Sprite parts with other frame sizes are placed frame by frame, centred and standing on the bottom; other parts are centred.</p>
         <div id="template-grid" class="template-grid"></div>
+        <h3>Share your setup</h3>
+        <p class="muted small">Made your own parts, or set up someone's style? A setup file holds how your files are read (what you assigned, the colour masks made for them, new body types), sheet sizes, sets, your own colours, randomize rules and these options. Others import it, or put it in the parts folder: opening the folder then offers to use it.</p>
+        <div class="dialog-actions">
+          <button type="button" id="export-setup" class="small-button">Export setup…</button>
+          <label class="button small-button">Import setup<input type="file" id="import-setup" accept=".json,application/json" hidden></label>
+        </div>
       </details>
       <details id="problems" class="problems" hidden>
         <summary>Import report</summary>
@@ -392,6 +398,33 @@
       <div id="set-view-pics" class="set-view-pics"></div>
       <div class="dialog-actions">
         <button value="use" id="set-view-use" class="primary">Put on</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="setup-dialog">
+    <form method="dialog" class="gradient-form">
+      <h3>Export setup</h3>
+      <label>Name <input id="setup-name" type="text" placeholder="e.g. Chibi style parts"></label>
+      <label>Made by <input id="setup-author" type="text" placeholder="optional"></label>
+      <label>Note <textarea id="setup-note" rows="3" placeholder="What it is for, where to get the parts (optional)"></textarea></label>
+      <p class="muted small">For the files of these folders:</p>
+      <div id="setup-packs"></div>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button value="ok" class="primary">Save file</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="setup-offer">
+    <form method="dialog" class="gradient-form">
+      <h3>Use this folder's setup?</h3>
+      <p id="setup-offer-text"></p>
+      <p class="muted small">It sets how the folder's files are read, and adds its sets and colours. Your other settings for sheet sizes, rules and options are replaced by the setup's.</p>
+      <div class="dialog-actions">
+        <button value="skip">Not now</button>
+        <button value="apply" class="primary">Use it</button>
       </div>
     </form>
   </dialog>

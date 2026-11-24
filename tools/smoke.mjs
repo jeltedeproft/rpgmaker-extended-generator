@@ -227,6 +227,20 @@ try {
   await sleep(800);
   check('set puts the hair back on', (await hairValue()) === savedHair, savedHair);
 
+  // A shared setup: its sets and options are taken over.
+  {
+    const setup = { format: 'rpgmaker-xgen-setup', version: 1, name: 'Smoke setup', sets: [{ name: 'From setup', parts: {}, colors: {} }], options: {}, assignments: {} };
+    writeFileSync(join(OUT, 'smoke.setup.json'), JSON.stringify(setup));
+    const root = (await send('DOM.getDocument')).result.root.nodeId;
+    const input = (await send('DOM.querySelector', { nodeId: root, selector: '#import-setup' })).result.nodeId;
+    await send('DOM.setFileInputFiles', { nodeId: input, files: [join(OUT, 'smoke.setup.json')] });
+    await sleep(1500);
+    check('a setup file can be imported', await evaluate(`/Using the setup "Smoke setup"/.test(document.getElementById('toast').textContent) && [...document.querySelectorAll('#set-list .set-apply')].some(b => b.textContent === 'From setup')`),
+      await evaluate(`document.getElementById('toast').textContent`));
+    await evaluate(`[...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('From setup'))?.querySelector('.set-remove')?.click()`);
+    await sleep(300);
+  }
+
   // Credits: the pack in use, with its credits file.
   await evaluate(`document.getElementById('credits').open = true`);
   check('credits list the pack and its credits file', await evaluate(`(() => { const t = document.getElementById('credit-list').textContent; return t.includes('Sample kit') && t.includes('credits.txt'); })()`));

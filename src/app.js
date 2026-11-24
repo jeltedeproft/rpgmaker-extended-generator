@@ -1,5 +1,6 @@
 // UI controller. All heavy lifting lives in the pure modules; this file wires them to the DOM.
 
+import { makeSetup, applySetup, isSetup } from './setup.js';
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS, ALL_BODIES } from './format.js';
 import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
@@ -182,7 +183,8 @@ async function importEntriesNow(entries, packName) {
     try {
       const text = await readText(e.src);
       const data = JSON.parse(text);
-      if (isGeneratorSettings(data) || data.format === 'rpgmaker-xgen-character') {
+      if (isSetup(data)) pack.setup = { data, fileName: e.path.split('/').pop() };
+      else if (isGeneratorSettings(data) || data.format === 'rpgmaker-xgen-character') {
         pack.presets.push({ name: e.path.split('/').pop().replace(/\.json$/i, ''), fileName: e.path.split('/').pop(), text });
       }
     } catch { /* not a preset */ }
@@ -228,6 +230,7 @@ async function importEntriesNow(entries, packName) {
   // they are back in the "To assign" list.
   const toAssign = state.library.unrecognized.filter((u) => u.pack === pack.name).length;
   const assignNote = toAssign ? ` ${toAssign} file${toAssign > 1 ? 's' : ''} to assign: see "Files…".` : '';
+  if (pack.setup) offerSetup(pack);
   if (!addedParts) {
     toast(toAssign
       ? `No parts read from the names in "${pack.name}" yet.${assignNote}`
@@ -257,6 +260,66 @@ async function importEntriesNow(entries, packName) {
   renderAll();
   return addedParts;
 }
+
+// ---------- shared setups (see setup.js) ----------
+
+/** A folder with a setup file in it: ask before using it. */
+function offerSetup(pack) {
+  const { data, fileName } = pack.setup;
+  $('setup-offer-text').textContent = `"${pack.name}" comes with ${fileName}: "${data.name || 'a setup'}"${data.author ? ` by ${data.author}` : ''}.${data.note ? ` ${data.note}` : ''}`;
+  $('setup-offer').onclose = () => {
+    if ($('setup-offer').returnValue === 'apply') useSetup(data, [pack.name]);
+  };
+  if (!$('setup-offer').open) $('setup-offer').showModal();
+}
+
+function useSetup(data, packs) {
+  const { settings, customGradients, counts } = applySetup(state.settings, data, packs);
+  state.settings = settings;
+  saveSettings();
+  for (const g of customGradients) {
+    if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(customGradientFromJson(g));
+  }
+  for (const p of packs) {
+    applyRememberedAssignments(p);
+    applyRemovedParts(p);
+  }
+  $('flip-gradient').checked = !!state.settings.flipGradient;
+  $('make-room').checked = !!state.settings.makeRoom;
+  $('smooth-pixels').checked = !!state.settings.smoothPixels;
+  renderTemplates();
+  renderSets();
+  afterFilesChanged();
+  toast(`Using the setup "${data.name || 'setup'}": ${counts.files} file(s) read as set, ${counts.parts} colour mask(s), ${counts.sets} set(s).`, 8000);
+}
+
+$('export-setup').addEventListener('click', () => {
+  const packs = state.library.packs.map((p) => p.name);
+  $('setup-packs').replaceChildren(...packs.map((name) => el('label', { className: 'lock' }, [
+    el('input', { type: 'checkbox', value: name, checked: true }), ` ${name}`,
+  ])));
+  $('setup-dialog').showModal();
+});
+$('setup-dialog').addEventListener('close', () => {
+  if ($('setup-dialog').returnValue !== 'ok') return;
+  const packs = [...$('setup-packs').querySelectorAll('input:checked')].map((i) => i.value);
+  const name = $('setup-name').value.trim() || 'My setup';
+  const setup = makeSetup(state.settings, packs, state.customGradients.filter((g) => g.id !== ADJUSTING_ID).map(customGradientToJson),
+    { name, author: $('setup-author').value.trim(), note: $('setup-note').value.trim() });
+  downloadBlob(new Blob([JSON.stringify(setup, null, 2)], { type: 'application/json' }), `${safeFileName(name)}.setup.json`);
+});
+$('import-setup').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    if (!isSetup(data)) throw new Error('this is not a setup file');
+    useSetup(data, state.library.packs.map((p) => p.name));
+  } catch (err) {
+    toast(`Could not use the setup: ${err.message}`);
+  }
+});
 
 /** Makes a first character once there are parts, and gives it colours. */
 function ensureCharacter() {
