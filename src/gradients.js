@@ -187,6 +187,45 @@ export function adjustRgb(red, green, blue, { hue = 0, saturation = 100, brightn
   return hsvToRgb(h, Math.min(1, (sat * saturation) / 100), Math.min(1, (val * brightness) / 100));
 }
 
+/**
+ * The average colour of some pixels ([r, g, b] lists) as hue (degrees), saturation and value
+ * (0..1). Outlines (nearly black) and shines (nearly white, grey) count little. Null: no pixels.
+ */
+export function colourMean(pixels) {
+  let x = 0;
+  let y = 0;
+  let s = 0;
+  let v = 0;
+  let w = 0;
+  for (const [r, g, b] of pixels) {
+    const [h, sat, val] = rgbToHsv(r, g, b);
+    const weight = val < 0.15 || (sat < 0.08 && val > 0.9) ? 0.05 : 1;
+    x += Math.cos((h * Math.PI) / 180) * sat * weight;
+    y += Math.sin((h * Math.PI) / 180) * sat * weight;
+    s += sat * weight;
+    v += val * weight;
+    w += weight;
+  }
+  if (!w) return null;
+  return { hue: (((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360, saturation: s / w, value: v / w };
+}
+
+/**
+ * The hue, saturation and brightness shift (as adjustGradient takes) that moves colours whose
+ * average is `from` to the average `to`: to make a part's colours match another part's.
+ * strength: 1 all the way, 0.5 half way.
+ */
+export function matchAdjust(from, to, strength = 1) {
+  if (!from || !to) return { hue: 0, saturation: 100, brightness: 100 };
+  let hue = to.hue - from.hue;
+  if (hue > 180) hue -= 360;
+  if (hue < -180) hue += 360;
+  // A nearly grey colour has no hue to turn: then only saturation and brightness move.
+  if (from.saturation < 0.06 || to.saturation < 0.06) hue = 0;
+  const ratio = (a, b) => Math.max(0, Math.min(200, Math.round(100 * (1 + ((b / Math.max(a, 0.02)) - 1) * strength))));
+  return { hue: Math.round(hue * strength), saturation: ratio(from.saturation, to.saturation), brightness: ratio(from.value, to.value) };
+}
+
 /** Colours shown for "the part's own colours" (a swatch of an adjusted source colour). */
 export const SOURCE_SAMPLE = gradientFromStops([{ pos: 0, color: '#fff4e8' }, { pos: 0.45, color: '#c8864a' }, { pos: 1, color: '#1c1008' }]);
 

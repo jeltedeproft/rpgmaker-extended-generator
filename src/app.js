@@ -3,7 +3,7 @@
 import { makeSetup, applySetup, isSetup } from './setup.js';
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS, ALL_BODIES } from './format.js';
 import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignCounterpart, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
-import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
+import { colourMean, matchAdjust, createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
   layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
@@ -1522,7 +1522,7 @@ function renderSlots() {
     const adjust = el('button', { className: 'swatch add', textContent: 'Hue · saturation · brightness…',
       title: current ? `Shift the hue, saturation or brightness of "${current.label}"` : 'Shift the hue, saturation or brightness of the colours this part is drawn in' });
     adjust.addEventListener('click', () => openAdjustDialog(slot, current || null));
-    wrap.append(el('div', { className: 'swatches', style: 'margin-top:5px' }, [add, adjust]));
+    wrap.append(el('div', { className: 'swatches', style: 'margin-top:5px' }, [add, adjust, ...matchPicker(slot, current)]));
     return wrap;
   }));
 }
@@ -3982,7 +3982,94 @@ function showLivePreview(dialog, box) {
   copy();
 }
 
-function openAdjustDialog(slot, current) {
+/**
+ * "Match the colour of…": the worn parts to match this slot's colours to. Picking one opens the
+ * hue, saturation and brightness window already moved towards that part's colours.
+ */
+function matchPicker(slot, current) {
+  const own = slotOwner(slot);
+  if (!own) return [];
+  const others = Object.entries(state.character.parts).filter(([key, id]) => id && key !== own.key && state.library.variants.has(id) && !key.includes(' #'));
+  if (!others.length) return [];
+  const select = el('select', { className: 'match-colour', title: `Make the ${slot.label.toLowerCase()} colour closer to another part's colours (harmonise): you can fine-tune it after` }, [
+    el('option', { value: '', textContent: 'Match the colour of…' }),
+    ...others.map(([key]) => el('option', { value: key, textContent: key })),
+  ]);
+  select.addEventListener('change', async () => {
+    const key = select.value;
+    select.value = '';
+    if (!key) return;
+    const [from, to] = await Promise.all([slotPixels(own.key, own.variant, slot.id), partThumbnail(key, state.library.variants.get(state.character.parts[key]))]);
+    const target = colourMean(from);
+    const reference = to && colourMean(drawnRgb(to));
+    if (!target || !reference) {
+      toast('Could not read the colours to match.');
+      return;
+    }
+    // Moving from what shows now: an adjusted colour adds to its own shift.
+    const shift = matchAdjust(target, reference, 0.5);
+    const before = current?.adjust || { hue: 0, saturation: 100, brightness: 100 };
+    const values = {
+      hue: Math.max(-180, Math.min(180, before.hue + shift.hue)),
+      saturation: Math.max(0, Math.min(200, Math.round((before.saturation * shift.saturation) / 100))),
+      brightness: Math.max(0, Math.min(200, Math.round((before.brightness * shift.brightness) / 100))),
+    };
+    openAdjustDialog(slot, current || null, values, `Moved half way towards the colours of ${key}. Slide to fine-tune, or Reset to start again.`);
+  });
+  return [select];
+}
+
+/** The worn part a slot's colours are measured on: the selected one, else the first that uses the slot. */
+function slotOwner(slot) {
+  const uses = (variant) => variant?.layers.some((l) => l.slotId === slot.id || (l.paint || l.mask)?.slots?.has?.(slot.id));
+  if (state.selectedPart !== ALL_COLOURS) {
+    const key = itemOfKey(state.selectedPart);
+    const variant = state.library.variants.get(state.character.parts[key]);
+    return variant ? { key, variant } : null;
+  }
+  for (const [key, id] of Object.entries(state.character.parts)) {
+    const variant = id && state.library.variants.get(id);
+    if (uses(variant)) return { key, variant };
+  }
+  return null;
+}
+
+/** [r, g, b] of every drawn pixel of a picture. */
+function drawnRgb(image) {
+  const out = [];
+  for (let i = 0; i < image.data.length; i += 4) if (image.data[i + 3] > 128) out.push([image.data[i], image.data[i + 1], image.data[i + 2]]);
+  return out;
+}
+
+/** The pixels of a part that use a slot, in the colours they show now ([r, g, b] list). */
+async function slotPixels(key, variant, slotId) {
+  const slot = SLOT_BY_ID.get(slotId);
+  const layers = variant.layers.filter((l) => l.base && !l.base.cells);
+  await ensureLayers(layers);
+  const byId = gradientsById();
+  const gradientFor = (id) => {
+    const g = byId.get(itemColor(state.character, key, id));
+    if (g?.shiftSource) return (g.shiftRef ||= { shift: g.adjust });
+    return g?.colors ?? null;
+  };
+  const out = [];
+  for (const l of layers) {
+    const base = l.base.pixels;
+    const own = (l.paint || l.mask)?.pixels;
+    const mask = own || (l.slotId ? slotMask(base, (SLOT_BY_ID.get(l.slotId)?.rgb) ?? 0) : null);
+    if (!base || !mask || mask.width !== base.width || mask.height !== base.height) continue;
+    const shown = recolorLayer(base, mask, l.slotId, gradientFor, state.settings);
+    for (let i = 0; i < base.data.length; i += 4) {
+      if (base.data[i + 3] <= 128 || !mask.data[i + 3]) continue;
+      if (slot && matchSlot((mask.data[i] << 16) | (mask.data[i + 1] << 8) | mask.data[i + 2]) !== slot.id) continue;
+      out.push([shown.data[i], shown.data[i + 1], shown.data[i + 2]]);
+    }
+    if (out.length > 4000) break;
+  }
+  return out;
+}
+
+function openAdjustDialog(slot, current, start = null, note = '') {
   // Adjusting an adjusted colour starts again from its original, with the same settings. No colour
   // chosen (source colours): the part's own colours are shifted.
   const origin = current?.shiftSource ? SOURCE_BASE : current?.from && allGradients().find((g) => g.id === current.from);
@@ -3993,7 +4080,8 @@ function openAdjustDialog(slot, current) {
     : "Shift the chosen gradient to a colour the colour sheets don't have. The character updates as you slide.";
   $('adjust-title').textContent = `Adjust ${slot.label.toLowerCase()} colour`;
   $('adjust-name').value = `${base.label} (adjusted)`;
-  setAdjustValues(origin ? { hue: 0, saturation: 100, brightness: 100, ...current.adjust } : { hue: 0, saturation: 100, brightness: 100 });
+  setAdjustValues(start || (origin ? { hue: 0, saturation: 100, brightness: 100, ...current.adjust } : { hue: 0, saturation: 100, brightness: 100 }));
+  if (note) $('adjust-note').textContent = note;
   drawGradientRow('adjust-before', base.colors);
   updateAdjust();
   $('adjust-dialog').returnValue = ''; // Esc keeps the last value otherwise
