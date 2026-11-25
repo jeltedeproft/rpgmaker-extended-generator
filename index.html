@@ -586,7 +586,10 @@
         <button type="button" id="paint-clear" class="small-button" title="Take away everything painted on this image: it goes back to its own mask">Clear painting</button>
       </div>
       <div id="paint-slots" class="paint-slots"></div>
-      <div class="paint-area"><canvas id="paint-canvas" width="0" height="0"></canvas></div>
+      <div class="paint-body">
+        <div class="paint-area"><canvas id="paint-canvas" width="0" height="0"></canvas></div>
+        <div class="live-preview column" id="paint-live" title="The character as it looks now"></div>
+      </div>
     </form>
   </dialog>
 
@@ -629,6 +632,7 @@
         <label>Saturation <input type="range" id="adjust-saturation" min="0" max="200" step="1" value="100"><input type="number" id="adjust-saturation-n" min="0" max="200" step="1" value="100"> %</label>
         <label>Brightness <input type="range" id="adjust-brightness" min="0" max="200" step="1" value="100"><input type="number" id="adjust-brightness-n" min="0" max="200" step="1" value="100"> %</label>
       </div>
+      <div class="live-preview" id="adjust-live" title="The character as it looks now"></div>
       <div class="adjust-compare">
         <span class="muted small">Before</span><canvas id="adjust-before" width="256" height="1"></canvas>
         <span class="muted small">After</span><canvas id="adjust-after" width="256" height="1"></canvas>

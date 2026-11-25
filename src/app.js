@@ -2561,6 +2561,7 @@ async function openPainter(variant) {
   painter.slot = first?.id || defaultGroupSlots(variant.part, 1)[0] || 'clothing';
   showPaintSlot();
   if (!$('paint-dialog').open) $('paint-dialog').showModal();
+  showLivePreview($('paint-dialog'), $('paint-live'));
   await loadPaintLayer(layers[0]);
 }
 
@@ -3956,6 +3957,31 @@ function setAdjustValues(values) {
   for (const f of ADJUST_FIELDS) $(`adjust-${f}`).value = $(`adjust-${f}-n`).value = values[f];
 }
 
+/**
+ * The character's portrait, walk and battler, copied into a dialog while it is open: the
+ * previews on the page are behind it.
+ */
+function showLivePreview(dialog, box) {
+  const sources = ['face-canvas', 'walk-canvas', 'sv-canvas'].map((id) => $(id)).filter(Boolean);
+  const copies = sources.map(() => el('canvas', { width: 0, height: 0 }));
+  box.replaceChildren(...copies);
+  const copy = () => {
+    if (!dialog.open) return;
+    sources.forEach((src, i) => {
+      const c = copies[i];
+      if (c.width !== src.width || c.height !== src.height) {
+        c.width = src.width;
+        c.height = src.height;
+      }
+      const g = c.getContext('2d');
+      g.clearRect(0, 0, c.width, c.height);
+      if (src.width && src.height) g.drawImage(src, 0, 0);
+    });
+    setTimeout(() => requestAnimationFrame(copy), 120);
+  };
+  copy();
+}
+
 function openAdjustDialog(slot, current) {
   // Adjusting an adjusted colour starts again from its original, with the same settings. No colour
   // chosen (source colours): the part's own colours are shifted.
@@ -3972,6 +3998,7 @@ function openAdjustDialog(slot, current) {
   updateAdjust();
   $('adjust-dialog').returnValue = ''; // Esc keeps the last value otherwise
   $('adjust-dialog').showModal();
+  showLivePreview($('adjust-dialog'), $('adjust-live'));
 }
 
 for (const f of ADJUST_FIELDS) {
