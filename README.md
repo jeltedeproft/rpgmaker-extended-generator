@@ -33,8 +33,9 @@ existing extended generator is, minus the bugs:
   opening), only where they overlap, or except where they overlap.
 - **Credits:** lists every pack the character uses (parts and colours), shows readme/credit
   files found in the pack folder, lets you add an author line, and exports a `_credits.txt`.
-- **Layers** beside the parts: every layer of an image with its picture; drag to change the draw
-  order (starts as RPG Maker's order), tick layers to move those parts together.
+- **Layers** beside the parts: one row per part with its picture, its own layers folded under it
+  (Eyes 1, Eyes 2…); drag to change the draw order (starts as RPG Maker's order), tick parts to
+  move them together, hide a part with the eye.
 - **Cut finished sheets** into characters, rows, columns or single frames, and assign a piece as
   a part: a dressed character as a body, to put a cloak over it.
 - **Character sets:** save some parts with their colours and positions ("Knight armour") and put

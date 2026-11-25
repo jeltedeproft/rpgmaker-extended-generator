@@ -6,11 +6,12 @@ import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLab
 import { colourMean, matchAdjust, createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
-  layersForSheet, drawId, moveLayer, itemOfKey, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
+  layersForSheet, drawId, itemOfKey, frameFor, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
+import { groupLayers, topRun, moveBlock, stepBlock } from './layers.js';
 import { CUT_PRESETS, guessGrid, cellRect, cutPath, cropImage, hasPixels, drawnBounds } from './cut.js';
 import { codeOf, emptyEdits, hasEdits, encodeEdits, decodeEdits, paintLine, paintColour, applyEdits } from './maskpaint.js';
 import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp, closeUpMask } from './automask.js';
@@ -1791,12 +1792,38 @@ function setMovesWith(item, on) {
   renderLayers();
 }
 
-let draggedLayer = null;
+let draggedLayers = null;
+/** Parts whose layers are listed one by one in the layers panel (folded by default). */
+const openLayerGroups = new Set();
+
+/** Whether a layer draws anything (an empty colour layer is left out of the list). */
+const layerShows = new WeakMap();
+function showsPixels(layer) {
+  const pixels = layer.base?.pixels;
+  if (!pixels) return true; // not read yet: count it
+  if (!layerShows.has(pixels)) layerShows.set(pixels, hasPixels(pixels));
+  return layerShows.get(pixels);
+}
+
+/** One layer's own picture (as drawn in its file), cut to what it shows. */
+function layerPicture(layer, sheet) {
+  const pixels = layer.base?.pixels;
+  if (!pixels) return null;
+  const f = sheet === 'FG' ? null : frameFor(sheet, { w: pixels.width, h: pixels.height });
+  if (f) {
+    const frame = cutFrame(pixels, f, sheet === 'TV' && f.cols > 1 ? 1 : 0, 0);
+    const box = drawnBounds(frame);
+    if (box) return cropImage(frame, box);
+  }
+  const box = drawnBounds(pixels);
+  return box && cropImage(pixels, box);
+}
 
 /**
- * The layers panel beside the parts: every layer of the chosen image, top-most first, with its
- * part's picture. Drag a layer to draw it above or below others; tick layers to move those parts
- * together with the selected one (Position); click a name to pick that part.
+ * The layers panel beside the parts: the layers of the chosen image, top-most first, one row per
+ * part with its picture. A part with several layers (colour layers, pieces) folds them under its
+ * name ("Eyes 1", "Eyes 2"); layers that draw nothing are left out. Drag a row to draw it above or
+ * below others; tick parts to move them together with the selected one; the eye hides a part.
  */
 function renderLayers() {
   const sheet = $('layer-sheet').value;
@@ -1804,78 +1831,150 @@ function renderLayers() {
   const custom = !!state.character.drawOrder?.[sheet];
   $('layer-reset').disabled = !custom;
   const selected = state.selectedPart;
+  const selectedItem = selected === ALL_COLOURS ? null : itemOfKey(selected);
   const canGroup = selected !== ALL_COLOURS && wornKeys().includes(selected);
   const grouped = [...moveGroup].filter((k) => k !== selected && movesWith(k));
   $('move-group-note').hidden = !grouped.length;
   $('move-group-note').textContent = grouped.length ? `Moves together with: ${grouped.join(', ')} (tick or untick them under Layers).` : '';
-  if (!topFirst.length) {
+  const hiddenItems = Object.keys(state.character.hidden || {}).filter((k) => state.character.hidden[k] && state.character.parts[k]);
+  if (!topFirst.length && !hiddenItems.length) {
     $('layer-list').replaceChildren(el('li', { className: 'muted', textContent: 'No layers on this image.' }));
     return;
   }
   const ids = topFirst.map(drawId);
+  const shownIds = new Set(topFirst.filter((d) => showsPixels(d.layer)).map(drawId));
   const store = (order) => {
     (state.character.drawOrder ||= {})[sheet] = order;
     renderPreview();
   };
-  $('layer-list').replaceChildren(...topFirst.map((draw, i) => {
-    const id = ids[i];
-    const name = draw.layer.key.replace(/:c\d+$/, '');
-    const label = name === draw.item ? draw.item : `${draw.item} · ${draw.layer.key}`;
-    const own = draw.item === selected || itemOfKey(draw.item) === selected;
-    const tick = el('input', { type: 'checkbox', checked: own || movesWith(draw.item), disabled: !canGroup || own,
-      title: own ? 'The selected part' : canGroup ? `Move ${draw.item} together with ${selected}: moving, turning, resizing, mirroring or flipping one changes both by as much` : 'Pick a worn part first' });
-    tick.addEventListener('change', () => setMovesWith(draw.item, tick.checked));
-    const thumb = el('span', { className: 'layer-thumb' });
-    const variant = state.library.variants.get(state.character.parts[itemOfKey(draw.item)]);
-    if (variant) {
-      // Cut to what is drawn, so small parts (eyes, a nose) show at a size you can see.
-      partThumbnail(itemOfKey(draw.item), variant, [sheet]).then((pixels) => {
-        const box = pixels && drawnBounds(pixels);
-        if (box) thumb.replaceChildren(toCanvas(cropImage(pixels, box)));
-      }).catch(() => {});
-    }
-    const pick = el('button', { type: 'button', className: 'layer-name', textContent: label, title: `Pick ${draw.item}` });
-    pick.addEventListener('click', () => {
-      state.selectedPart = draw.item;
-      renderSidebar();
-      renderEditor();
-    });
-    const up = el('button', { type: 'button', textContent: '↑', title: 'Draw above the layer over it', disabled: i === 0 });
-    const down = el('button', { type: 'button', textContent: '↓', title: 'Draw below the layer under it', disabled: i === topFirst.length - 1 });
-    up.addEventListener('click', () => store(moveLayer(sheet, state.character, state.library, id, 1)));
-    down.addEventListener('click', () => store(moveLayer(sheet, state.character, state.library, id, -1)));
-    const row = el('li', { className: 'layer-row' + (own ? ' selected' : ''), draggable: true, title: 'Drag up or down to change the draw order' }, [
-      el('span', { className: 'grip', textContent: '⋮⋮' }), tick, thumb, pick, el('span', { className: 'layer-buttons' }, [up, down]),
-    ]);
+  const pickItem = (item) => {
+    state.selectedPart = item;
+    renderSidebar();
+    renderEditor();
+  };
+  const setHidden = (item, hide) => {
+    if (hide) (state.character.hidden ||= {})[item] = true;
+    else delete state.character.hidden?.[item];
+    renderAll();
+  };
+  const tickFor = (item) => {
+    const own = item === selected || (selectedItem && item === selectedItem && !selected.includes(' #'));
+    const tick = el('input', { type: 'checkbox', checked: own || movesWith(item), disabled: !canGroup || own,
+      title: own ? 'The selected part' : canGroup ? `Move ${item} together with ${selected}: moving, turning, resizing, mirroring or flipping one changes both by as much` : 'Pick a worn part first' });
+    tick.addEventListener('change', () => setMovesWith(item, tick.checked));
+    return tick;
+  };
+  const eyeFor = (item, hidden) => {
+    const eye = el('button', { type: 'button', className: 'layer-eye' + (hidden ? ' off' : ''), textContent: hidden ? '◌' : '👁',
+      title: hidden ? `Show ${item} again` : `Hide ${item} on every image (it stays worn)` });
+    eye.addEventListener('click', () => setHidden(item, !hidden));
+    return eye;
+  };
+  /** Makes a row draggable: it carries block (ids), and others drop above or below it. */
+  const dragRow = (row, block, dropAbove, dropBelow) => {
+    row.draggable = true;
     row.addEventListener('dragstart', (e) => {
-      draggedLayer = id;
+      e.stopPropagation();
+      draggedLayers = block;
       e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', id);
+      e.dataTransfer.setData('text/plain', block.join('\n'));
       row.classList.add('dragging');
     });
     row.addEventListener('dragend', () => {
-      draggedLayer = null;
+      draggedLayers = null;
       row.classList.remove('dragging');
     });
     const below = (e) => e.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
+    const own = () => draggedLayers?.includes(dropAbove) || draggedLayers?.includes(dropBelow);
     row.addEventListener('dragover', (e) => {
-      if (!draggedLayer || draggedLayer === id) return;
+      if (!draggedLayers || own()) return;
       e.preventDefault();
+      e.stopPropagation();
       row.classList.toggle('drop-below', below(e));
       row.classList.toggle('drop-above', !below(e));
     });
     row.addEventListener('dragleave', () => row.classList.remove('drop-above', 'drop-below'));
     row.addEventListener('drop', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       row.classList.remove('drop-above', 'drop-below');
-      if (!draggedLayer || draggedLayer === id) return;
-      const order = ids.filter((x) => x !== draggedLayer);
-      order.splice(order.indexOf(id) + (below(e) ? 1 : 0), 0, draggedLayer);
-      draggedLayer = null;
+      if (!draggedLayers || own()) return;
+      const order = below(e) ? moveBlock(ids, draggedLayers, dropBelow, true) : moveBlock(ids, draggedLayers, dropAbove, false);
+      draggedLayers = null;
       store(order);
     });
-    return row;
-  }));
+  };
+  const stepButtons = (block) => {
+    const up = el('button', { type: 'button', textContent: '↑', title: 'Draw above the layer over it' });
+    const down = el('button', { type: 'button', textContent: '↓', title: 'Draw below the layer under it' });
+    const shown = (id) => shownIds.has(id);
+    up.disabled = stepBlock(ids, block, 1, shown) === ids;
+    down.disabled = stepBlock(ids, block, -1, shown) === ids;
+    up.addEventListener('click', () => store(stepBlock(ids, block, 1, shown)));
+    down.addEventListener('click', () => store(stepBlock(ids, block, -1, shown)));
+    return el('span', { className: 'layer-buttons' }, [up, down]);
+  };
+
+  const rows = [];
+  for (const group of groupLayers(topFirst.filter((d) => shownIds.has(drawId(d))), itemOfKey)) {
+    const { item, draws } = group;
+    const groupIds = draws.map(drawId);
+    const block = topRun(ids.filter((id) => shownIds.has(id)), groupIds);
+    const thumb = el('span', { className: 'layer-thumb' });
+    const variant = state.library.variants.get(state.character.parts[item]);
+    if (variant) {
+      // Cut to what is drawn, so small parts (eyes, a nose) show at a size you can see.
+      partThumbnail(item, variant, [sheet]).then((pixels) => {
+        const box = pixels && drawnBounds(pixels);
+        if (box) thumb.replaceChildren(toCanvas(cropImage(pixels, box)));
+      }).catch(() => {});
+    }
+    const many = draws.length > 1;
+    const open = many && openLayerGroups.has(item);
+    const fold = el('button', { type: 'button', className: 'layer-fold', textContent: many ? (open ? '▾' : '▸') : '', disabled: !many,
+      title: many ? `${open ? 'Fold' : 'Show'} the ${draws.length} layers of ${item}` : '' });
+    fold.addEventListener('click', () => {
+      if (openLayerGroups.has(item)) openLayerGroups.delete(item);
+      else openLayerGroups.add(item);
+      renderLayers();
+    });
+    const pick = el('button', { type: 'button', className: 'layer-name', title: `Pick ${item}` }, [
+      item, ...(many ? [el('span', { className: 'layer-count', textContent: ` ${draws.length}` })] : []),
+    ]);
+    pick.addEventListener('click', () => pickItem(item));
+    const row = el('li', { className: 'layer-row layer-group' + (item === selectedItem ? ' selected' : ''), title: 'Drag up or down to change the draw order' }, [
+      el('span', { className: 'grip', textContent: '⋮⋮' }), fold, tickFor(item), thumb, pick, eyeFor(item, false), stepButtons(block),
+    ]);
+    row.dataset.item = item;
+    dragRow(row, block, block[0], block[block.length - 1]);
+    rows.push(row);
+    if (!open) continue;
+    draws.forEach((draw, n) => {
+      const id = drawId(draw);
+      const sub = el('span', { className: 'layer-thumb' });
+      const pic = layerPicture(draw.layer, sheet);
+      if (pic) sub.replaceChildren(toCanvas(pic));
+      const piece = draw.item !== item;
+      const name = el('button', { type: 'button', className: 'layer-name', textContent: `${item} ${n + 1}`,
+        title: `${draw.layer.base?.path || draw.layer.key}${piece ? ` (piece ${draw.item.split('#').pop()})` : ''}` });
+      name.addEventListener('click', () => pickItem(draw.item));
+      const apart = !block.includes(id) ? el('span', { className: 'muted layer-apart', textContent: 'apart', title: 'Drawn apart from the rest of this part (e.g. behind the body)' }) : '';
+      const subRow = el('li', { className: 'layer-row layer-sub' + (draw.item === selected ? ' selected' : ''), title: 'Drag up or down to change the draw order of this layer only' }, [
+        el('span', { className: 'grip', textContent: '⋮⋮' }), piece ? tickFor(draw.item) : el('span', { className: 'layer-tick-space' }), sub, name, apart, stepButtons([id]),
+      ]);
+      dragRow(subRow, [id], id, id);
+      rows.push(subRow);
+    });
+  }
+  // Hidden parts draw nothing, so they're listed at the end, to show them again.
+  for (const item of hiddenItems) {
+    const pick = el('button', { type: 'button', className: 'layer-name', textContent: `${item} (hidden)`, title: `Pick ${item}` });
+    pick.addEventListener('click', () => pickItem(item));
+    rows.push(el('li', { className: 'layer-row layer-hidden' + (item === selectedItem ? ' selected' : '') }, [
+      el('span', { className: 'grip' }), el('span', { className: 'layer-fold' }), el('span', { className: 'layer-tick-space' }), el('span', { className: 'layer-thumb' }), pick, eyeFor(item, true),
+    ]));
+  }
+  $('layer-list').replaceChildren(...rows);
 }
 
 /** Mask colours in the selected parts that match no colour slot: those pixels can't be recoloured. */

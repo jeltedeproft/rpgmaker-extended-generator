@@ -201,6 +201,23 @@ try {
     await click('#layer-reset');
     await sleep(800);
     check('reset to RPG Maker\'s order', JSON.stringify(await names()) === JSON.stringify(first));
+    // One row per part; a part's several layers fold under it as "Part 1", "Part 2".
+    check('each part is listed once under Layers', await evaluate(`(() => { const n = [...document.querySelectorAll('#layer-list .layer-group')].map(r => r.dataset.item); return n.length > 0 && new Set(n).size === n.length; })()`));
+    const many = `[...document.querySelectorAll('#layer-list .layer-group')].find(r => r.querySelector('.layer-count'))`;
+    if (await evaluate(`!!${many}`)) {
+      check("a part's layers are folded at first", await evaluate(`!document.querySelector('#layer-list .layer-sub')`));
+      await evaluate(`${many}.querySelector('.layer-fold').click()`);
+      await sleep(300);
+      check('unfolding shows its layers as name 1, name 2', await evaluate(`(() => { const s = [...document.querySelectorAll('#layer-list .layer-sub .layer-name')].map(b => b.textContent); return s.length >= 2 && / 1$/.test(s[0]) && / 2$/.test(s[1]); })()`));
+      await evaluate(`${many}.querySelector('.layer-fold').click()`);
+      await sleep(300);
+    }
+    const hideFirst = await evaluate(`(() => { const r = document.querySelector('#layer-list .layer-group'); const item = r.dataset.item; r.querySelector('.layer-eye').click(); return item; })()`);
+    await sleep(800);
+    check('the eye hides a part; it is listed at the end to show it again', await evaluate(`![...document.querySelectorAll('#layer-list .layer-group')].some(r => r.dataset.item === ${JSON.stringify(hideFirst)}) && !!document.querySelector('#layer-list .layer-hidden .layer-eye')`));
+    await evaluate(`document.querySelector('#layer-list .layer-hidden .layer-eye').click()`);
+    await sleep(800);
+    check('and shows it again', await evaluate(`[...document.querySelectorAll('#layer-list .layer-group')].some(r => r.dataset.item === ${JSON.stringify(hideFirst)}) && !document.querySelector('#layer-list .layer-hidden')`));
   }
   // Cut a sheet into pieces: the body's walk sheet into its four rows.
   {

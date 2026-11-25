@@ -128,7 +128,8 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .variants > p { grid-column: 1 / -1; }
 @media (max-width: 1250px) { .editor-body { grid-template-columns: minmax(0, 1fr); } }
 .layer-panel { border-left: 1px solid var(--line); padding-left: 12px; position: sticky; top: 8px; max-height: calc(100vh - 24px); display: flex; flex-direction: column; min-width: 0; }
-@media (max-width: 1250px) { .layer-panel { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 8px; position: static; max-height: none; } }
+@media (max-width: 1250px) { .layer-panel { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 8px; position: static; max-height: none; }
+  .layer-panel .layer-list { max-height: 55vh; } }
 .layer-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .layer-panel-head h3 { margin: 0; }
 .layer-panel .layer-list { max-height: none; flex: 1 1 auto; overflow: auto; }
@@ -303,7 +304,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .own-colours { margin: 4px 0 2px; }
 .layer-head { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
 .layer-head .small-button { margin-top: 0; }
-.layer-list { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow: auto; font-size: 12px; }
+.layer-list { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow-y: auto; scrollbar-gutter: stable; font-size: 12px; }
 .layer-row { display: flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: 6px; border: 1px solid transparent; cursor: grab; }
 .layer-row:hover { background: var(--hover); }
 .layer-row.selected { background: color-mix(in srgb, var(--accent) 22%, var(--hover)); border-color: var(--accent); }
@@ -316,6 +317,18 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .layer-thumb canvas { max-width: 28px; max-height: 28px; image-rendering: pixelated; }
 .layer-name { flex: 1 1 auto; min-width: 0; text-align: left; border: 0; background: transparent; padding: 2px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer-buttons { display: flex; flex: none; }
+.layer-fold { flex: none; width: 16px; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; }
+.layer-fold:disabled { opacity: 1; }
+.layer-count { color: var(--muted); font-size: 11px; }
+.layer-eye { flex: none; padding: 0 3px; border: 0; background: transparent; font-size: 12px; opacity: .55; }
+.layer-eye:hover { opacity: 1; }
+.layer-eye.off { opacity: 1; color: var(--accent); }
+.layer-sub { margin-left: 22px; }
+.layer-sub .layer-thumb { width: 22px; height: 22px; }
+.layer-sub .layer-thumb canvas { max-width: 22px; max-height: 22px; }
+.layer-tick-space { width: 13px; flex: none; }
+.layer-apart { font-size: 10px; flex: none; }
+.layer-hidden { opacity: .6; cursor: default; }
 .layer-buttons button { padding: 0 5px; font-size: 11px; margin-left: 2px; }
 .part-list button.piece { padding-left: 22px; font-size: 12px; color: var(--muted); }
 .part-list button.piece.active { color: var(--text); }
