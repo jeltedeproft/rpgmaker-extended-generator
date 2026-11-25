@@ -358,9 +358,9 @@ function showWelcome() {
   $('app').classList.add('empty');
   $('welcome').hidden = false;
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = true;
-  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files', 'open-gallery']) $(id).disabled = true;
+  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files', 'open-gallery', 'open-templates', 'open-setup']) $(id).disabled = true;
   $('open-files').textContent = 'Files…';
-  $('problems').hidden = true;
+  $('open-problems').hidden = true;
   $('packs').replaceChildren();
 }
 
@@ -368,8 +368,11 @@ function showApp() {
   $('app').classList.remove('empty');
   $('welcome').hidden = true;
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = false;
-  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files', 'open-gallery']) $(id).disabled = false;
+  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files', 'open-gallery', 'open-templates', 'open-setup']) $(id).disabled = false;
 }
+$('open-templates').addEventListener('click', () => $('templates-dialog').showModal());
+$('open-setup').addEventListener('click', () => $('setup-dialog').showModal());
+$('open-problems').addEventListener('click', () => $('problems').showModal());
 
 // ---------- rendering ----------
 
@@ -1879,7 +1882,8 @@ function renderProblems() {
   ];
   const total = lib.unrecognized.length + lines.length;
   $('open-files').textContent = lib.unrecognized.length ? `Files… (${lib.unrecognized.length} to assign)` : 'Files…';
-  $('problems').hidden = !total;
+  $('open-problems').hidden = !total;
+  $('open-problems').textContent = `Import report (${total})`;
   $('problem-list').replaceChildren(
     el('p', { className: 'muted small', textContent: `${total} note(s). Skipped files don't stop the rest from loading; "Assign…" adds one by hand.` }),
     ...(lib.unrecognized.length ? [queue] : []),

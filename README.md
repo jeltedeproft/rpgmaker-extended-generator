@@ -16,8 +16,8 @@ existing extended generator is, minus the bugs:
 - **Remembers your folders** (Chrome/Edge): pick RPG Maker's `generator` folder once, then reopen
   it with one click next time.
 - **Unlimited colours:** every gradient sheet found is loaded, any gradient fits any slot, and you
-  can make your own (exportable as a gradient sheet). Hue, saturation and brightness shift any
-  colour, including the colours a part is drawn in.
+  can make your own (exportable as a gradient sheet), duplicate or delete any. Hue, saturation and
+  brightness shift any colour, including the colours a part is drawn in.
 - **Recolour parts drawn without a colour mask:** the generator can make the mask, splitting the
   drawing into 1 to 4 colour groups and giving each group the colour slot you pick.
 - **Any sheet size:** sheet templates set the frame size and grid per sheet (e.g. 64px walk
@@ -33,7 +33,10 @@ existing extended generator is, minus the bugs:
   opening), only where they overlap, or except where they overlap.
 - **Credits:** lists every pack the character uses (parts and colours), shows readme/credit
   files found in the pack folder, lets you add an author line, and exports a `_credits.txt`.
-- **Editable draw order** per sheet (starts as RPG Maker's order).
+- **Layers** beside the parts: every layer of an image with its picture; drag to change the draw
+  order (starts as RPG Maker's order), tick layers to move those parts together.
+- **Cut finished sheets** into characters, rows, columns or single frames, and assign a piece as
+  a part: a dressed character as a body, to put a cloak over it.
 - **Character sets:** save some parts with their colours and positions ("Knight armour") and put
   them on any character; export/import sets to share them.
 - **Randomize** with per-part locks and rules: how often each part is worn, colour links (hair

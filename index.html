@@ -22,6 +22,11 @@
       <button id="open-alikes" hidden title="Copies and alternates that look the same as another part: compare them and hide the ones you don't need">Look-alikes…</button>
       <button id="open-gallery" disabled title="Your saved and loaded characters and the presets in your folders, with pictures">Gallery…</button>
       <button id="open-files" disabled title="Every file the generator read, and the ones it couldn't: assign, reassign or unassign them">Files…</button>
+      <span class="divider"></span>
+      <button id="open-templates" disabled title="Frame size and grid of each sheet">Sheet templates…</button>
+      <button id="open-setup" disabled title="Export or import a setup file: how your files are read, sheet sizes, sets, your colours, rules and options">Share setup…</button>
+      <button id="open-problems" hidden title="Notes from opening your folders: skipped files, files read by guessing, missing colours">Import report</button>
+      <span class="divider"></span>
       <button id="save-character" disabled>Save character</button>
       <label class="button" id="load-character-label">Load character
         <input id="load-character" type="file" accept=".json,application/json" multiple hidden disabled>
@@ -180,6 +185,9 @@
         </div>
         <p id="pieces-status" class="note small"></p>
       </div>
+      <div class="colour-options" data-tab="colours">
+        <label class="lock" title="Only for packs whose gradients run dark to light. RPG Maker's own run light to dark."><input type="checkbox" id="flip-gradient"> Flip gradient direction (for packs whose gradients run dark → light)</label>
+      </div>
       <div id="slots" class="slots" data-tab="colours"></div>
       </div>
       <aside id="layers" class="layer-panel">
@@ -293,24 +301,6 @@
       </div>
       <p class="muted small">"All" also saves a <code>_credits.txt</code> listing the packs used.</p>
       <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>. Battlers go in <code>img/sv_actors</code> and portraits (face pictures) in <code>img/faces</code>.</p>
-      <details class="settings">
-        <summary>Settings</summary>
-        <label><input type="checkbox" id="flip-gradient"> Flip gradient direction</label>
-        <p class="muted small">Only for packs whose gradients run dark → light. RPG Maker's own run light → dark.</p>
-        <h3>Sheet templates</h3>
-        <p class="muted small">Frame size (and grid) of each sheet. Leave empty for automatic: the body's size and RPG Maker's grid. Sprite parts with other frame sizes are placed frame by frame, centred and standing on the bottom; other parts are centred.</p>
-        <div id="template-grid" class="template-grid"></div>
-        <h3>Share your setup</h3>
-        <p class="muted small">Made your own parts, or set up someone's style? A setup file holds how your files are read (what you assigned, the colour masks made for them, new body types), sheet sizes, sets, your own colours, randomize rules and these options. Others import it, or put it in the parts folder: opening the folder then offers to use it.</p>
-        <div class="dialog-actions">
-          <button type="button" id="export-setup" class="small-button">Export setup…</button>
-          <label class="button small-button">Import setup<input type="file" id="import-setup" accept=".json,application/json" hidden></label>
-        </div>
-      </details>
-      <details id="problems" class="problems" hidden>
-        <summary>Import report</summary>
-        <div id="problem-list"></div>
-      </details>
     </section>
   </main>
 
@@ -596,6 +586,41 @@
         <div class="paint-area"><canvas id="paint-canvas" width="0" height="0"></canvas></div>
         <div class="live-preview column" id="paint-live" title="The character as it looks now"></div>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="templates-dialog" class="assign-form-dialog">
+    <form method="dialog" class="assign-form">
+      <div class="files-head">
+        <h3>Sheet templates</h3>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <p class="muted small">Frame size (and grid) of each sheet. Leave empty for automatic: the body's size and RPG Maker's grid. Sprite parts with other frame sizes are placed frame by frame, centred and standing on the bottom; other parts are centred.</p>
+      <div id="template-grid" class="template-grid"></div>
+    </form>
+  </dialog>
+
+  <dialog id="setup-dialog">
+    <form method="dialog" class="assign-form">
+      <div class="files-head">
+        <h3>Share your setup</h3>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <p class="muted small">Made your own parts, or set up someone's style? A setup file holds how your files are read (what you assigned, the colour masks made for them, new body types), sheet sizes, sets, your own colours, randomize rules and the options. Others import it, or put it in the parts folder: opening the folder then offers to use it.</p>
+      <div class="dialog-actions">
+        <button type="button" id="export-setup" class="small-button">Export setup…</button>
+        <label class="button small-button">Import setup<input type="file" id="import-setup" accept=".json,application/json" hidden></label>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="problems" class="files-dialog">
+    <form method="dialog">
+      <div class="files-head">
+        <h3>Import report</h3>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <div id="problem-list" class="problem-list"></div>
     </form>
   </dialog>
 

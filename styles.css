@@ -175,6 +175,8 @@ select.match-colour { font-size: 12px; padding: 3px 6px; }
 .cut-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .cut-area { max-height: 60vh; overflow: auto; margin: 8px 0; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
 #cut-canvas { display: block; image-rendering: pixelated; cursor: pointer; }
+.colour-options { margin-bottom: 8px; }
+.problem-list { overflow: auto; max-height: 70vh; font-size: 12px; }
 .part-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 8px; max-height: 96px; overflow-y: auto; }
 .part-chips .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
 .part-chips .chip.suggested { border-color: var(--accent); }

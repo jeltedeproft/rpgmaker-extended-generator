@@ -98,7 +98,7 @@ try {
   const before = await evaluate(facePixels);
   await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
   await sleep(300);
-  await click('#variants .variant:nth-child(3)');
+  await click('#variants .variant:not(.selected)');
   await sleep(800);
   check('hair variant adds pixels to face', (await evaluate(facePixels)) > before);
   check('hair colour slot offered', await evaluate(`[...document.querySelectorAll('.slot-head')].some(h => h.textContent.includes('Hair'))`));
@@ -138,6 +138,80 @@ try {
     check('a colour can be matched to another part', offered > 0 && await evaluate(`document.getElementById('adjust-dialog').open && /towards the colours of/.test(document.getElementById('adjust-note').textContent)`), `${offered} parts`);
     check('the adjust window shows the character', await evaluate(`document.querySelectorAll('#adjust-live canvas').length === 3 && getComputedStyle(document.getElementById('adjust-dialog'), '::backdrop').backgroundColor === 'rgba(0, 0, 0, 0)'`));
     await evaluate(`document.querySelector('#adjust-dialog button[value="cancel"]').click()`);
+    await sleep(300);
+  }
+  // Duplicate and delete a colour; Reset colours to default brings a deleted one back.
+  {
+    const hairSlot = `[...document.querySelectorAll('#slots .slot')].find(w => /^Hair$/.test(w.querySelector('.slot-head').textContent.trim()))`;
+    await evaluate(`${hairSlot}.querySelector('.swatch:not(.add)').click()`);
+    await sleep(800);
+    const own = () => evaluate(`${hairSlot}.querySelectorAll('.swatch:not(.add)').length`);
+    const before = await own();
+    await evaluate(`[...${hairSlot}.querySelectorAll('.swatch.add')].find(b => b.textContent === 'Duplicate').click()`);
+    await sleep(800);
+    check('a colour can be duplicated', (await own()) === before + 1 && await evaluate(`${hairSlot}.textContent.includes('Your colours')`), `${before} -> ${await own()}`);
+    await evaluate(`[...${hairSlot}.querySelectorAll('.swatch.add')].find(b => b.textContent === 'Delete').click()`);
+    await sleep(800);
+    check('your colour can be deleted', (await own()) === before && await evaluate(`${hairSlot}.querySelector('.swatch.source').classList.contains('selected')`));
+    await evaluate(`${hairSlot}.querySelector('.swatch:not(.add)').click()`);
+    await sleep(500);
+    await evaluate(`[...${hairSlot}.querySelectorAll('.swatch.add')].find(b => b.textContent === 'Delete').click()`);
+    await sleep(800);
+    check('a colour of the colour sheets can be deleted', (await own()) === before - 1 && await evaluate(`/Reset colours to default/.test(${hairSlot}.textContent)`));
+    await evaluate(`[...${hairSlot}.querySelectorAll('.swatch.add')].find(b => b.textContent.startsWith('Reset colours')).click()`);
+    await sleep(800);
+    check('reset colours to default brings it back', (await own()) === before);
+  }
+  // Flip gradient direction is under Colours; the sheet templates and setup are at the top.
+  check('flip gradient direction is in the Colours tab', await evaluate(`!!document.querySelector('#editor .colour-options #flip-gradient')`));
+  await click('#open-templates');
+  await sleep(300);
+  check('the sheet templates open from the top', await evaluate(`document.getElementById('templates-dialog').open && document.querySelectorAll('#template-grid input').length > 0`));
+  await evaluate(`document.getElementById('templates-dialog').close()`);
+  await click('#open-setup');
+  await sleep(300);
+  check('the setup opens from the top', await evaluate(`document.getElementById('setup-dialog').open`));
+  await evaluate(`document.getElementById('setup-dialog').close()`);
+  // Layers: drag one layer above another.
+  {
+    const names = () => evaluate(`[...document.querySelectorAll('#layer-list .layer-name')].map(b => b.textContent)`);
+    const first = await names();
+    check('the layers have pictures', await evaluate(`document.querySelectorAll('#layer-list .layer-thumb canvas').length > 0`));
+    await evaluate(`(() => {
+      const rows = document.querySelectorAll('#layer-list .layer-row');
+      const from = rows[rows.length - 1], to = rows[0];
+      const dt = new DataTransfer();
+      from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: dt, bubbles: true }));
+      const r = to.getBoundingClientRect();
+      to.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, clientY: r.top + 1, bubbles: true, cancelable: true }));
+      to.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, clientY: r.top + 1, bubbles: true, cancelable: true }));
+    })()`);
+    await sleep(1200);
+    const after = await names();
+    check('a layer dragged to the top is drawn on top', after[0] === first[first.length - 1] && !(await evaluate(`document.getElementById('layer-reset').disabled`)), `${first[first.length - 1]} -> ${after[0]}`);
+    await click('#layer-reset');
+    await sleep(800);
+    check('reset to RPG Maker\'s order', JSON.stringify(await names()) === JSON.stringify(first));
+  }
+  // Cut a sheet into pieces: the body's walk sheet into its four rows.
+  {
+    await click('#open-files');
+    await sleep(500);
+    await evaluate(`document.querySelector('#files-tabs [data-tab="all"]').click()`);
+    await sleep(300);
+    await evaluate(`(() => { const s = document.getElementById('files-search'); s.value = 'TV_Body'; s.dispatchEvent(new Event('input')); })()`);
+    await sleep(500);
+    await evaluate(`[...document.querySelectorAll('#files-list .file-card')].find(c => /^TV_Body_p\\d+\\.png$/.test(c.querySelector('.file-name').textContent)).querySelectorAll('.file-buttons button').forEach(b => b.textContent === 'Cut…' && b.click())`);
+    await sleep(800);
+    const cutOpen = await evaluate(`document.getElementById('cut-dialog').open && document.getElementById('cut-canvas').width > 0`);
+    check('a sheet can be cut', cutOpen && await evaluate(`[...document.querySelectorAll('#cut-presets button')].length > 3`));
+    await evaluate(`[...document.querySelectorAll('#cut-presets button')].find(b => b.textContent.startsWith('Rows')).click()`);
+    await sleep(300);
+    check('the cut shows how many pieces', await evaluate(`document.getElementById('cut-ok').textContent === 'Cut out 4 pieces'`), await evaluate(`document.getElementById('cut-ok').textContent`));
+    await evaluate(`document.getElementById('cut-ok').click()`);
+    await sleep(1500);
+    check('the pieces are files to assign', await evaluate(`(() => { const s = document.getElementById('files-search'); s.value = '(row'; s.dispatchEvent(new Event('input')); return document.querySelectorAll('#files-list .file-card').length; })()`) === 4);
+    await evaluate(`(() => { const s = document.getElementById('files-search'); s.value = ''; s.dispatchEvent(new Event('input')); document.getElementById('files-dialog').close(); })()`);
     await sleep(300);
   }
 
@@ -224,15 +298,14 @@ try {
   }
 
   // Draw order: move the top face layer down one step.
-  await evaluate(`document.getElementById('layers').open = true`);
-  const topBefore = await evaluate(`document.querySelector('#layer-list li span').textContent`);
+  const topBefore = await evaluate(`document.querySelector('#layer-list li .layer-name').textContent`);
   await evaluate(`document.querySelector('#layer-list li .layer-buttons button:last-child').click()`);
   await sleep(800);
-  const topAfter = await evaluate(`document.querySelector('#layer-list li span').textContent`);
+  const topAfter = await evaluate(`document.querySelector('#layer-list li .layer-name').textContent`);
   check('draw order can be changed', topBefore !== topAfter && !(await evaluate(`document.getElementById('layer-reset').disabled`)), `${topBefore} -> ${topAfter}`);
   await click('#layer-reset');
   await sleep(800);
-  check('draw order resets', (await evaluate(`document.querySelector('#layer-list li span').textContent`)) === topBefore);
+  check('draw order resets', (await evaluate(`document.querySelector('#layer-list li .layer-name').textContent`)) === topBefore);
 
   // Randomize a few times.
   for (let i = 0; i < 5; i++) {
@@ -288,7 +361,7 @@ try {
   // Character sets: save the hair as a set, change it, put the set back on.
   await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
   await sleep(300);
-  await click('#variants .variant:nth-child(2)');
+  await click('#variants .variant:not(.selected)');
   await sleep(600);
   const hairValue = () => evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).querySelector('.value').textContent`);
   const savedHair = await hairValue();
@@ -304,7 +377,7 @@ try {
   await sleep(1500);
   check('a set opens bigger', await evaluate(`document.getElementById('set-view').open && document.querySelectorAll('#set-view-pics canvas').length >= 1`));
   await evaluate(`document.getElementById('set-view').close()`);
-  await click('#variants .variant:nth-child(1)');
+  await evaluate(`document.querySelector('#variants .variant.selected')?.click()`);
   await sleep(500);
   await evaluate(`[...document.querySelectorAll('.set-apply')].find(b => b.textContent === 'Smoke hair').click()`);
   await sleep(800);
@@ -503,11 +576,14 @@ try {
     await sleep(1500);
     check('real pack imported', await evaluate(`document.querySelectorAll('#packs div').length >= 3`));
     // Assign an unrecognised file by hand, as a brand-new part.
-    await evaluate(`document.getElementById('problems').open = true`);
+    check('the import report is at the top', await evaluate(`!document.getElementById('open-problems').hidden && /Import report \\(\\d+\\)/.test(document.getElementById('open-problems').textContent)`));
+    await click('#open-problems');
+    await sleep(300);
     const assignable = await evaluate(`document.querySelectorAll('#problem-list .assign').length`);
     check('unrecognised files can be assigned', assignable > 0, `${assignable} buttons`);
     if (assignable) {
       await click('#problem-list .assign');
+      await evaluate(`document.getElementById('problems').close()`);
       await sleep(800);
       await evaluate(`(() => { const p = document.getElementById('assign-part'); p.value = 'AccC'; p.dispatchEvent(new Event('input')); document.getElementById('assign-remember').checked = false; })()`);
       check('assign dialog previews the name', (await evaluate(`document.getElementById('assign-result').textContent`)).includes('_AccC_p'));
@@ -599,14 +675,15 @@ try {
     check('reassigned file moves to its new part', await evaluate(`[...document.querySelectorAll('#part-list button')].some(b => b.textContent.startsWith('AccD'))`));
     check('reassigned file shows its new reading', await evaluate(`document.querySelector('#files-list .file-reading')?.textContent.includes('AccD p835')`));
     await shot('4b-files.png');
-    await evaluate(`document.querySelector('#files-list .file-card button:nth-child(2)').click()`);
+    await evaluate(`[...document.querySelector('#files-list .file-card').querySelectorAll('.file-buttons button')].find(b => b.textContent === 'Unassign').click()`);
     await sleep(900);
-    check('unassigned file (and its mask) go back to the queue', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 2) + ')');
+    // Its colour mask goes back too, but is not listed: assigning the image assigns it.
+    check('unassigned file (and its mask) go back to the queue', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 1) + ')');
     // Remove a file from the queue, see it under Removed, put it back.
     {
       await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').click()`);
       await sleep(400);
-      await evaluate(`[...document.querySelectorAll('#files-list .file-card')][0].querySelector('.file-buttons button:last-child').click()`);
+      await evaluate(`[...document.querySelectorAll('#files-list .file-card')][0].querySelectorAll('.file-buttons button').forEach(b => b.textContent === 'Remove' && b.click())`);
       await sleep(800);
       check('a file can be removed', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 1) + ')'
         && await evaluate(`document.querySelector('#files-tabs [data-tab="removed"]').textContent`) === 'Removed (1)');
@@ -614,7 +691,7 @@ try {
       await sleep(400);
       await evaluate(`document.querySelector('#files-list .file-card .file-buttons button').click()`);
       await sleep(800);
-      check('a removed file can be put back', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 2) + ')');
+      check('a removed file can be put back', await evaluate(`document.querySelector('#files-tabs [data-tab="queue"]').textContent`) === 'To assign (' + (queued + 1) + ')');
       // Removed: search filters it; a removed file can be reassigned or deleted from the list.
       await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
       await evaluate(`document.querySelector('#files-tabs [data-tab="all"]').click()`);
@@ -623,7 +700,7 @@ try {
       for (const n of twoNames) {
         await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ${JSON.stringify(n)}; i.dispatchEvent(new Event('input')); })()`);
         await sleep(500);
-        await evaluate(`[...document.querySelectorAll('#files-list .file-card')].find((c) => c.querySelector('.file-name').textContent === ${JSON.stringify(n)}).querySelector('.file-buttons button:last-child').click()`);
+        await evaluate(`[...document.querySelectorAll('#files-list .file-card')].find((c) => c.querySelector('.file-name').textContent === ${JSON.stringify(n)}).querySelectorAll('.file-buttons button').forEach(b => b.textContent === 'Remove' && b.click())`);
         await sleep(600);
       }
       await evaluate(`(() => { const i = document.getElementById('files-search'); i.value = ''; i.dispatchEvent(new Event('input')); })()`);
@@ -709,12 +786,12 @@ try {
     check('preview shows the edited direction', await evaluate(`document.querySelector('#dir-buttons .active')?.dataset.dir === '1'`));
     await shot('4c-per-direction.png');
     // Take the accessory off again (it's a mask that hides the eyes).
-    await click('#variants .variant:first-child');
+    await evaluate(`document.querySelector('#variants .variant.selected, #other-variants .variant.selected').click()`);
     await sleep(600);
     // Parts that only exist on the face can't be moved on sprites (and say so).
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Eyes')).click()`);
     await sleep(500);
-    await click('#variants .variant:nth-child(2)');
+    await click('#variants .variant:not(.selected)');
     await sleep(900);
     check('face-only part disables sprite offsets', await evaluate(`document.getElementById('off-sprite-x').disabled && !document.getElementById('off-face-x').disabled && document.getElementById('offsets-note').textContent.length > 0`));
     // Split the eyes into a left and a right eye and move one of them.
@@ -749,18 +826,19 @@ try {
       check('pieces join again', (await evaluate(`document.querySelectorAll('#part-list button.piece').length`)) === 0);
       // Move two parts together: the eyes and the face.
       await sleep(600);
-      await evaluate(`(() => { const c = [...document.querySelectorAll('#move-group label')].find(l => l.textContent.trim() === 'Face').querySelector('input'); c.checked = true; c.dispatchEvent(new Event('change')); })()`);
+      await evaluate(`(() => { document.getElementById('layer-sheet').value = 'FG'; document.getElementById('layer-sheet').dispatchEvent(new Event('change')); const c = [...document.querySelectorAll('#layer-list .layer-row')].find(r => r.querySelector('.layer-name').textContent === 'Face').querySelector('input'); c.click(); })()`);
+      check('a ticked layer moves together with the part', await evaluate(`document.getElementById('move-group-note').textContent.includes('Face')`));
       const eyesX = Number(await evaluate(`document.getElementById('off-face-x').value`));
       await evaluate(`(() => { const i = document.getElementById('off-face-x'); i.value = ${eyesX + 2}; i.dispatchEvent(new Event('input')); })()`);
       await sleep(600);
       await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Face')).click()`);
       await sleep(600);
-      check('parts ticked to move together move together', await evaluate(`document.getElementById('off-face-x').value === '2' && [...document.querySelectorAll('#move-group input')].some(i => i.checked)`),
+      check('parts ticked to move together move together', await evaluate(`document.getElementById('off-face-x').value === '2' && document.querySelectorAll('#layer-list input:checked:not(:disabled)').length > 0`),
         await evaluate(`document.getElementById('off-face-x').value`));
       // Back where they were: the face moved back with the eyes.
       await evaluate(`(() => { const i = document.getElementById('off-face-x'); i.value = 0; i.dispatchEvent(new Event('input')); })()`);
       await sleep(300);
-      await evaluate(`[...document.querySelectorAll('#move-group input')].filter(i => i.checked).forEach(i => { i.checked = false; i.dispatchEvent(new Event('change')); })`);
+      await evaluate(`[...document.querySelectorAll('#layer-list input:checked:not(:disabled)')].forEach(i => i.click())`);
     }
   // Split all / Join all, in All colours (the eyes worn here fall apart in two).
   {
@@ -780,10 +858,11 @@ try {
     // The eyes taken off and put on again: split as soon as they are worn.
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Eyes')).click()`);
     await sleep(800);
-    const worn = await evaluate(`document.querySelector('#variants .variant.selected').title`);
-    await evaluate(`[...document.querySelectorAll('#variants .variant')].find(b => b.title === 'None').click()`);
+    const worn = await evaluate(`document.querySelector('#variants .variant.selected').title`).then((t) => t.split('\n').slice(0, 2).join('\n'));
+    // Taken off: the worn part clicked again (there is no "None" tile).
+    await evaluate(`document.querySelector('#variants .variant.selected').click()`);
     await sleep(1500);
-    await evaluate(`[...document.querySelectorAll('#variants .variant')].find(b => b.title === ${JSON.stringify(worn)}).click()`);
+    await evaluate(`[...document.querySelectorAll('#variants .variant')].find(b => b.title.startsWith(${JSON.stringify(worn)})).click()`);
     await sleep(2500);
     const eyesPieces = await evaluate(`(() => { const list = [...document.querySelectorAll('#part-list button')]; const i = list.findIndex(b => b.textContent.startsWith('Eyes')); return list.slice(i + 1).findIndex(b => !b.classList.contains('piece')); })()`);
     check('split every part also splits parts worn later', before > 0 && eyesPieces > 1, `${before} pieces, then ${eyesPieces} for the new eyes`);
@@ -857,9 +936,10 @@ try {
     await sleep(1500);
     check('parts without icons get a preview', await evaluate(`[...document.querySelectorAll('#variants .variant')].filter(b => b.title !== 'None').every(b => b.querySelector('canvas'))`));
     await shot('5-body-thumbnails.png');
-    await evaluate(`[...document.querySelectorAll('#variants .variant')].find(b => b.title === 'None').click()`);
+    check('there is no None tile', await evaluate(`![...document.querySelectorAll('#variants .variant')].some(b => b.title === 'None')`));
+    await evaluate(`document.querySelector('#variants .variant.selected').click()`);
     await sleep(900);
-    check('body can be set to None', await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).querySelector('.value').textContent`) === 'none');
+    check('clicking the worn body again takes it off', await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).querySelector('.value').textContent`) === 'none');
   }
 
   // Optional: a pack with copies ("TV_Body_p01 (2).png", "(3)"), e.g. the official MV generator.
@@ -1130,12 +1210,12 @@ try {
     await sleep(8000);
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FacialMark')).click()`);
     await sleep(400);
-    await click('#variants .variant:nth-child(2)');
+    await click('#variants .variant:not(.selected)');
     await sleep(1200);
     check('facial mark gets a recommended colour', await evaluate(`!!document.querySelector('.slot .swatch.top-pick') && [...document.querySelectorAll('.swatch-group')].some(g => g.textContent.startsWith('Recommended for facial mark'))`));
     check('the recommendation is not applied by itself', await evaluate(`document.querySelector('.slot .swatch.source').classList.contains('selected')`));
     await shot('1b-facialmark.png');
-    await click('#variants .variant:nth-child(1)');
+    await evaluate(`document.querySelector('#variants .variant.selected')?.click()`);
     await sleep(600);
     // A look-alike whose file is removed leaves the list instead of showing an empty picture.
     {
@@ -1172,7 +1252,7 @@ try {
     check('VX Ace walk frames are 32px', await evaluate(`document.getElementById('walk-canvas').width === 32`));
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
     await sleep(500);
-    await click('#variants .variant:nth-child(2)');
+    await click('#variants .variant:not(.selected)');
     await sleep(1500);
     const faceSig = `[...document.getElementById('face-canvas').getContext('2d').getImageData(0,0,128,128).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`;
     const swatches = await evaluate(`document.querySelectorAll('.slot .swatch.painted').length`);
