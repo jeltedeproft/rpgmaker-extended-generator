@@ -538,6 +538,37 @@ export function imageOfMask(library, packName, path) {
   return libraryFiles(library).find((f) => f.pack === packName && f.role === 'image' && f.path.toLowerCase() === want && SPRITE_GRIDS[f.layer.sheet]) || null;
 }
 
+const MASK_NAME_RE = /^(.+?)(?:_c|[_ -]?mask|_?b)\.png$/i;
+
+/**
+ * Assigns the other half of an image and its colour mask, when it still waits in the "to assign"
+ * list: assigning "Hood.png" also assigns "Hood_c.png" (or "Hood mask.png") as its mask, and
+ * assigning the mask also assigns the image. Walk, battler and damage pictures only (portraits
+ * name their colour slot instead).
+ * @param {string} readAs what the file just assigned is read as
+ * @returns {{path:string, readAs:string}|null} the counterpart assigned
+ */
+export function assignCounterpart(library, packName, path, readAs, bodyType) {
+  const parsed = parsePartPath(`${bodyType}/${readAs}`);
+  if (!parsed || parsed.isIcon || !SPRITE_GRIDS[parsed.sheet]) return null;
+  const dir = path.slice(0, path.lastIndexOf('/') + 1);
+  const name = path.slice(dir.length);
+  const queued = library.unrecognized.filter((u) => u.pack === packName && u.path.startsWith(dir) && !u.path.slice(dir.length).includes('/'));
+  let other;
+  let otherAs;
+  if (parsed.isMask) {
+    const stem = MASK_NAME_RE.exec(name)?.[1];
+    other = stem && queued.find((u) => u.path.slice(dir.length).toLowerCase() === `${stem}.png`.toLowerCase());
+    otherAs = readAs.replace(/_c\.png$/i, '.png');
+  } else {
+    const stem = name.replace(/\.png$/i, '').toLowerCase();
+    other = queued.find((u) => MASK_NAME_RE.exec(u.path.slice(dir.length))?.[1].toLowerCase() === stem);
+    otherAs = readAs.replace(/\.png$/i, '_c.png');
+  }
+  if (!other || assignFile(library, packName, other.path, other.src, otherAs, bodyType)) return null;
+  return { path: other.path, readAs: otherAs };
+}
+
 /** The generator name a loaded file is read as: its own name, or what it was read as. */
 function readName(library, file) {
   return library.readAs.get(`${file.pack}|${file.path}`)?.readAs || file.path.split('/').pop();

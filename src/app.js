@@ -2,7 +2,7 @@
 
 import { makeSetup, applySetup, isSetup } from './setup.js';
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS, ALL_BODIES } from './format.js';
-import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
+import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignCounterpart, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
 import { createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -2621,7 +2621,11 @@ $('assign-dialog').addEventListener('close', () => {
         if ($('assign-remember').checked) remember({ pack: entry.pack, path: mask }, { readAs: maskAs, bodyType });
       }
     }
-    toast(`${entry.path.split('/').pop()}: ${bodyType} ${f.part}${mask ? ', with its colour mask' : ''}.`);
+    // Its colour mask (or, for a mask, its image) waiting in the list comes along.
+    const counterpart = !mask && assignCounterpart(state.library, entry.pack, entry.path, readAs, bodyType);
+    if (counterpart && $('assign-remember').checked) remember({ pack: entry.pack, path: counterpart.path }, { readAs: counterpart.readAs, bodyType });
+    const along = mask || counterpart ? (parsed.isMask ? `, with its image ${counterpart.path.split('/').pop()}` : `, with its colour mask${counterpart ? ` ${counterpart.path.split('/').pop()}` : ''}`) : '';
+    toast(`${entry.path.split('/').pop()}: ${bodyType} ${f.part}${along}.`);
     afterFilesChanged();
   }
   if (action === 'remove') removeFileByUser(entry);

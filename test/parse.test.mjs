@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { assignmentBodies, suggestedBody, newBodyName } from '../src/parse.js';
 import { ALL_BODIES } from '../src/format.js';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet, attachWaitingMasks, imageOfMask, restoreToAssign } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet, attachWaitingMasks, imageOfMask, restoreToAssign, assignCounterpart } from '../src/parse.js';
 
 test('assignment folders include empty standards, custom and pending body types in stable order', () => {
   const lib = createLibrary();
@@ -412,6 +412,21 @@ test('a sprite sized for another sheet is read as that sheet (SV_Clothing1_pXX.p
   assert.ok(lib.variants.get('MV/Male/Clothing/p01').layers.every((l) => l.sheet === 'SV'));
   assert.equal(lib.readAs.get('MV|SV/Male/SV_Clothing1_pXX.png').readAs, 'TV_Clothing1_pXX.png');
   assert.equal(lib.unrecognized.length, 0);
+});
+
+test('assigning an image also assigns its waiting colour mask, and the other way round', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', [{ path: 'odd/Hood.png', src: 'a' }, { path: 'odd/Hood_c.png', src: 'b' }, { path: 'odd/Cape mask.png', src: 'c' }, { path: 'odd/Cape.png', src: 'd' }]);
+  assert.equal(lib.unrecognized.length, 4);
+  assert.equal(assignFile(lib, 'P', 'odd/Hood.png', 'a', 'TV_AccC_p01.png', 'Male'), null);
+  assert.deepEqual(assignCounterpart(lib, 'P', 'odd/Hood.png', 'TV_AccC_p01.png', 'Male'), { path: 'odd/Hood_c.png', readAs: 'TV_AccC_p01_c.png' });
+  assert.ok(lib.variants.get('P/Male/AccC/p01').layers[0].mask);
+  // The mask first: its image comes along.
+  assert.equal(assignFile(lib, 'P', 'odd/Cape mask.png', 'c', 'TV_Cloak_p09_c.png', 'Male'), null);
+  assert.deepEqual(assignCounterpart(lib, 'P', 'odd/Cape mask.png', 'TV_Cloak_p09_c.png', 'Male'), { path: 'odd/Cape.png', readAs: 'TV_Cloak_p09.png' });
+  assert.ok(lib.variants.get('P/Male/Cloak/p09').layers[0].base && lib.variants.get('P/Male/Cloak/p09').layers[0].mask);
+  assert.equal(lib.unrecognized.length, 0);
+  assert.equal(assignCounterpart(lib, 'P', 'odd/Cape.png', 'TV_Cloak_p09.png', 'Male'), null);
 });
 
 test('a mask assigned under another variation joins the image it is named after', () => {
