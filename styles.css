@@ -153,6 +153,7 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .paint-area { max-height: 62vh; overflow: auto; padding: 8px; border-radius: 6px;
   background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
 #paint-canvas { image-rendering: pixelated; cursor: crosshair; touch-action: none; display: block; }
+select.match-colour { font-size: 12px; padding: 3px 6px; }
 .part-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 8px; max-height: 96px; overflow-y: auto; }
 .part-chips .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
 .part-chips .chip.suggested { border-color: var(--accent); }
@@ -369,6 +370,14 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .files-head { display: flex; justify-content: space-between; align-items: center; }
 .files-head h3 { margin: 0; }
 .files-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+/* Part editor tabs: only the chosen tab's boxes show ("All": every box). */
+.editor-tabs { margin: -2px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+#editor[data-tab="parts"] [data-tab]:not([data-tab="parts"]),
+#editor[data-tab="colours"] [data-tab]:not([data-tab="colours"]),
+#editor[data-tab="position"] [data-tab]:not([data-tab="position"]),
+#editor[data-tab="images"] [data-tab]:not([data-tab="images"]),
+#editor[data-tab="visibility"] [data-tab]:not([data-tab="visibility"]) { display: none; }
+#editor:not([data-tab="all"]) .offsets > h3:first-of-type { margin-top: 4px; }
 .files-tabs button { padding: 4px 10px; font-size: 13px; }
 .folder-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; grid-column: 1 / -1; min-width: 0; overflow-wrap: anywhere; }
 .folder-row b, .folder-row .muted { display: block; }

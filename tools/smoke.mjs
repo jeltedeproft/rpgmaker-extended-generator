@@ -78,6 +78,22 @@ try {
   check('face renders', (await evaluate(facePixels)) > 1000);
   await shot('1-loaded.png');
 
+  // The part editor is in tabs; the checks below use "All" (every box on one page).
+  await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
+  await sleep(500);
+  const shownIn = (id) => `getComputedStyle(document.getElementById('${id}')).display !== 'none'`;
+  check('the part editor opens on the Parts tab', await evaluate(`document.getElementById('editor').dataset.tab === 'parts' && ${shownIn('variants')} && !(${shownIn('slots')}) && !document.getElementById('editor-tabs').hidden`));
+  await click('#editor-tabs [data-editor-tab="colours"]');
+  await sleep(300);
+  check('the Colours tab shows only the colours', await evaluate(`${shownIn('slots')} && !(${shownIn('variants')})`));
+  await click('#editor-tabs [data-editor-tab="all"]');
+  await sleep(300);
+  check('the All tab shows everything', await evaluate(`${shownIn('slots')} && ${shownIn('variants')}`));
+  // A background for small, dark parts.
+  await evaluate(`(() => { const s = document.getElementById('pic-bg'); s.value = 'white'; s.dispatchEvent(new Event('change')); })()`);
+  check('a light background can be picked for the pictures', await evaluate(`document.documentElement.dataset.picBg === 'white' && getComputedStyle(document.documentElement).getPropertyValue('--checker-a').trim() === '#ffffff'`));
+  await evaluate(`(() => { const s = document.getElementById('pic-bg'); s.value = ''; s.dispatchEvent(new Event('change')); })()`);
+
   // Pick a hair, check the face changes.
   const before = await evaluate(facePixels);
   await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
@@ -87,6 +103,43 @@ try {
   check('hair variant adds pixels to face', (await evaluate(facePixels)) > before);
   check('hair colour slot offered', await evaluate(`[...document.querySelectorAll('.slot-head')].some(h => h.textContent.includes('Hair'))`));
   await shot('2-hair.png');
+
+  // Paint the colour mask by hand: a stroke in another slot changes the picture and is kept.
+  {
+    const sheetSum = `(() => { const c = document.getElementById('paint-canvas'); return [...c.getContext('2d').getImageData(0, 0, c.width, c.height).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0); })()`;
+    await click('#slots .paint-mask');
+    await sleep(800);
+    const before = await evaluate(sheetSum);
+    check('the mask painter opens', await evaluate(`document.getElementById('paint-dialog').open && document.getElementById('paint-canvas').width > 0`));
+    await evaluate(`(() => {
+      [...document.querySelectorAll('.paint-slot')].find(b => b.textContent.includes('Facial mark')).click();
+      document.querySelector('input[name="paint-tool"][value="colour"]').click();
+      const c = document.getElementById('paint-canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let at = -1; for (let i = 3; i < d.length; i += 4) if (d[i] > 200) { at = (i - 3) / 4; break; }
+      const r = c.getBoundingClientRect(); const x = (at % c.width + 0.5) / c.width, y = (Math.floor(at / c.width) + 0.5) / c.height;
+      const ev = (t) => c.dispatchEvent(new PointerEvent(t, { clientX: r.left + x * r.width, clientY: r.top + y * r.height, bubbles: true, pointerId: 1 }));
+      ev('pointerdown'); ev('pointerup');
+    })()`);
+    await sleep(1500);
+    check('painting a slot is kept', await evaluate(`Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).maskEdits || {}).length === 1`));
+    check('the painter shows the character too', await evaluate(`document.querySelectorAll('#paint-live canvas').length === 3`));
+    check('the painted bit shows in the slot colour', (await evaluate(sheetSum)) !== before);
+    await click('#paint-clear');
+    await sleep(1200);
+    check('clearing the painting forgets it', await evaluate(`!Object.keys(JSON.parse(localStorage.getItem('xgen-settings')).maskEdits || {}).length`));
+    check('and the picture is back as it was', (await evaluate(sheetSum)) === before);
+    await evaluate(`document.querySelector('#paint-dialog button[value="close"]').click()`);
+    await sleep(300);
+  }
+  // Harmonise: match the hair to another part, the adjust window opens moved towards it.
+  {
+    const offered = await evaluate(`(() => { const s = [...document.querySelectorAll('#slots .match-colour')][0]; if (!s || s.options.length < 2) return 0; s.value = s.options[1].value; s.dispatchEvent(new Event('change')); return s.options.length - 1; })()`);
+    await sleep(1500);
+    check('a colour can be matched to another part', offered > 0 && await evaluate(`document.getElementById('adjust-dialog').open && /towards the colours of/.test(document.getElementById('adjust-note').textContent)`), `${offered} parts`);
+    check('the adjust window shows the character', await evaluate(`document.querySelectorAll('#adjust-live canvas').length === 3 && getComputedStyle(document.getElementById('adjust-dialog'), '::backdrop').backgroundColor === 'rgba(0, 0, 0, 0)'`));
+    await evaluate(`document.querySelector('#adjust-dialog button[value="cancel"]').click()`);
+    await sleep(300);
+  }
 
   // Change hair colour: pick the 3rd swatch of the first slot.
   const hairPixel = `(() => { const d = document.getElementById('face-canvas').getContext('2d').getImageData(72, 30, 1, 1).data; return [...d].join(','); })()`;
@@ -458,6 +511,12 @@ try {
       await sleep(800);
       await evaluate(`(() => { const p = document.getElementById('assign-part'); p.value = 'AccC'; p.dispatchEvent(new Event('input')); document.getElementById('assign-remember').checked = false; })()`);
       check('assign dialog previews the name', (await evaluate(`document.getElementById('assign-result').textContent`)).includes('_AccC_p'));
+      check('a new part name is said to be new', await evaluate(`document.getElementById('assign-part-chips').textContent.includes('will be a new part')`));
+      await evaluate(`(() => { const p = document.getElementById('assign-part'); p.value = ''; p.dispatchEvent(new Event('input')); })()`);
+      check('every part can be clicked under the Part field', await evaluate(`document.querySelectorAll('#assign-part-chips .chip').length >= 6`));
+      await evaluate(`[...document.querySelectorAll('#assign-part-chips .chip')].find(b => b.textContent === 'Cloak').click()`);
+      check('clicking a part fills it in', await evaluate(`document.getElementById('assign-part').value === 'Cloak' && document.querySelector('#assign-part-chips .chip.active')?.textContent === 'Cloak'`));
+      await evaluate(`(() => { const p = document.getElementById('assign-part'); p.value = 'AccC'; p.dispatchEvent(new Event('input')); })()`);
       check('assign from the import report is the quick form', await evaluate(`document.getElementById('assign-dialog').classList.contains('one-by-one')`));
       await evaluate(`document.querySelector('#assign-dialog button[value="ok"]').click()`);
       await sleep(900);

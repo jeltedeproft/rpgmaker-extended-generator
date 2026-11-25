@@ -414,6 +414,41 @@ function renderSidebar() {
   );
 }
 
+/** The part editor's tabs: [id, label, what's in it]. "All" shows everything on one long page. */
+const EDITOR_TABS = [
+  ['parts', 'Parts', 'Pick the part'],
+  ['colours', 'Colours', 'Colours, colour masks and matching colours'],
+  ['position', 'Position', 'Move, turn, resize, mirror; move parts together'],
+  ['images', 'Per image', 'Which picture the part uses on the portrait, walk, damage and battler'],
+  ['visibility', 'Visibility', 'Show only inside another part, hide what sticks out, split into pieces'],
+  ['all', 'All', 'Everything on one page'],
+];
+
+/** Shows the chosen tab of the part editor; tabs with nothing in them for this part are left out. */
+function renderEditorTabs() {
+  const editor = $('editor');
+  const has = (tab) => tab === 'all' || tab === 'colours'
+    || (tab === 'parts' ? $('variants').children.length > 0 : [...editor.querySelectorAll(`[data-tab="${tab}"]`)].some((s) => !s.hidden));
+  const available = EDITOR_TABS.filter(([id]) => has(id));
+  const wanted = state.settings.editorTab || 'parts';
+  // A tab this part doesn't have (a piece has no part list): the first that fits.
+  const active = available.some(([id]) => id === wanted) ? wanted : ['parts', 'position', 'colours'].find(has);
+  editor.dataset.tab = active;
+  // All colours has only colours: no tabs.
+  $('editor-tabs').hidden = available.length <= 2;
+  $('editor-tabs').replaceChildren(...available.map(([id, label, title]) => {
+    const b = el('button', { type: 'button', role: 'tab', className: id === active ? 'active' : '', textContent: label, title });
+    b.dataset.editorTab = id;
+    b.setAttribute('aria-selected', String(id === active));
+    b.addEventListener('click', () => {
+      state.settings.editorTab = id;
+      saveSettings();
+      renderEditorTabs();
+    });
+    return b;
+  }));
+}
+
 async function renderEditor() {
   const key = state.selectedPart;
   const isColours = key === ALL_COLOURS;
@@ -493,6 +528,7 @@ async function renderEditor() {
     }
     renderOffsets();
   }
+  renderEditorTabs();
 
   // Colour slots depend on decoded masks, so decode the selected variants first.
   const token = ++state.editorToken;

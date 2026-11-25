@@ -85,19 +85,20 @@
         </div>
       </div>
       <p id="piece-note" class="muted small" hidden>A piece of a split part. Move, turn or recolour it here; pick the part itself on the left to change it.</p>
-      <div id="variant-tabs" class="files-tabs variant-tabs" hidden></div>
-      <div id="variants" class="variants"></div>
-      <details id="other-bodies" class="other-bodies" hidden>
+      <div id="editor-tabs" class="files-tabs editor-tabs" role="tablist" hidden></div>
+      <div id="variant-tabs" class="files-tabs variant-tabs" data-tab="parts" hidden></div>
+      <div id="variants" class="variants" data-tab="parts"></div>
+      <details id="other-bodies" class="other-bodies" data-tab="parts" hidden>
         <summary id="other-bodies-label">Parts from other body types</summary>
         <div id="other-variants" class="variants"></div>
       </details>
-      <div id="sheet-parts-box" class="offsets" hidden>
+      <div id="sheet-parts-box" class="offsets" data-tab="images" hidden>
         <h3>Per image</h3>
         <p class="muted small">Which picture this part uses on each image. Mix them (the portrait of one body with the walk sprite of another), fill an image this part has no picture for, so nothing floats, or hide it on an image.</p>
         <label class="lock"><input type="checkbox" id="hide-item"> Hide this part everywhere (it stays chosen; untick to show it again)</label>
         <div id="sheet-parts" class="sheet-parts"></div>
       </div>
-      <div id="offsets" class="offsets" hidden>
+      <div id="offsets" class="offsets" data-tab="position" hidden>
         <div id="piece-preview" class="piece-preview" hidden></div>
         <h3>Position</h3>
         <div class="offset-grid">
@@ -153,7 +154,7 @@
         <p id="offsets-note" class="note small"></p>
         <p class="muted small">Moves this part in pixels, turns it (degrees, clockwise), resizes, mirrors or flips it. On sprites every walk, damage and battler frame is changed on its own, around its own centre; mirroring a walk sprite also swaps its left- and right-facing rows.</p>
       </div>
-      <div id="clip-box" class="offsets" hidden>
+      <div id="clip-box" class="offsets" data-tab="visibility" hidden>
         <h3>Visibility</h3>
         <div class="layer-head">
           <span class="small">Show this part</span>
@@ -168,7 +169,7 @@
         <p class="muted small">Example: hair under a hood. Set the hair to "only inside the outline of" the cloak, and only the bit in the hood's opening shows.</p>
         <div id="cover-box" class="move-group" title="For a hood, hat, helmet or mask: the ticked parts only show inside its outline. The fringe in a hood's opening stays; hair sticking out at the back or sides is hidden"></div>
       </div>
-      <div id="pieces" class="offsets" hidden>
+      <div id="pieces" class="offsets" data-tab="visibility" hidden>
         <h3>Pieces</h3>
         <div class="layer-head">
           <button id="split-item" class="small-button" title="Cut this part where transparent gaps separate it, e.g. into a left and a right eye">Split into pieces</button>
@@ -177,7 +178,7 @@
         </div>
         <p id="pieces-status" class="note small"></p>
       </div>
-      <div id="slots" class="slots"></div>
+      <div id="slots" class="slots" data-tab="colours"></div>
     </section>
 
     <section id="preview" class="panel" hidden>
