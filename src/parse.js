@@ -569,6 +569,20 @@ export function assignCounterpart(library, packName, path, readAs, bodyType) {
   return { path: other.path, readAs: otherAs };
 }
 
+/**
+ * A file waiting to be assigned that is the colour mask of another waiting file: "Hood_c.png",
+ * "Hood mask.png" or "Hoodb.png" next to "Hood.png" in the same folder. Assigning the image
+ * assigns it too (see assignCounterpart). A file with "mask" in its name and no image of that name
+ * next to it is not one (it may be a mask the character wears).
+ */
+export function isPairedMask(library, entry) {
+  const dir = entry.path.slice(0, entry.path.lastIndexOf('/') + 1);
+  const stem = MASK_NAME_RE.exec(entry.path.slice(dir.length))?.[1];
+  if (!stem) return false;
+  const want = `${dir}${stem}.png`.toLowerCase();
+  return library.unrecognized.some((u) => u !== entry && u.pack === entry.pack && u.path.toLowerCase() === want);
+}
+
 /** The generator name a loaded file is read as: its own name, or what it was read as. */
 function readName(library, file) {
   return library.readAs.get(`${file.pack}|${file.path}`)?.readAs || file.path.split('/').pop();

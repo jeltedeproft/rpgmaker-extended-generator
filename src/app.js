@@ -2,7 +2,7 @@
 
 import { makeSetup, applySetup, isSetup } from './setup.js';
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS, ALL_BODIES } from './format.js';
-import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignCounterpart, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
+import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignCounterpart, isPairedMask, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
 import { colourMean, matchAdjust, createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
@@ -2005,7 +2005,7 @@ let assignQueue = null;
  * Cancel), then the next file to assign, and so on.
  */
 function assignOneByOne(entry) {
-  const list = state.library.unrecognized;
+  const list = toAssign();
   if (!entry) return;
   const at = list.indexOf(entry);
   openAssignDialog(entry, at < 0 ? list.filter((u) => u !== entry) : [...list.slice(at + 1), ...list.slice(0, at)]);
@@ -2890,9 +2890,18 @@ $('assign-dialog').addEventListener('close', () => {
 let filesTab = 'queue';
 let filesShown = 60;
 
+/**
+ * The files to assign, without the colour masks that go with an image in the list (assigning the
+ * image assigns its mask), unless "Show their colour masks" is ticked.
+ */
+function toAssign() {
+  const lib = state.library;
+  return $('files-show-masks').checked ? lib.unrecognized : lib.unrecognized.filter((u) => !isPairedMask(lib, u));
+}
+
 function filesFor(tab) {
   const lib = state.library;
-  if (tab === 'queue') return lib.unrecognized;
+  if (tab === 'queue') return toAssign();
   if (tab === 'removed') {
     const parts = [...lib.variants.values()].filter((v) => v.removed).map((v) => {
       const l = v.layers.find((x) => x.base) || {};
@@ -2988,6 +2997,9 @@ function renderFiles() {
     return;
   }
   const files = filesFor(filesTab).filter(matches);
+  const paired = filesTab === 'queue' ? state.library.unrecognized.filter((u) => isPairedMask(state.library, u)).length : 0;
+  $('files-masks').hidden = !paired;
+  $('files-masks-label').textContent = ` Show the colour masks that go with an image (${paired}): assigning the image assigns its mask`;
   $('files-start').hidden = filesTab !== 'queue' || !files.length;
   $('files-note').textContent = filesTab === 'queue' && !files.length ? 'Nothing left to assign.' : TAB_NOTES[filesTab];
   const observer = new IntersectionObserver((seen) => {
@@ -3227,9 +3239,10 @@ $('files-more').addEventListener('click', () => {
   renderFiles();
 });
 $('files-start').addEventListener('click', () => {
-  const queue = [...state.library.unrecognized];
+  const queue = toAssign();
   if (queue.length) openAssignDialog(queue[0], queue.slice(1));
 });
+$('files-show-masks').addEventListener('change', () => renderFiles());
 
 // ---------- look-alikes ----------
 

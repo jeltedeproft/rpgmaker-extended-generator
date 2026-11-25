@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { assignmentBodies, suggestedBody, newBodyName } from '../src/parse.js';
 import { ALL_BODIES } from '../src/format.js';
-import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet, attachWaitingMasks, imageOfMask, restoreToAssign, assignCounterpart } from '../src/parse.js';
+import { parsePartPath, parseGradientPath, createLibrary, addPack, lenientName, assignFile, buildPartName, unassignFile, libraryFiles, removePack, removeFile, restoreFile, variantsForPart, maskPairs, fitMasks, fixWrongSheets, fitsSheet, attachWaitingMasks, imageOfMask, restoreToAssign, assignCounterpart, isPairedMask } from '../src/parse.js';
 
 test('assignment folders include empty standards, custom and pending body types in stable order', () => {
   const lib = createLibrary();
@@ -427,6 +427,14 @@ test('assigning an image also assigns its waiting colour mask, and the other way
   assert.ok(lib.variants.get('P/Male/Cloak/p09').layers[0].base && lib.variants.get('P/Male/Cloak/p09').layers[0].mask);
   assert.equal(lib.unrecognized.length, 0);
   assert.equal(assignCounterpart(lib, 'P', 'odd/Cape.png', 'TV_Cloak_p09.png', 'Male'), null);
+});
+
+test('colour masks waiting next to their image are known, other masks are not', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', ['odd/Hood.png', 'odd/Hood_c.png', 'odd/Cape mask.png', 'odd/Mask.png', 'odd/Gas mask.png', 'other/Hoodb.png'].map((path) => ({ path, src: path })));
+  const paired = lib.unrecognized.filter((u) => isPairedMask(lib, u)).map((u) => u.path);
+  // Cape mask has no Cape.png; Gas mask has no Gas.png; Hoodb is in another folder than Hood.png.
+  assert.deepEqual(paired, ['odd/Hood_c.png']);
 });
 
 test('a mask assigned under another variation joins the image it is named after', () => {
