@@ -595,17 +595,27 @@ function iconThumbnail(key, variant, character = state.character) {
       const icon = await ensureImage(variant.icon);
       if (!icon) return null;
       variant.iconMask ||= (async () => {
-        const layers = variant.layers.filter((l) => l.base && l.mask && !l.base.cells);
+        // MZ portrait layers name their slot (_m001: skin) instead of having a mask: all of the
+        // picture is in that slot.
+        const layers = variant.layers.filter((l) => l.base && (l.mask || SLOT_BY_ID.has(l.slotId)) && !l.base.cells);
         if (!layers.length) return null;
         await ensureLayers(layers);
-        const mask = iconMask(icon, layers.map((l) => ({ image: l.base.pixels, mask: l.mask.pixels })));
+        const slotMask = (image, rgb) => {
+          const out = createImage(image.width, image.height);
+          for (let i = 0; i < image.data.length; i += 4) if (image.data[i + 3] > 16) out.data.set([rgb >> 16, (rgb >> 8) & 255, rgb & 255, 255], i);
+          return out;
+        };
+        const mask = iconMask(icon, layers.filter((l) => l.base.pixels).map((l) => ({
+          image: l.base.pixels, mask: l.mask?.pixels || slotMask(l.base.pixels, SLOT_BY_ID.get(l.slotId).rgb),
+        })));
         // The grey figure every icon is drawn on is not part of the part: it keeps its colours
         // (a grey head took the clothing's colours, in stripes).
         const figure = mask && await silhouetteFor(variant);
         if (!mask || !figure) return mask;
         if (!isCloseUp(icon, figure)) return iconPart(icon, figure, mask) || mask;
-        // A close-up: the face behind the part keeps its colours.
-        return closeUpMask(icon, mask, await backdropFor(variant));
+        // A close-up: the face behind the part keeps its colours. A face icon is that face: all of
+        // it is the part, so it follows the skin colour.
+        return closeUpMask(icon, mask, variant.part === 'Face' ? null : await backdropFor(variant));
       })();
       const mask = await variant.iconMask;
       if (!mask) return icon;
