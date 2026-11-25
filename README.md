@@ -38,7 +38,8 @@ existing extended generator is, minus the bugs:
 - **Cut finished sheets** into characters, rows, columns or single frames, and assign a piece as
   a part: a dressed character as a body, to put a cloak over it.
 - **Character sets:** save some parts with their colours and positions ("Knight armour") and put
-  them on any character; export/import sets to share them.
+  them on any character; export/import sets to share them. Save, Load and Gallery are menus in
+  the top bar; the sets are under Gallery → Sets.
 - **Randomize** with per-part locks and rules: how often each part is worn, colour links (hair
   and eyebrows match), parts that never go together, other body types, random saved sets.
 

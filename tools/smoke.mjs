@@ -168,10 +168,19 @@ try {
   await sleep(300);
   check('the sheet templates open from the top', await evaluate(`document.getElementById('templates-dialog').open && document.querySelectorAll('#template-grid input').length > 0`));
   await evaluate(`document.getElementById('templates-dialog').close()`);
-  await click('#open-setup');
+  // Save, Load and Gallery are menus.
+  await click('#save-menu-button');
+  await sleep(200);
+  check('the Save menu opens with character, setup and set', await evaluate(`(() => { const l = document.querySelector('#save-menu .menu-list'); return !l.hidden && ['save-character', 'export-setup', 'save-set'].every(id => l.contains(document.getElementById(id))); })()`));
+  await click('#export-setup');
   await sleep(300);
-  check('the setup opens from the top', await evaluate(`document.getElementById('setup-dialog').open`));
+  check('Save setup opens from the Save menu, and the menu closes', await evaluate(`document.getElementById('setup-dialog').open && document.querySelector('#save-menu .menu-list').hidden`));
   await evaluate(`document.getElementById('setup-dialog').close()`);
+  check('the Load menu holds character, set, setup and sample kit', await evaluate(`['load-character', 'import-sets', 'import-setup', 'sample-kit'].every(id => document.querySelector('#load-menu .menu-list').contains(document.getElementById(id)))`));
+  await click('#open-sets');
+  await sleep(300);
+  check('the sets are in the Gallery, with Export', await evaluate(`document.getElementById('gallery-dialog').open && !document.getElementById('gallery-sets').hidden && !!document.querySelector('#gallery-sets #export-sets')`));
+  await evaluate(`document.getElementById('gallery-dialog').close()`);
   // Layers: drag one layer above another.
   {
     const names = () => evaluate(`[...document.querySelectorAll('#layer-list .layer-name')].map(b => b.textContent)`);

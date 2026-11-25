@@ -351,6 +351,10 @@ function unsupportedHint(gradientFiles) {
     + 'Generator folders from XP and older are not supported.';
 }
 
+/** Buttons that need a folder open (the Load menu works before: sample kit, sets). */
+const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'save-character', 'export-setup', 'save-set',
+  'load-character', 'import-setup', 'open-files', 'gallery-menu-button', 'open-gallery', 'open-sets', 'open-templates'];
+
 /** Back to the start screen: nothing is loaded. */
 function showWelcome() {
   state.character = null;
@@ -358,7 +362,7 @@ function showWelcome() {
   $('app').classList.add('empty');
   $('welcome').hidden = false;
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = true;
-  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files', 'open-gallery', 'open-templates', 'open-setup']) $(id).disabled = true;
+  for (const id of APP_BUTTONS) $(id).disabled = true;
   $('open-files').textContent = 'Files…';
   $('open-problems').hidden = true;
   $('packs').replaceChildren();
@@ -368,10 +372,37 @@ function showApp() {
   $('app').classList.remove('empty');
   $('welcome').hidden = true;
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = false;
-  for (const id of ['randomize', 'clear-all', 'random-rules', 'save-character', 'load-character', 'open-files', 'open-gallery', 'open-templates', 'open-setup']) $(id).disabled = false;
+  for (const id of APP_BUTTONS) $(id).disabled = false;
 }
 $('open-templates').addEventListener('click', () => $('templates-dialog').showModal());
-$('open-setup').addEventListener('click', () => $('setup-dialog').showModal());
+
+// Menus in the top bar (Load, Save, Gallery): a click opens the list, a pick or a click elsewhere closes it.
+function closeMenus(except = null) {
+  for (const menu of document.querySelectorAll('.menu')) {
+    if (menu === except) continue;
+    menu.querySelector('.menu-list').hidden = true;
+    menu.querySelector('.menu-button').setAttribute('aria-expanded', 'false');
+  }
+}
+for (const menu of document.querySelectorAll('.menu')) {
+  const button = menu.querySelector('.menu-button');
+  const list = menu.querySelector('.menu-list');
+  button.addEventListener('click', () => {
+    closeMenus(menu);
+    list.hidden = !list.hidden;
+    button.setAttribute('aria-expanded', String(!list.hidden));
+  });
+  // Picking an item closes the menu (file pickers too: their input still gets the file).
+  list.addEventListener('click', (e) => {
+    if (e.target.closest('.menu-item')) setTimeout(() => closeMenus(), 0);
+  });
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest?.('.menu')) closeMenus();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeMenus();
+});
 $('open-problems').addEventListener('click', () => $('problems').showModal());
 
 // ---------- rendering ----------
@@ -1893,17 +1924,6 @@ function renderProblems() {
 
 // ---------- character sets ----------
 
-/** Saved sets live in the browser (settings) and can be exported/imported as a file. */
-function renderPresets() {
-  const presets = [...state.library.packs.values()].flatMap((p) => p.presets || []);
-  $('preset-box').hidden = !presets.length;
-  $('preset-list').replaceChildren(...presets.map((preset) => {
-    const load = el('button', { className: 'set-apply', textContent: preset.name, title: 'Load this preset as the character' });
-    load.addEventListener('click', () => loadCharacterText(preset.text, preset.fileName));
-    return el('div', { className: 'set' }, [load]);
-  }));
-}
-
 /** Icons drawn back to front: the figure's own parts first, then clothes, hair and accessories. */
 const ICON_ORDER = ['Body', 'Face', 'Ears', 'Eyes', 'Eyebrows', 'Nose', 'Mouth', 'FacialMark', 'Beard', 'Clothing', 'Cloak',
   'RearHair', 'FrontHair', 'BeastEars', 'Tail', 'Wing', 'AccA', 'AccB', 'Glasses'];
@@ -2015,7 +2035,6 @@ $('set-view-use').addEventListener('click', () => {
 });
 
 function renderSets() {
-  renderPresets();
   const sets = state.settings.sets || [];
   $('set-list').replaceChildren(...(sets.length ? sets.map((set, i) => {
     const apply = el('button', { className: 'set-apply', textContent: set.name, title: `Put on: ${Object.keys(set.parts).join(', ')}` });
@@ -2035,7 +2054,7 @@ function renderSets() {
       renderSets();
     });
     return el('div', { className: 'set' }, [setPicture(set), apply, remove]);
-  }) : [el('div', { className: 'muted small', textContent: 'None yet. A set is a group of parts with their colours, to put on any character.' })]));
+  }) : [el('div', { className: 'muted small', textContent: 'None yet. Save → Save set keeps some of the current parts, with their colours, to put on any character.' })]));
   $('export-sets').disabled = !sets.length;
 }
 
@@ -4128,11 +4147,18 @@ function renderGallery() {
   $('gallery-list').replaceChildren(...sections);
 }
 
-function openGallery() {
-  renderGallery();
+/** tab: "characters" or "sets". */
+function openGallery(tab = 'characters') {
+  for (const b of $('gallery-tabs').querySelectorAll('button')) b.classList.toggle('active', b.dataset.galleryTab === tab);
+  $('gallery-characters').hidden = tab !== 'characters';
+  $('gallery-sets').hidden = tab !== 'sets';
+  if (tab === 'characters') renderGallery();
+  else renderSets();
   if (!$('gallery-dialog').open) $('gallery-dialog').showModal();
 }
-$('open-gallery').addEventListener('click', openGallery);
+$('open-gallery').addEventListener('click', () => openGallery('characters'));
+$('open-sets').addEventListener('click', () => openGallery('sets'));
+for (const b of $('gallery-tabs').querySelectorAll('button')) b.addEventListener('click', () => openGallery(b.dataset.galleryTab));
 $('gallery-search').addEventListener('input', renderGallery);
 $('gallery-save').addEventListener('click', () => {
   if (addToGallery(serializeCharacter(state.character, state.customGradients), state.character.name, 'saved')) {
