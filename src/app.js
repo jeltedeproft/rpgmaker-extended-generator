@@ -656,9 +656,9 @@ function iconThumbnail(key, variant, character = state.character) {
         const figure = mask && await silhouetteFor(variant);
         if (!mask || !figure) return mask;
         if (!isCloseUp(icon, figure)) return iconPart(icon, figure, mask) || mask;
-        // A close-up: the face behind the part keeps its colours. A face icon is that face: all of
-        // it is the part, so it follows the skin colour.
-        return closeUpMask(icon, mask, variant.part === 'Face' ? null : await backdropFor(variant));
+        // A close-up: the face behind the part takes the skin colour, like the face on the
+        // portrait. A face icon is that face: all of it is the part, so it follows the skin colour.
+        return closeUpMask(icon, mask, variant.part === 'Face' ? null : await backdropFor(variant), SLOT_BY_ID.get('skin').rgb);
       })();
       const mask = await variant.iconMask;
       if (!mask) return icon;

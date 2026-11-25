@@ -260,15 +260,18 @@ export function isCloseUp(icon, silhouette) {
  * lines, white shines) stay as drawn. The face took the part's colours in blocks: brown squares
  * behind mouths, a yellow face behind eyes.
  * @param {object|null} backdrop most icons of the part, pixel by pixel; null when there are too few
+ * @param {number|null} backdropRgb the slot the face behind takes (skin), so a blue-skinned
+ *   character's mouth icons show a blue face, not a beige one; null: it stays as drawn
  */
-export function closeUpMask(icon, mask, backdrop) {
+export function closeUpMask(icon, mask, backdrop, backdropRgb = null) {
   const out = { width: mask.width, height: mask.height, data: new Uint8ClampedArray(mask.data) };
   const a = icon.data;
   const f = backdrop && backdrop.width === icon.width && backdrop.height === icon.height ? backdrop.data : null;
   for (let i = 0; i < a.length; i += 4) {
     const grey = Math.max(a[i], a[i + 1], a[i + 2]) - Math.min(a[i], a[i + 1], a[i + 2]) <= 6;
     const behind = f && f[i + 3] >= 16 && near(a, i, f, i);
-    if (grey || behind) out.data[i + 3] = 0;
+    if (behind && !grey && backdropRgb !== null) out.data.set([(backdropRgb >> 16) & 255, (backdropRgb >> 8) & 255, backdropRgb & 255, 255], i);
+    else if (grey || behind) out.data[i + 3] = 0;
   }
   return out;
 }

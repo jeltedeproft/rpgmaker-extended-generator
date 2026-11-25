@@ -133,3 +133,14 @@ test('a close-up icon keeps the face it is drawn on as drawn', () => {
   // Without a backdrop (two icons): only the greys stay as drawn.
   assert.deepEqual([0, 1, 2, 3].map((x) => closeUpMask(icon, mask, null).data[x * 4 + 3]), [0, 255, 255, 255]);
 });
+
+test('the face behind a close-up icon can take the skin colour', () => {
+  const wide = (pixels) => ({ width: 3, height: 1, data: new Uint8ClampedArray(pixels.flat()) });
+  const glow = [200, 170, 150, 255];
+  const lips = [200, 40, 60, 255];
+  const icon = wide([[90, 90, 90, 255], glow, lips]);
+  const mask = wide([[0, 0, 0, 0], [0, 0, 0, 0], [255, 0, 0, 255]]);
+  const out = closeUpMask(icon, mask, wide([[90, 90, 90, 255], glow, glow]), 0xf9c19d);
+  // The grey stays as drawn, the face behind is skin, the mouth keeps its own slot.
+  assert.deepEqual([...out.data], [0, 0, 0, 0, 0xf9, 0xc1, 0x9d, 255, 255, 0, 0, 255]);
+});
