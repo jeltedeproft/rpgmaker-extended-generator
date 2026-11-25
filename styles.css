@@ -106,12 +106,27 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .part-list button > span:first-child { flex-shrink: 0; max-width: 75%; }
 .part-list button .value { flex-shrink: 1; }
 .part-list button.active { background: var(--hover); font-weight: 600; }
+/* Parts not worn are dimmed; worn ones keep a mark in the accent colour. */
+.part-list button:not(.worn) > span:first-child { color: var(--muted); }
+.part-list button.worn:not(.piece) > span:first-child { border-left: 3px solid var(--accent); padding-left: 6px; margin-left: -9px; }
+.part-list button.worn .value { color: var(--text); opacity: .8; }
 .part-list .value { color: var(--muted); font-weight: 400; font-size: 12px; }
 .packs { margin-top: 16px; font-size: 12px; color: var(--muted); }
 
 .editor-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 10px; flex-wrap: wrap; }
 .lock { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
-.variants { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 8px; }
+/* Part editor: the tabs on the left, the layers (draw order) beside them. Five parts to a row. */
+.editor-body { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 14px; align-items: start; }
+.editor-main { min-width: 0; }
+.variants { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.variants > p { grid-column: 1 / -1; }
+@media (max-width: 1250px) { .editor-body { grid-template-columns: minmax(0, 1fr); } }
+.layer-panel { border-left: 1px solid var(--line); padding-left: 12px; position: sticky; top: 8px; max-height: calc(100vh - 24px); display: flex; flex-direction: column; min-width: 0; }
+@media (max-width: 1250px) { .layer-panel { border-left: 0; padding-left: 0; border-top: 1px solid var(--line); padding-top: 8px; position: static; max-height: none; } }
+.layer-panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.layer-panel-head h3 { margin: 0; }
+.layer-panel .layer-list { max-height: none; flex: 1 1 auto; overflow: auto; }
+.layer-panel #layer-reset { align-self: flex-start; margin-top: 8px; }
 .variant {
   display: grid; justify-items: center; gap: 4px; padding: 6px; border-radius: 8px; border: 2px solid transparent;
   background: var(--hover); font-size: 11px; color: var(--muted);
@@ -119,11 +134,13 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 }
 .variant > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .variant > span.from { font-size: 10px; margin-top: -4px; opacity: .8; }
-.variant.selected { border-color: var(--accent); color: var(--text); }
-.variant canvas, .variant .placeholder { width: 64px; height: 64px; image-rendering: pixelated; }
+.variant.selected { border-color: var(--accent); color: var(--text); font-weight: 600; }
+.variant canvas, .variant .placeholder { width: min(100%, 80px); height: auto; aspect-ratio: 1; object-fit: contain; image-rendering: pixelated; }
 /* Dark and small pictures stand out: a thin light outline around what is drawn. */
 .variant canvas, .sheet-pick canvas, .file-card canvas { filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55)); }
-.variant:hover, .variant.selected { background: var(--line); }
+.variant:hover { background: var(--line); }
+/* The worn part: filled with the accent colour, so it is found at a glance. */
+.variant.selected, .variant.selected:hover { background: color-mix(in srgb, var(--accent) 28%, var(--hover)); }
 .big-preview {
   position: fixed; z-index: 1000; pointer-events: none; padding: 8px; border-radius: 8px;
   border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
@@ -278,10 +295,20 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .own-colours { margin: 4px 0 2px; }
 .layer-head { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
 .layer-head .small-button { margin-top: 0; }
-.layer-list { margin: 0; padding-left: 22px; max-height: 260px; overflow: auto; font-size: 12px; }
-.layer-list li { padding: 1px 0; }
-.layer-list li > span:first-child { display: inline-block; min-width: 150px; }
-.layer-buttons button { padding: 0 6px; font-size: 11px; margin-left: 2px; }
+.layer-list { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow: auto; font-size: 12px; }
+.layer-row { display: flex; align-items: center; gap: 5px; padding: 2px 4px; border-radius: 6px; border: 1px solid transparent; cursor: grab; }
+.layer-row:hover { background: var(--hover); }
+.layer-row.selected { background: color-mix(in srgb, var(--accent) 22%, var(--hover)); border-color: var(--accent); }
+.layer-row.dragging { opacity: .4; }
+.layer-row.drop-above { box-shadow: 0 -2px 0 var(--accent); }
+.layer-row.drop-below { box-shadow: 0 2px 0 var(--accent); }
+.layer-row .grip { color: var(--muted); font-size: 10px; letter-spacing: -2px; }
+.layer-row input { margin: 0; }
+.layer-thumb { width: 28px; height: 28px; flex: none; display: grid; place-items: center; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 8px 8px; border-radius: 4px; overflow: hidden; }
+.layer-thumb canvas { max-width: 28px; max-height: 28px; image-rendering: pixelated; }
+.layer-name { flex: 1 1 auto; min-width: 0; text-align: left; border: 0; background: transparent; padding: 2px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layer-buttons { display: flex; flex: none; }
+.layer-buttons button { padding: 0 5px; font-size: 11px; margin-left: 2px; }
 .part-list button.piece { padding-left: 22px; font-size: 12px; color: var(--muted); }
 .part-list button.piece.active { color: var(--text); }
 #split-gap { width: 52px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 5px; }

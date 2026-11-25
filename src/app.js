@@ -11,7 +11,7 @@ import {
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
-import { CUT_PRESETS, guessGrid, cellRect, cutPath, cropImage, hasPixels } from './cut.js';
+import { CUT_PRESETS, guessGrid, cellRect, cutPath, cropImage, hasPixels, drawnBounds } from './cut.js';
 import { codeOf, emptyEdits, hasEdits, encodeEdits, decodeEdits, paintLine, paintColour, applyEdits } from './maskpaint.js';
 import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp, closeUpMask } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, compareVariants, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
@@ -402,7 +402,8 @@ function renderSidebar() {
   }
   $('part-list').replaceChildren(...items.map(([key, label, value]) => {
     const hiddenItem = state.character.hidden?.[key];
-    const button = el('button', { className: (key === state.selectedPart ? 'active' : '') + (key.includes(' #') ? ' piece' : '') + (hiddenItem ? ' hidden-item' : ''), title: (value ? `${label}: ${value}` : label) + (hiddenItem ? ' (hidden)' : '') }, [
+    const worn = key === ALL_COLOURS || key.includes(' #') || !!state.character.parts[key];
+    const button = el('button', { className: (key === state.selectedPart ? 'active' : '') + (key.includes(' #') ? ' piece' : '') + (hiddenItem ? ' hidden-item' : '') + (worn ? ' worn' : ''), title: (value ? `${label}: ${value}` : label) + (hiddenItem ? ' (hidden)' : '') }, [
       el('span', { textContent: label + (state.locked.has(key) ? ' 🔒' : '') }),
       el('span', { className: 'value', textContent: value }),
     ]);
@@ -524,7 +525,8 @@ async function renderEditor() {
       return b;
     }));
     const sheets = tab ? [tab] : undefined;
-    for (const variant of [null, ...own.filter(shown)]) $('variants').append(variantTile(key, variant, sheets));
+    for (const variant of own.filter(shown)) $('variants').append(variantTile(key, variant, sheets));
+    if (!$('variants').children.length) $('variants').append(el('p', { className: 'muted small', textContent: `No ${part} parts here${others.some(shown) ? ': see the other body types below' : ''}.` }));
     if (others.some(shown)) {
       $('other-bodies').hidden = false;
       // Folded away at first for every part; it stays open while you look at the same part.
@@ -537,6 +539,7 @@ async function renderEditor() {
     renderOffsets();
   }
   renderEditorTabs();
+  renderLayers();
 
   // Colour slots depend on decoded masks, so decode the selected variants first.
   const token = ++state.editorToken;
@@ -551,7 +554,7 @@ function variantTile(key, variant, sheets = undefined) {
   const label = variant ? variantLabel(state.library, variant, state.character.bodyType) : 'None';
   const vx = variant && styleOf(variant) === 'vxace' && state.library.packs.some((p) => p.format !== 'vxace');
   const tile = el('button', { className: 'variant' + (selected ? ' selected' : '') + (vx ? ' vx' : ''), title: variant ? `${label}${vx ? ' (VX Ace part)' : ''}
-${variant.id}` : 'None' });
+${variant.id}${selected ? '\nWorn: click again to take it off' : ''}` : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
   // The variant on one line, where it's from (pack, body type) on the next: neither is cut short
   // to make room for the other.
@@ -577,7 +580,8 @@ ${variant.id}` : 'None' });
     tile.refresh();
   }
   tile.addEventListener('click', async () => {
-    state.character.parts[key] = variant?.id || null;
+    // The chosen part clicked again: taken off (there is no "None" tile).
+    state.character.parts[key] = selected ? null : variant?.id || null;
     // A split part keeps its pieces if the new variant falls apart the same way.
     const split = state.character.split?.[key];
     if (split) {
@@ -1032,7 +1036,6 @@ function renderOffsets() {
   }
   $('cell-box').hidden = !hasSprite;
   if (hasSprite) renderCellOptions();
-  renderMoveGroup();
   renderLink();
   renderPiecePreview();
 }
@@ -1327,28 +1330,6 @@ function wornKeys() {
     keys.push(...(pieces.length ? pieces : [key]));
   }
   return keys;
-}
-function renderMoveGroup() {
-  const key = state.selectedPart;
-  const others = wornKeys().filter((k) => k !== key);
-  const box = $('move-group');
-  box.hidden = !others.length || key === ALL_COLOURS;
-  box.replaceChildren(el('span', { className: 'small', textContent: 'Move together with:' }), ...others.map((other) => {
-    const box = el('input', { type: 'checkbox', checked: moveGroup.has(key) && moveGroup.has(other) });
-    box.addEventListener('change', () => {
-      if (box.checked) {
-        // Joining: this part and the ticked one are one group.
-        if (!moveGroup.has(key)) moveGroup.clear();
-        moveGroup.add(key);
-        moveGroup.add(other);
-      } else {
-        moveGroup.delete(other);
-        if (moveGroup.size < 2) moveGroup.clear();
-      }
-      renderMoveGroup();
-    });
-    return el('label', { className: 'lock move-chip' }, [box, ` ${other}`]);
-  }));
 }
 
 /** The item whose own colours the swatches edit, or null for the character's shared colours. */
@@ -1758,29 +1739,108 @@ function currentCreditsText() {
   return creditsText(creditsFor(state.character, state.library), state.settings.packCredits || {});
 }
 
-/** The draw order list: every layer of the chosen sheet, top-most first, with up/down buttons. */
+/** Whether an item (part or piece) moves together with the selected one. */
+const movesWith = (item) => moveGroup.has(state.selectedPart) && moveGroup.has(item);
+
+/** Ticks or unticks an item to move together with the selected part. */
+function setMovesWith(item, on) {
+  const key = state.selectedPart;
+  if (on) {
+    // Joining: this part and the ticked one are one group.
+    if (!moveGroup.has(key)) moveGroup.clear();
+    moveGroup.add(key);
+    moveGroup.add(item);
+  } else {
+    moveGroup.delete(item);
+    if (moveGroup.size < 2) moveGroup.clear();
+  }
+  renderLayers();
+}
+
+let draggedLayer = null;
+
+/**
+ * The layers panel beside the parts: every layer of the chosen image, top-most first, with its
+ * part's picture. Drag a layer to draw it above or below others; tick layers to move those parts
+ * together with the selected one (Position); click a name to pick that part.
+ */
 function renderLayers() {
   const sheet = $('layer-sheet').value;
   const topFirst = layersForSheet(sheet, state.character, state.library).reverse();
   const custom = !!state.character.drawOrder?.[sheet];
   $('layer-reset').disabled = !custom;
+  const selected = state.selectedPart;
+  const canGroup = selected !== ALL_COLOURS && wornKeys().includes(selected);
+  const grouped = [...moveGroup].filter((k) => k !== selected && movesWith(k));
+  $('move-group-note').hidden = !grouped.length;
+  $('move-group-note').textContent = grouped.length ? `Moves together with: ${grouped.join(', ')} (tick or untick them under Layers).` : '';
   if (!topFirst.length) {
-    $('layer-list').replaceChildren(el('li', { className: 'muted', textContent: 'No layers on this sheet.' }));
+    $('layer-list').replaceChildren(el('li', { className: 'muted', textContent: 'No layers on this image.' }));
     return;
   }
+  const ids = topFirst.map(drawId);
+  const store = (order) => {
+    (state.character.drawOrder ||= {})[sheet] = order;
+    renderPreview();
+  };
   $('layer-list').replaceChildren(...topFirst.map((draw, i) => {
-    const id = drawId(draw);
-    const move = (step) => {
-      (state.character.drawOrder ||= {})[sheet] = moveLayer(sheet, state.character, state.library, id, step);
-      renderPreview();
-    };
-    const up = el('button', { textContent: '↑', title: 'Draw above the layer over it', disabled: i === 0 });
-    const down = el('button', { textContent: '↓', title: 'Draw below the layer under it', disabled: i === topFirst.length - 1 });
-    up.addEventListener('click', () => move(1));
-    down.addEventListener('click', () => move(-1));
+    const id = ids[i];
     const name = draw.layer.key.replace(/:c\d+$/, '');
     const label = name === draw.item ? draw.item : `${draw.item} · ${draw.layer.key}`;
-    return el('li', {}, [el('span', { textContent: label }), el('span', { className: 'layer-buttons' }, [up, down])]);
+    const own = draw.item === selected || itemOfKey(draw.item) === selected;
+    const tick = el('input', { type: 'checkbox', checked: own || movesWith(draw.item), disabled: !canGroup || own,
+      title: own ? 'The selected part' : canGroup ? `Move ${draw.item} together with ${selected}: moving, turning, resizing, mirroring or flipping one changes both by as much` : 'Pick a worn part first' });
+    tick.addEventListener('change', () => setMovesWith(draw.item, tick.checked));
+    const thumb = el('span', { className: 'layer-thumb' });
+    const variant = state.library.variants.get(state.character.parts[itemOfKey(draw.item)]);
+    if (variant) {
+      // Cut to what is drawn, so small parts (eyes, a nose) show at a size you can see.
+      partThumbnail(itemOfKey(draw.item), variant, [sheet]).then((pixels) => {
+        const box = pixels && drawnBounds(pixels);
+        if (box) thumb.replaceChildren(toCanvas(cropImage(pixels, box)));
+      }).catch(() => {});
+    }
+    const pick = el('button', { type: 'button', className: 'layer-name', textContent: label, title: `Pick ${draw.item}` });
+    pick.addEventListener('click', () => {
+      state.selectedPart = draw.item;
+      renderSidebar();
+      renderEditor();
+    });
+    const up = el('button', { type: 'button', textContent: '↑', title: 'Draw above the layer over it', disabled: i === 0 });
+    const down = el('button', { type: 'button', textContent: '↓', title: 'Draw below the layer under it', disabled: i === topFirst.length - 1 });
+    up.addEventListener('click', () => store(moveLayer(sheet, state.character, state.library, id, 1)));
+    down.addEventListener('click', () => store(moveLayer(sheet, state.character, state.library, id, -1)));
+    const row = el('li', { className: 'layer-row' + (own ? ' selected' : ''), draggable: true, title: 'Drag up or down to change the draw order' }, [
+      el('span', { className: 'grip', textContent: '⋮⋮' }), tick, thumb, pick, el('span', { className: 'layer-buttons' }, [up, down]),
+    ]);
+    row.addEventListener('dragstart', (e) => {
+      draggedLayer = id;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', id);
+      row.classList.add('dragging');
+    });
+    row.addEventListener('dragend', () => {
+      draggedLayer = null;
+      row.classList.remove('dragging');
+    });
+    const below = (e) => e.clientY > row.getBoundingClientRect().top + row.offsetHeight / 2;
+    row.addEventListener('dragover', (e) => {
+      if (!draggedLayer || draggedLayer === id) return;
+      e.preventDefault();
+      row.classList.toggle('drop-below', below(e));
+      row.classList.toggle('drop-above', !below(e));
+    });
+    row.addEventListener('dragleave', () => row.classList.remove('drop-above', 'drop-below'));
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      row.classList.remove('drop-above', 'drop-below');
+      if (!draggedLayer || draggedLayer === id) return;
+      const order = ids.filter((x) => x !== draggedLayer);
+      order.splice(order.indexOf(id) + (below(e) ? 1 : 0), 0, draggedLayer);
+      draggedLayer = null;
+      store(order);
+    });
+    return row;
   }));
 }
 
