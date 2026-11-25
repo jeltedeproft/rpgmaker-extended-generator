@@ -66,7 +66,7 @@ export function usedSlots(character, library) {
     if (!variant) continue;
     for (const layer of variant.layers) {
       if (layer.slotId) ids.add(layer.slotId);
-      if (layer.mask?.slots) layer.mask.slots.forEach((s) => ids.add(s));
+      (layer.paint || layer.mask)?.slots?.forEach((s) => ids.add(s));
     }
   }
   return [...SLOTS.filter((s) => ids.has(s.id)), ...PAINTED_SLOTS.filter((s) => ids.has(s.id))];

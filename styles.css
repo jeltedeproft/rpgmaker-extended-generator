@@ -143,6 +143,16 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .piece-TV, .piece-SV { width: 96px; }
 .piece-TVD { width: 216px; }
 .variant-tabs .tab-gap { width: 12px; }
+.paint-dialog { width: min(980px, 96vw); }
+.paint-tools { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 6px 0; }
+.paint-slots { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.paint-slot { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 2px 8px; }
+.paint-slot.active { border-color: var(--accent); background: var(--hover); font-weight: 600; box-shadow: 0 0 0 1px var(--accent); }
+.paint-slot .key { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); }
+.paint-slot .key.none { background: repeating-conic-gradient(#bbb 0 25%, #fff 0 50%) 0 0 / 6px 6px; }
+.paint-area { max-height: 62vh; overflow: auto; padding: 8px; border-radius: 6px;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
+#paint-canvas { image-rendering: pixelated; cursor: crosshair; touch-action: none; display: block; }
 .part-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 8px; max-height: 96px; overflow-y: auto; }
 .part-chips .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
 .part-chips .chip.suggested { border-color: var(--accent); }

@@ -482,7 +482,8 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
       problems.push(`${layer.base.path}: not decoded`);
       continue;
     }
-    const mask = layer.mask?.pixels ?? null;
+    // A mask painted by hand (maskpaint.js) goes over the layer's own one.
+    const mask = (layer.paint || layer.mask)?.pixels ?? null;
     if (mask && (mask.width !== base.width || mask.height !== base.height)) {
       problems.push(`${layer.mask.path}: mask is ${mask.width}x${mask.height}, image is ${base.width}x${base.height}`);
     }

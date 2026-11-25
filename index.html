@@ -565,6 +565,31 @@
     </form>
   </dialog>
 
+  <dialog id="paint-dialog" class="paint-dialog">
+    <form method="dialog">
+      <div class="files-head">
+        <h3 id="paint-title">Colour mask</h3>
+        <button value="close" class="small-button primary">Done</button>
+      </div>
+      <p class="muted small">Pick a colour slot, then paint over the picture: what you paint is recoloured with that slot's colours. "Keep as drawn" paints pixels out of the mask. Painting goes over the part's own mask (or the one the generator made) and is remembered; the character updates as you paint.</p>
+      <div class="paint-tools">
+        <label class="lock">Image <select id="paint-layer"></select></label>
+        <label class="lock"><input type="radio" name="paint-tool" value="brush" checked> Brush</label>
+        <label class="lock" id="paint-size-box">size <input id="paint-size" type="number" min="1" max="12" value="2" style="width:52px"></label>
+        <label class="lock" title="Click a colour in the picture: every pixel of (nearly) that colour is painted"><input type="radio" name="paint-tool" value="colour"> All of one colour</label>
+        <label class="lock" id="paint-tolerance-box" hidden>how near <input id="paint-tolerance" type="number" min="0" max="80" value="12" style="width:52px"></label>
+        <label class="lock">Zoom <select id="paint-zoom">
+          <option value="1">1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="6">6x</option><option value="8">8x</option><option value="12">12x</option>
+        </select></label>
+        <label class="lock" title="How strongly the mask colours show over the picture">Mask shown <input id="paint-opacity" type="range" min="0" max="100" value="60"></label>
+        <button type="button" id="paint-undo" class="small-button">Undo</button>
+        <button type="button" id="paint-clear" class="small-button" title="Take away everything painted on this image: it goes back to its own mask">Clear painting</button>
+      </div>
+      <div id="paint-slots" class="paint-slots"></div>
+      <div class="paint-area"><canvas id="paint-canvas" width="0" height="0"></canvas></div>
+    </form>
+  </dialog>
+
   <dialog id="pick-dialog" class="files-dialog">
     <form method="dialog">
       <div class="files-head">

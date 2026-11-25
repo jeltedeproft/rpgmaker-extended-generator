@@ -11,6 +11,7 @@ import {
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
+import { codeOf, emptyEdits, hasEdits, encodeEdits, decodeEdits, paintLine, paintColour, applyEdits } from './maskpaint.js';
 import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp, closeUpMask } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, compareVariants, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
 import {
@@ -590,6 +591,13 @@ function cutFrame(image, f, col, row) {
  * A part's Variation icon in the current colours: recoloured like the part, through a colour mask
  * read from the part's own pictures and masks. Icons of parts without any mask stay as drawn.
  */
+/** A mask putting all of a picture in one slot (MZ portrait layers name their slot: _m001). */
+function slotMask(image, rgb) {
+  const out = createImage(image.width, image.height);
+  for (let i = 0; i < image.data.length; i += 4) if (image.data[i + 3] > 16) out.data.set([rgb >> 16, (rgb >> 8) & 255, rgb & 255, 255], i);
+  return out;
+}
+
 function iconThumbnail(key, variant, character = state.character) {
   const colours = JSON.stringify([character.colors, character.itemColors?.[key], state.settings.templates]);
   const cacheKey = `icon|${key}|${variant.id}|${colours}`;
@@ -601,16 +609,11 @@ function iconThumbnail(key, variant, character = state.character) {
       variant.iconMask ||= (async () => {
         // MZ portrait layers name their slot (_m001: skin) instead of having a mask: all of the
         // picture is in that slot.
-        const layers = variant.layers.filter((l) => l.base && (l.mask || SLOT_BY_ID.has(l.slotId)) && !l.base.cells);
+        const layers = variant.layers.filter((l) => l.base && (l.paint || l.mask || SLOT_BY_ID.has(l.slotId)) && !l.base.cells);
         if (!layers.length) return null;
         await ensureLayers(layers);
-        const slotMask = (image, rgb) => {
-          const out = createImage(image.width, image.height);
-          for (let i = 0; i < image.data.length; i += 4) if (image.data[i + 3] > 16) out.data.set([rgb >> 16, (rgb >> 8) & 255, rgb & 255, 255], i);
-          return out;
-        };
         const mask = iconMask(icon, layers.filter((l) => l.base.pixels).map((l) => ({
-          image: l.base.pixels, mask: l.mask?.pixels || slotMask(l.base.pixels, SLOT_BY_ID.get(l.slotId).rgb),
+          image: l.base.pixels, mask: (l.paint || l.mask)?.pixels || slotMask(l.base.pixels, SLOT_BY_ID.get(l.slotId).rgb),
         })));
         // The grey figure every icon is drawn on is not part of the part: it keeps its colours
         // (a grey head took the clothing's colours, in stripes).
@@ -1328,7 +1331,7 @@ function slotWords(slot) {
     const v = id && state.library.variants.get(id);
     if (!v) continue;
     for (const l of v.layers) {
-      if (l.slotId !== slot.id && !l.mask?.slots?.has?.(slot.id)) continue;
+      if (l.slotId !== slot.id && !(l.paint || l.mask)?.slots?.has?.(slot.id)) continue;
       for (const w of nameWords(`${v.pid} ${(l.base?.path || '').split('/').pop()}`)) words.add(w);
     }
   }
@@ -1342,7 +1345,7 @@ function slotsForEditor() {
   const ids = new Set();
   for (const layer of variant.layers) {
     if (layer.slotId) ids.add(layer.slotId);
-    layer.mask?.slots?.forEach((s) => ids.add(s));
+    (layer.paint || layer.mask)?.slots?.forEach((s) => ids.add(s));
   }
   return withFollowedSlots([...SLOTS.filter((s) => ids.has(s.id)), ...PAINTED_SLOTS.filter((s) => ids.has(s.id))]);
 }
@@ -1423,7 +1426,8 @@ function renderSlots() {
     : autoMaskBox(state.library.variants.get(state.character.parts[itemOfKey(state.selectedPart)]));
   if (!slots.length) {
     const what = state.selectedPart === ALL_COLOURS ? 'The selected parts have' : 'This part has';
-    box.replaceChildren(el('p', { className: 'muted', textContent: `${what} no recolourable areas.` }), ...(auto ? [auto] : []),
+    const paint = paintMaskButton();
+    box.replaceChildren(el('p', { className: 'muted', textContent: `${what} no recolourable areas.` }), ...(paint ? [paint] : []), ...(auto ? [auto] : []),
       ...(state.selectedPart === ALL_COLOURS ? [recolourAllToggle()] : []));
     return;
   }
@@ -1458,6 +1462,8 @@ function renderSlots() {
     head.push(el('div', { className: 'source-reset' }, [reset, splitButton, joinButton]), splitEverythingToggle(), recolourAllToggle(),
       ...(hasBothKinds() ? [syncColoursToggle()] : []));
   }
+  const paint = paintMaskButton();
+  if (paint) head.push(paint);
   box.replaceChildren(...head, ...(auto ? [auto] : []), ...slots.map((slot) => {
     if (slot.painted) {
       return el('div', { className: 'slot' }, [
@@ -2359,6 +2365,11 @@ function recolourAllToggle() {
  * slots: the part's own slots, outlines and whites kept). No plan: the made masks go.
  */
 function applyAutoMask(variant) {
+  makeAutoMask(variant);
+  applyPaintedMasks(variant);
+}
+
+function makeAutoMask(variant) {
   const plan = autoMaskPlan(variant);
   const unmaskedLayers = variant.layers.filter(unmasked);
   for (const l of unmaskedLayers) if (l.mask?.auto) l.mask = null;
@@ -2469,6 +2480,205 @@ function autoMaskBox(variant) {
   );
   return box;
 }
+
+// ---------- colour masks painted by hand ----------
+
+/** Pictures of a part that can get a painted mask: every image but VX Ace's painted ones. */
+const paintable = (variant) => (variant?.layers || []).filter((l) => l.base && !l.base.cells);
+const paintKey = (variant, l) => `${variant.id}|${l.sheet}|${l.key}`;
+
+/**
+ * Puts the masks painted by hand (settings.maskEdits) on a part's pictures: layer.paint, drawn
+ * over the layer's own mask (the file's, the generator's, or the slot its name gives).
+ */
+function applyPaintedMasks(variant) {
+  for (const l of paintable(variant)) {
+    const text = state.settings.maskEdits?.[paintKey(variant, l)];
+    const edits = text && decodeEdits(text);
+    if (!edits) {
+      delete l.paint;
+      continue;
+    }
+    l.paint = {
+      painted: true, src: null, pixels: null, path: `${l.base.path} (colour mask painted by you)`,
+      make: async () => paintedMask(l, edits),
+    };
+  }
+}
+
+/** The mask a picture has without painting: its own, the generator's, or its slot's. */
+async function maskUnderPaint(l) {
+  const base = await ensureImage(l.base);
+  if (l.mask) return ensureImage(l.mask, true);
+  const slot = SLOT_BY_ID.get(l.slotId);
+  return slot ? slotMask(base, slot.rgb) : null;
+}
+
+async function paintedMask(l, edits) {
+  const base = await ensureImage(l.base);
+  return applyEdits(await maskUnderPaint(l), edits, base.width, base.height);
+}
+
+/** The button above a part's colours that opens the mask painter. */
+function paintMaskButton() {
+  if (state.selectedPart === ALL_COLOURS) return null;
+  const variant = state.library.variants.get(state.character.parts[itemOfKey(state.selectedPart)]);
+  if (!paintable(variant).length) return null;
+  const painted = paintable(variant).some((l) => l.paint);
+  const b = el('button', {
+    type: 'button', className: 'small-button paint-mask', textContent: painted ? 'Paint the colour mask… (painted)' : 'Paint the colour mask…',
+    title: 'Say by hand which colour slot each bit of this part uses: make a mask for a part that has none, or fix one that took the wrong colours',
+  });
+  b.addEventListener('click', () => openPainter(variant));
+  return b;
+}
+
+const painter = { variant: null, layer: null, edits: null, under: null, base: null, slot: 'clothing', tool: 'brush', down: false, last: null, history: [] };
+
+async function openPainter(variant) {
+  painter.variant = variant;
+  const layers = paintable(variant);
+  $('paint-title').textContent = `Colour mask of ${variant.part} ${variant.pid}`;
+  $('paint-layer').replaceChildren(...layers.map((l, i) => el('option', {
+    value: i, textContent: `${SHEET_NAMES[l.sheet] || l.sheet}${layers.filter((o) => o.sheet === l.sheet).length > 1 ? ` · ${l.key}` : ''}${l.paint ? ' (painted)' : ''}`,
+  })));
+  $('paint-slots').replaceChildren(
+    ...[{ id: '', label: 'Keep as drawn', rgb: null }, ...SLOTS].map((s) => {
+      const b = el('button', { type: 'button', className: 'paint-slot', title: s.id ? `Paint in the ${s.label} slot` : 'Paint pixels out of the mask: they keep the colours they are drawn in' }, [
+        el('span', { className: 'key' + (s.rgb == null ? ' none' : ''), style: s.rgb == null ? '' : `background:#${s.rgb.toString(16).padStart(6, '0')}` }),
+        el('span', { textContent: s.label }),
+      ]);
+      b.dataset.slot = s.id;
+      b.addEventListener('click', () => {
+        painter.slot = s.id;
+        showPaintSlot();
+      });
+      return b;
+    }),
+  );
+  // Start with the slot the part uses most.
+  const first = slotsForEditor().find((s) => !s.painted);
+  painter.slot = first?.id || defaultGroupSlots(variant.part, 1)[0] || 'clothing';
+  showPaintSlot();
+  if (!$('paint-dialog').open) $('paint-dialog').showModal();
+  await loadPaintLayer(layers[0]);
+}
+
+function showPaintSlot() {
+  for (const b of $('paint-slots').children) b.classList.toggle('active', b.dataset.slot === painter.slot);
+}
+
+async function loadPaintLayer(l) {
+  painter.layer = l;
+  painter.history = [];
+  painter.base = await ensureImage(l.base);
+  painter.under = await maskUnderPaint(l);
+  const text = state.settings.maskEdits?.[paintKey(painter.variant, l)];
+  painter.edits = (text && decodeEdits(text)) || emptyEdits(painter.base.width, painter.base.height);
+  const fit = Math.max(1, Math.floor(Math.min(620 / painter.base.width, 440 / painter.base.height)));
+  const zoom = [...$('paint-zoom').options].map((o) => Number(o.value)).filter((z) => z <= fit).pop() || 1;
+  $('paint-zoom').value = String(zoom);
+  drawPainter();
+}
+
+/** The picture with its mask laid over it: each slot in its mask colour, as strong as picked. */
+function drawPainter() {
+  const { base, edits, under } = painter;
+  if (!base) return;
+  const mask = applyEdits(under, edits, base.width, base.height);
+  const strength = Number($('paint-opacity').value) / 100;
+  const out = createImage(base.width, base.height);
+  for (let i = 0; i < base.data.length; i += 4) {
+    const a = base.data[i + 3];
+    if (!a) continue;
+    const m = mask.data[i + 3] ? strength : 0;
+    for (let c = 0; c < 3; c++) out.data[i + c] = base.data[i + c] * (1 - m) + mask.data[i + c] * m;
+    out.data[i + 3] = m ? Math.max(a, 255 * m) : a;
+  }
+  const canvas = $('paint-canvas');
+  const zoom = Number($('paint-zoom').value) || 1;
+  canvas.width = base.width;
+  canvas.height = base.height;
+  canvas.style.width = `${base.width * zoom}px`;
+  canvas.style.height = `${base.height * zoom}px`;
+  canvas.getContext('2d').putImageData(new ImageData(out.data, base.width, base.height), 0, 0);
+}
+
+function paintAt(event) {
+  const canvas = $('paint-canvas');
+  const r = canvas.getBoundingClientRect();
+  const x = Math.floor(((event.clientX - r.left) / r.width) * canvas.width);
+  const y = Math.floor(((event.clientY - r.top) / r.height) * canvas.height);
+  if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return;
+  const code = codeOf(painter.slot);
+  if (painter.tool === 'colour') paintColour(painter.edits, painter.base, x, y, code, Number($('paint-tolerance').value));
+  else {
+    const radius = Number($('paint-size').value) - 1;
+    const from = painter.last || { x, y };
+    paintLine(painter.edits, from.x, from.y, x, y, radius, code);
+    painter.last = { x, y };
+  }
+  drawPainter();
+}
+
+/** Saves the painting of the picture shown and redraws the character with it. */
+function savePainting() {
+  const { variant, layer, edits } = painter;
+  if (!variant || !layer) return;
+  const masks = (state.settings.maskEdits ||= {});
+  if (hasEdits(edits)) masks[paintKey(variant, layer)] = encodeEdits(edits);
+  else delete masks[paintKey(variant, layer)];
+  saveSettings();
+  applyPaintedMasks(variant);
+  delete variant.iconMask;
+  afterAutoMask(variant);
+}
+
+$('paint-canvas').addEventListener('pointerdown', (e) => {
+  if (!painter.edits) return;
+  painter.history.push(new Int8Array(painter.edits.codes));
+  if (painter.history.length > 30) painter.history.shift();
+  painter.down = painter.tool === 'brush';
+  painter.last = null;
+  $('paint-canvas').setPointerCapture?.(e.pointerId);
+  paintAt(e);
+  if (!painter.down) savePainting();
+});
+$('paint-canvas').addEventListener('pointermove', (e) => painter.down && paintAt(e));
+$('paint-canvas').addEventListener('pointerup', () => {
+  if (!painter.down) return;
+  painter.down = false;
+  savePainting();
+});
+for (const input of document.querySelectorAll('input[name="paint-tool"]')) {
+  input.addEventListener('change', () => {
+    painter.tool = document.querySelector('input[name="paint-tool"]:checked').value;
+    $('paint-size-box').hidden = painter.tool !== 'brush';
+    $('paint-tolerance-box').hidden = painter.tool !== 'colour';
+  });
+}
+$('paint-layer').addEventListener('change', () => loadPaintLayer(paintable(painter.variant)[Number($('paint-layer').value)]));
+$('paint-zoom').addEventListener('change', drawPainter);
+$('paint-opacity').addEventListener('input', drawPainter);
+$('paint-undo').addEventListener('click', () => {
+  const before = painter.history.pop();
+  if (!before) return;
+  painter.edits.codes.set(before);
+  drawPainter();
+  savePainting();
+});
+$('paint-clear').addEventListener('click', () => {
+  if (!painter.edits) return;
+  painter.history.push(new Int8Array(painter.edits.codes));
+  painter.edits = emptyEdits(painter.base.width, painter.base.height);
+  drawPainter();
+  savePainting();
+});
+$('paint-dialog').addEventListener('close', () => {
+  painter.variant = null;
+  painter.layer = null;
+  if (state.character) renderSlots();
+});
 
 // ---------- removing single parts and files (not the whole folder) ----------
 

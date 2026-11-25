@@ -142,6 +142,7 @@ export async function ensureLayers(layers, onProgress = null) {
   await Promise.all(layers.map((layer) => Promise.all([
     ensureImage(layer.base).catch((e) => errors.push(`${layer.base.path}: ${e.message}`)),
     layer.mask && ensureImage(layer.mask, true).catch((e) => errors.push(`${layer.mask.path}: ${e.message}`)),
+    layer.paint && ensureImage(layer.paint, true).catch((e) => errors.push(`${layer.paint.path}: ${e.message}`)),
   ]).then(step)));
   return errors;
 }
@@ -154,6 +155,7 @@ export async function ensureVariants(variants) {
     for (const layer of v.layers) {
       jobs.push(ensureImage(layer.base).catch((e) => errors.push(`${layer.base.path}: ${e.message}`)));
       if (layer.mask) jobs.push(ensureImage(layer.mask, true).catch((e) => errors.push(`${layer.mask.path}: ${e.message}`)));
+      if (layer.paint) jobs.push(ensureImage(layer.paint, true).catch((e) => errors.push(`${layer.paint.path}: ${e.message}`)));
     }
   }
   await Promise.all(jobs);
