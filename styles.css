@@ -94,6 +94,7 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 }
 .part-list button { min-width: 0; }
 .part-list button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.part-list button > span:first-child { flex-shrink: 0; max-width: 75%; }
 .part-list button .value { flex-shrink: 1; }
 .part-list button.active { background: var(--hover); font-weight: 600; }
 .part-list .value { color: var(--muted); font-weight: 400; font-size: 12px; }
@@ -108,11 +109,12 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
   min-width: 0; overflow: hidden;
 }
 .variant > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.variant > span.from { font-size: 10px; margin-top: -4px; opacity: .8; }
 .variant.selected { border-color: var(--accent); color: var(--text); }
 .variant canvas, .variant .placeholder { width: 64px; height: 64px; image-rendering: pixelated; }
 /* Dark and small pictures stand out: a thin light outline around what is drawn. */
 .variant canvas, .sheet-pick canvas, .file-card canvas { filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55)); }
-.variant:hover, .variant.selected { background: var(--checker-b); }
+.variant:hover, .variant.selected { background: var(--line); }
 .big-preview {
   position: fixed; z-index: 1000; pointer-events: none; padding: 8px; border-radius: 8px;
   border: 1px solid var(--line); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);

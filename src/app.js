@@ -508,7 +508,11 @@ function variantTile(key, variant, sheets = undefined) {
   const tile = el('button', { className: 'variant' + (selected ? ' selected' : '') + (vx ? ' vx' : ''), title: variant ? `${label}${vx ? ' (VX Ace part)' : ''}
 ${variant.id}` : 'None' });
   const thumb = el('div', { className: 'placeholder', textContent: variant ? '?' : '∅' });
-  tile.append(thumb, el('span', { textContent: label }));
+  // The variant on one line, where it's from (pack, body type) on the next: neither is cut short
+  // to make room for the other.
+  const [name, ...from] = label.split(' · ');
+  tile.append(thumb, el('span', { textContent: name }));
+  if (from.length) tile.append(el('span', { className: 'from', textContent: from.join(' · ') }));
   if (variant) {
     // The part's Variation icon, the picture RPG Maker's own generator shows, recoloured like the
     // part. Parts without one, and the per-image sections, are drawn from their pictures.
