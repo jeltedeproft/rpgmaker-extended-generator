@@ -22,6 +22,9 @@ test('only exact gradient rows collapse, with selected IDs and suggested categor
   assert.deepEqual(uniqueGradients(rows, undefined, ['skin']), [copy, different, shift]);
   assert.deepEqual(uniqueGradients(rows, first.id, ['skin']), [first, different, shift]);
   assert.deepEqual(uniqueGradients(rows, copy.id), [copy, different, shift]);
+  // A copy you made of a colour is not folded into it.
+  const yours = { ...first, id: 'custom/x', source: 'custom' };
+  assert.deepEqual(uniqueGradients([first, yours]), [first, yours]);
 });
 
 test('facial marks get a colour recommended, from the part name or the slot', () => {

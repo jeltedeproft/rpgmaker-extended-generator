@@ -79,6 +79,11 @@ function saveSettings() {
 function allGradients() {
   return [...state.fileGradients, ...state.customGradients];
 }
+/** The colours offered in the lists and to Randomize: without the ones you deleted. */
+function pickableGradients() {
+  const hidden = new Set(state.settings.hiddenGradients || []);
+  return hidden.size ? allGradients().filter((g) => !hidden.has(g.id)) : allGradients();
+}
 function gradientsById() {
   return new Map(allGradients().map((g) => [g.id, g]));
 }
@@ -1468,7 +1473,7 @@ function renderSlots() {
       ...(state.selectedPart === ALL_COLOURS ? [recolourAllToggle()] : []));
     return;
   }
-  const available = allGradients();
+  const available = pickableGradients();
   const head = [];
   if (state.selectedPart !== ALL_COLOURS) {
     // Own colours: this item ignores the shared colours (e.g. two accessories in different colours).
@@ -1559,9 +1564,89 @@ function renderSlots() {
     const adjust = el('button', { className: 'swatch add', textContent: 'Hue · saturation · brightness…',
       title: current ? `Shift the hue, saturation or brightness of "${current.label}"` : 'Shift the hue, saturation or brightness of the colours this part is drawn in' });
     adjust.addEventListener('click', () => openAdjustDialog(slot, current || null));
-    wrap.append(el('div', { className: 'swatches', style: 'margin-top:5px' }, [add, adjust, ...matchPicker(slot, current)]));
+    wrap.append(el('div', { className: 'swatches', style: 'margin-top:5px' }, [add, adjust, ...matchPicker(slot, current), ...gradientTools(slot, current)]));
     return wrap;
   }));
+}
+
+/** Duplicate or delete the chosen colour; "Reset colours to default" brings deleted ones back. */
+function gradientTools(slot, current) {
+  const tools = [];
+  if (current && current.id !== ADJUSTING_ID) {
+    const copy = el('button', { className: 'swatch add', textContent: 'Duplicate', title: `Copy "${current.label}" into Your colours, to change the copy (Hue · saturation · brightness) and keep the original` });
+    copy.addEventListener('click', () => duplicateGradient(slot, current));
+    const del = el('button', { className: 'swatch add', textContent: 'Delete', title: `Take "${current.label}" out of the colour lists (and off this character). "Reset colours to default" brings it back` });
+    del.addEventListener('click', () => deleteGradient(current));
+    tools.push(copy, del);
+  }
+  const deleted = state.settings.hiddenGradients?.length || 0;
+  if (deleted) {
+    const reset = el('button', { className: 'swatch add', textContent: 'Reset colours to default', title: 'Bring back every colour you deleted' });
+    reset.addEventListener('click', () => {
+      delete state.settings.hiddenGradients;
+      saveSettings();
+      renderSlots();
+      toast('The colours you deleted are back in the lists.');
+    });
+    tools.push(reset);
+  }
+  return tools;
+}
+
+function duplicateGradient(slot, g) {
+  const id = `custom/${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  const label = `${g.label} copy`;
+  const copy = g.stops ? createCustomGradient(id, label, g.stops)
+    : g.shiftSource ? createSourceAdjust(id, label, g.adjust)
+      : createAdjustedGradient(id, label, g.from || g.id, g.adjust || { hue: 0, saturation: 100, brightness: 100 }, g.colors);
+  state.customGradients.push(copy);
+  setSlotColour(slot.id, id);
+  renderSlots();
+  renderPreview();
+  refreshTiles();
+  toast(`"${label}" is in Your colours and on the ${slot.label.toLowerCase()}.`);
+}
+
+/**
+ * Deletes a colour: one of yours goes for good (Undo brings it back), one from the colour sheets
+ * is left out of the lists until "Reset colours to default". Parts in it go back to Source.
+ */
+function deleteGradient(g) {
+  const before = { colors: { ...state.character.colors }, itemColors: JSON.parse(JSON.stringify(state.character.itemColors || {})) };
+  for (const [slot, id] of Object.entries(state.character.colors)) if (id === g.id) delete state.character.colors[slot];
+  for (const colours of Object.values(state.character.itemColors || {})) {
+    for (const [slot, id] of Object.entries(colours)) if (id === g.id) colours[slot] = null;
+  }
+  const own = g.source === 'custom';
+  const at = state.customGradients.indexOf(g);
+  // The same colours in other colour sheets (shown once) go too, or the colour would stay listed.
+  const same = (x) => x.colors.length === g.colors.length && x.colors.every((v, i) => v === g.colors[i]);
+  const ids = own ? [] : state.fileGradients.filter((x) => x.colors && same(x)).map((x) => x.id);
+  if (own) state.customGradients = state.customGradients.filter((x) => x !== g);
+  else {
+    state.settings.hiddenGradients = [...new Set([...(state.settings.hiddenGradients || []), ...ids])];
+    saveSettings();
+  }
+  const redraw = () => {
+    renderSlots();
+    renderPreview();
+    refreshTiles();
+  };
+  redraw();
+  toast(`Deleted "${g.label}".`, 8000, {
+    label: 'Undo',
+    run: () => {
+      if (own) state.customGradients.splice(Math.max(0, at), 0, g);
+      else {
+        state.settings.hiddenGradients = (state.settings.hiddenGradients || []).filter((id) => !ids.includes(id));
+        if (!state.settings.hiddenGradients.length) delete state.settings.hiddenGradients;
+        saveSettings();
+      }
+      state.character.colors = before.colors;
+      state.character.itemColors = before.itemColors;
+      redraw();
+    },
+  });
 }
 
 function swatchButton(slot, gradient) {
@@ -4624,7 +4709,7 @@ $('randomize').addEventListener('click', () => {
       if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(customGradientFromJson(g));
     }
   }
-  state.character = randomize(state.character, state.library, allGradients(), {
+  state.character = randomize(state.character, state.library, pickableGradients(), {
     locked: state.locked, rules: rules(), sets: state.settings.sets || [], syncColours: syncingColours(),
   });
   renderAll();

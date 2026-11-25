@@ -9,7 +9,10 @@ export function uniqueGradients(gradients, selected, preferred = []) {
   const rows = new Map();
   for (const g of gradients) {
     let key = g.id;
-    if (g.shiftSource) {
+    // Your own colours always show, also a copy of another colour (to change the copy).
+    if (g.source === 'custom') {
+      key = `custom:${g.id}`;
+    } else if (g.shiftSource) {
       key = 'shift:' + JSON.stringify(g.adjust);
     } else if (g.colors) {
       if (!rowKeys.has(g.colors)) rowKeys.set(g.colors, String.fromCharCode(...g.colors));
