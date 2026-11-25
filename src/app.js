@@ -4260,6 +4260,19 @@ function renderTemplates() {
 }
 renderTemplates();
 
+// What pictures are drawn on: a light or plain background shows small, dark parts.
+const showPicBg = () => {
+  if (state.settings.picBg) document.documentElement.dataset.picBg = state.settings.picBg;
+  else delete document.documentElement.dataset.picBg;
+  $('pic-bg').value = state.settings.picBg || '';
+};
+showPicBg();
+$('pic-bg').addEventListener('change', (e) => {
+  state.settings.picBg = e.target.value || undefined;
+  saveSettings();
+  showPicBg();
+});
+
 for (const [id, setting] of [['make-room', 'makeRoom'], ['smooth-pixels', 'smoothPixels']]) {
   $(id).checked = !!state.settings[setting];
   $(id).addEventListener('change', (e) => {

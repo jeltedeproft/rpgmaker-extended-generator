@@ -27,6 +27,15 @@
   }
 }
 
+/* Background for pictures, picked in the preview (#pic-bg): for parts lost on the dark checks. */
+:root[data-pic-bg="light"] { --checker-a: #d8d4cc; --checker-b: #f4f2ee; }
+:root[data-pic-bg="white"] { --checker-a: #ffffff; --checker-b: #ffffff; }
+:root[data-pic-bg="grey"] { --checker-a: #8a8a8a; --checker-b: #8a8a8a; }
+:root[data-pic-bg="green"] { --checker-a: #3fbf5a; --checker-b: #3fbf5a; }
+:root[data-pic-bg="magenta"] { --checker-a: #e040c0; --checker-b: #e040c0; }
+:root[data-pic-bg] .variant canvas, :root[data-pic-bg] .variant .placeholder { background: var(--checker-b); border-radius: 4px; }
+:root[data-pic-bg] .variant canvas, :root[data-pic-bg] .sheet-pick canvas, :root[data-pic-bg] .file-card canvas { filter: none; }
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body {

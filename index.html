@@ -211,6 +211,15 @@
         <button id="pause-anim" class="small-button" title="Stop the walk and battler animations">⏸ Pause</button>
         <button id="stand-anim" class="small-button" title="Show the standing pose (the middle frame) instead of animating">Stand still</button>
         <label class="lock"><input type="checkbox" id="walk-all"> All walk directions</label>
+        <label class="lock" title="What the pictures (previews, part tiles, files) are drawn on. A light or coloured background shows small and dark parts that blend into the dark one.">Background
+          <select id="pic-bg">
+            <option value="">Checks</option>
+            <option value="light">Light checks</option>
+            <option value="white">White</option>
+            <option value="grey">Grey</option>
+            <option value="green">Green</option>
+            <option value="magenta">Magenta</option>
+          </select></label>
         <label class="lock" title="Sprite frames grow so moved, enlarged and turned parts fit instead of being cut off at the frame's edge, by just what they need. The feet stay on the bottom of the frame (RPG Maker stands the frame's bottom on the tile), the sides grow alike and the rest goes on top. Every frame keeps one size, so sheets still divide into RPG Maker's grid: walk sheets 3 x 4 frames (saved with the $ prefix, one character per file), battlers 9 x 6. Portraits stay 144px.">
           <input type="checkbox" id="make-room"> Make room: bigger frames so nothing is cut off</label>
         <label class="lock" title="Parts turned by an angle or made bigger are drawn from a smoothed 4x picture (Scale2x, like RotSprite) instead of blowing up square pixels.">
