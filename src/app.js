@@ -481,10 +481,11 @@ async function renderEditor() {
   } else if (!isColours) {
     renderPieces();
     const listed = variantsForPart(state.library, part, state.character.bodyType, state.character.parts[key]);
-    // VX Ace or MV/MZ parts only, when both kinds are open (the chosen part always stays).
+    // VX Ace or MV/MZ parts only, when both kinds are open. The chosen part is not kept in the
+    // other style's list: an MV/MZ part under "VX Ace" looked like it was read as VX Ace.
     const kinds = new Set([...listed.own, ...listed.others].map(styleOf));
     const style = kinds.size > 1 ? state.settings.partStyle || '' : '';
-    const keep = (list) => (style ? list.filter((v) => styleOf(v) === style || v.id === state.character.parts[key]) : list);
+    const keep = (list) => (style ? list.filter((v) => styleOf(v) === style) : list);
     const own = keep(listed.own);
     const others = keep(listed.others);
     // Sections per image (portrait, walk, damage, battler): the parts that have a picture for it,
