@@ -177,9 +177,24 @@ export function outlineOrWhite(rgb) {
 }
 
 /**
+ * Whether a colour could be skin (any skin tone, light to dark): a red to yellow hue, or nearly
+ * grey. Blue, green and purple are not: on a body's walk sprite those are the eyes.
+ */
+export function skinLike(rgb) {
+  const [r, g, b] = [(rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255];
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  if (max - min < 0.2 * max || max < 40) return true;
+  let hue = r === max ? ((g - b) / (max - min)) * 60 : g === max ? (2 + (b - r) / (max - min)) * 60 : (4 + (r - g) / (max - min)) * 60;
+  if (hue < 0) hue += 360;
+  return hue <= 65 || hue >= 335;
+}
+
+/**
  * The slots a part's colour groups use at first: the part's main slot (Body: skin), then its other
  * slots (Clothing sub 1, 2, 3; Hair sub), then the main one again. With the groups given, black
- * outlines and white (eye whites, shines) keep their drawn colours, unless that is all there is.
+ * outlines and white (eye whites, shines) keep their drawn colours, unless that is all there is,
+ * and on skin parts (body, face) a colour that can't be skin (blue, green...) is the eyes.
  */
 export function defaultGroupSlots(part, count, groups = null) {
   const main = MAIN_SLOT[part] || 'clothing';
@@ -187,8 +202,9 @@ export function defaultGroupSlots(part, count, groups = null) {
   const list = [...new Set([main, ...own, ...(SECOND_SLOT[main] || [])])];
   const keep = Array.from({ length: count }, (_, i) => !!groups?.[i] && outlineOrWhite(groups[i].rgb));
   if (keep.every(Boolean)) keep.fill(false);
+  const eyes = Array.from({ length: count }, (_, i) => main === 'skin' && !keep[i] && !!groups?.[i] && i > 0 && !skinLike(groups[i].rgb));
   let next = 0;
-  return keep.map((k) => (k ? null : list[next++] || main));
+  return keep.map((k, i) => (k ? null : eyes[i] ? 'eyes' : list[next++] || main));
 }
 
 /**

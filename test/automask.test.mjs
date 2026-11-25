@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp, closeUpMask } from '../src/automask.js';
+import { colourGroups, makeMask, defaultGroupSlots, outlineOrWhite, skinLike, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp, closeUpMask } from '../src/automask.js';
 import { createImage, recolorLayer } from '../src/recolor.js';
 import { SLOT_BY_ID } from '../src/format.js';
 
@@ -65,6 +65,9 @@ test('outlines and whites keep their colours; up to 8 groups, or as many as ther
   const groups = [{ rgb: 0xf6f6f6 }, { rgb: 0x2c80cb }, { rgb: 0x0c0c0c }];
   assert.deepEqual(defaultGroupSlots('Eyes', 3, groups), [null, 'eyes', null]);
   assert.deepEqual(defaultGroupSlots('Clothing', 1, [{ rgb: 0x101010 }]), ['clothing']); // only black: recoloured
+  // A body's walk sprite: skin, a darker skin shade, green eyes. The eyes are not painted as skin.
+  assert.deepEqual(defaultGroupSlots('Body', 3, [{ rgb: 0xf2c4a0 }, { rgb: 0x9a5a40 }, { rgb: 0x30a050 }]), ['skin', 'underwear', 'eyes']);
+  assert.ok(skinLike(0x5a3420) && skinLike(0xf9c19d) && !skinLike(0x2c80cb) && !skinLike(0xa040c0));
   // Eyes: white, blue iris, dark pupil, black outline, pink lid: five groups.
   const img = createImage(5, 1);
   [[250, 250, 250], [40, 110, 220], [20, 30, 90], [8, 8, 8], [230, 150, 160]].forEach((c, x) => img.data.set([...c, 255], x * 4));
