@@ -595,6 +595,28 @@
     </form>
   </dialog>
 
+  <dialog id="cut-dialog" class="cut-dialog">
+    <form method="dialog">
+      <div class="files-head">
+        <h3 id="cut-title">Cut a sheet</h3>
+        <button value="cancel" class="small-button">Cancel</button>
+      </div>
+      <p class="muted small">Cut a finished sheet into pieces: the characters of a sheet of eight, one character's rows (walk directions) or columns, or single frames. Each piece becomes a file to assign. Assign a dressed character as the Body (walk, battler or damage) of a body type, and put more parts over it, like a cloak.</p>
+      <div id="cut-presets" class="cut-presets"></div>
+      <div class="paint-tools">
+        <label class="lock">Columns <input id="cut-cols" type="number" min="1" max="64" value="1" style="width:60px"></label>
+        <label class="lock">Rows <input id="cut-rows" type="number" min="1" max="64" value="1" style="width:60px"></label>
+        <button type="button" id="cut-all" class="small-button">Take every piece</button>
+        <span id="cut-size" class="muted small"></span>
+      </div>
+      <div class="cut-area"><canvas id="cut-canvas" width="0" height="0"></canvas></div>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button value="ok" id="cut-ok" class="primary">Cut</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="pick-dialog" class="files-dialog">
     <form method="dialog">
       <div class="files-head">

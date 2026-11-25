@@ -11,6 +11,7 @@ import {
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
+import { CUT_PRESETS, guessGrid, cellRect, cutPath, cropImage, hasPixels } from './cut.js';
 import { codeOf, emptyEdits, hasEdits, encodeEdits, decodeEdits, paintLine, paintColour, applyEdits } from './maskpaint.js';
 import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp, closeUpMask } from './automask.js';
 import { lookalikePairs, pairLayers, findLookalikes, compareVariants, differenceImage, LOOKALIKE_RATIO, folderKeys, sameFolder, digestBytes, sameFileDuplicates } from './lookalike.js';
@@ -20,7 +21,7 @@ import {
   makeSet, applySet, DEFAULT_RULES, wearChance, shiftShape,
 } from './character.js';
 import {
-  entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage, pngSize, fileBytes,
+  entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage, pngSize, fileBytes, decodeImage,
   ensureVariants, loadGradients, toCanvas, downloadBlob, downloadImage,
   canRememberFolders, pickFolder, entriesFromHandle, rememberFolder, forgetFolder, rememberedFolders,
   ensureReadPermission, readText, ensureLayers, hasReadPermission, dropFolderHandles,
@@ -203,6 +204,7 @@ async function importEntriesNow(entries, packName) {
       return { path: t.path, text: '(could not read this file)' };
     }
   }));
+  await applyCuts(pack.name, pngs);
   applyRememberedAssignments(pack.name);
   // Sprites named for one sheet but sized for another are read as the sheet they fit.
   busyStep(`Opening "${packName}": checking picture sizes`);
@@ -3021,6 +3023,12 @@ function fileCard(file, observer) {
     const assign = el('button', { type: 'button', className: 'small-button', textContent: loaded ? 'Reassign…' : 'Assign…' });
     assign.addEventListener('click', () => (loaded ? openAssignDialog(file) : assignOneByOne(file)));
     buttons.push(assign);
+    if (file.role !== 'mask' && file.role !== 'icon') {
+      const cut = el('button', { type: 'button', className: 'small-button', textContent: 'Cut…',
+        title: 'Cut a finished sheet into pieces: its characters, rows, columns or single frames. Each piece is a file to assign, e.g. a dressed character as a body to put a cloak on' });
+      cut.addEventListener('click', () => openCutDialog(file));
+      buttons.push(cut);
+    }
     if (loaded) {
       const unassign = el('button', { type: 'button', className: 'small-button', textContent: 'Unassign', title: 'Take it out of its part and put it in the "To assign" list' });
       unassign.addEventListener('click', () => unassignByUser(file));
@@ -3328,6 +3336,141 @@ $('files-start').addEventListener('click', () => {
   if (queue.length) openAssignDialog(queue[0], queue.slice(1));
 });
 $('files-show-masks').addEventListener('change', () => renderFiles());
+
+// ---------- cutting finished sheets into pieces ----------
+
+let cutting = null; // {file, image, cols, rows, cells: Set of "col,row" kept}
+
+async function openCutDialog(file) {
+  file.ref ||= { src: file.src, pixels: null };
+  const image = await ensureImage(file.ref).catch(() => null);
+  if (!image) {
+    toast('Could not read that picture.');
+    return;
+  }
+  const name = file.path.split('/').pop();
+  const saved = state.settings.cuts?.[`${file.pack}|${file.path}`];
+  const [cols, rows] = saved ? [saved.cols, saved.rows] : guessGrid(image.width, image.height, name);
+  cutting = { file, image, cols, rows, cells: null };
+  setCutGrid(cols, rows, saved?.cells);
+  $('cut-title').textContent = `Cut ${name} (${image.width} x ${image.height})`;
+  $('cut-presets').replaceChildren(...CUT_PRESETS.map(([c, r, label]) => {
+    const b = el('button', { type: 'button', className: 'small-button', textContent: label });
+    b.addEventListener('click', () => setCutGrid(c, r));
+    return b;
+  }));
+  $('cut-dialog').returnValue = '';
+  $('cut-dialog').showModal();
+}
+
+/** A new grid: every cell with something drawn in it is kept (or the cells given). */
+function setCutGrid(cols, rows, cells = null) {
+  const { image } = cutting;
+  cutting.cols = Math.max(1, Math.min(64, cols | 0));
+  cutting.rows = Math.max(1, Math.min(64, rows | 0));
+  $('cut-cols').value = cutting.cols;
+  $('cut-rows').value = cutting.rows;
+  cutting.cells = new Set(cells || []);
+  if (!cells) {
+    for (let row = 0; row < cutting.rows; row++) {
+      for (let col = 0; col < cutting.cols; col++) {
+        if (hasPixels(cropImage(image, cellRect(image.width, image.height, cutting.cols, cutting.rows, col, row)))) cutting.cells.add(`${col},${row}`);
+      }
+    }
+  }
+  drawCut();
+}
+
+function drawCut() {
+  const { image, cols, rows, cells } = cutting;
+  const canvas = $('cut-canvas');
+  const zoom = Math.max(1, Math.min(4, Math.floor(560 / Math.max(image.width, image.height)) || 1));
+  canvas.width = image.width * zoom;
+  canvas.height = image.height * zoom;
+  const g = canvas.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.clearRect(0, 0, canvas.width, canvas.height);
+  g.drawImage(toCanvas(image), 0, 0, canvas.width, canvas.height);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const r = cellRect(image.width, image.height, cols, rows, col, row);
+      if (!cells.has(`${col},${row}`)) {
+        g.fillStyle = 'rgb(0 0 0 / .6)';
+        g.fillRect(r.x * zoom, r.y * zoom, r.w * zoom, r.h * zoom);
+      }
+      g.strokeStyle = '#a78bfa';
+      g.lineWidth = 1;
+      g.strokeRect(r.x * zoom + 0.5, r.y * zoom + 0.5, r.w * zoom - 1, r.h * zoom - 1);
+    }
+  }
+  const n = cells.size;
+  $('cut-ok').textContent = `Cut out ${n} piece${n === 1 ? '' : 's'}`;
+  $('cut-ok').disabled = !n;
+  const one = cellRect(image.width, image.height, cols, rows, 0, 0);
+  $('cut-size').textContent = `Each piece ${one.w} x ${one.h}. Click pieces to leave them out or take them in.`;
+}
+
+$('cut-canvas').addEventListener('click', (e) => {
+  if (!cutting) return;
+  const r = $('cut-canvas').getBoundingClientRect();
+  const col = Math.min(cutting.cols - 1, Math.floor(((e.clientX - r.left) / r.width) * cutting.cols));
+  const row = Math.min(cutting.rows - 1, Math.floor(((e.clientY - r.top) / r.height) * cutting.rows));
+  const key = `${col},${row}`;
+  if (cutting.cells.has(key)) cutting.cells.delete(key);
+  else cutting.cells.add(key);
+  drawCut();
+});
+for (const id of ['cut-cols', 'cut-rows']) $(id).addEventListener('change', () => setCutGrid(Number($('cut-cols').value), Number($('cut-rows').value)));
+$('cut-all').addEventListener('click', () => setCutGrid(cutting.cols, cutting.rows, Array.from({ length: cutting.cols * cutting.rows }, (_, i) => `${i % cutting.cols},${Math.floor(i / cutting.cols)}`)));
+$('cut-dialog').addEventListener('close', async () => {
+  const job = cutting;
+  cutting = null;
+  if ($('cut-dialog').returnValue !== 'ok' || !job?.cells.size) return;
+  const { file, cols, rows } = job;
+  const cut = { cols, rows, cells: [...job.cells] };
+  (state.settings.cuts ||= {})[`${file.pack}|${file.path}`] = cut;
+  saveSettings();
+  const added = await cutPieces(file.pack, file.path, file.src, cut, job.image);
+  afterFilesChanged();
+  filesTab = 'queue';
+  if ($('files-dialog').open) renderFiles();
+  toast(added ? `${added} piece${added === 1 ? '' : 's'} of ${file.path.split('/').pop()} added to "To assign". Assign one, e.g. as the Body (walk) of a body type, then put parts like a cloak over it.`
+    : 'Those pieces are there already.', 12000);
+});
+
+/**
+ * Cuts a picture into the "To assign" list: one file per kept cell. Pieces already read (or
+ * waiting) are left as they are. Returns how many were added.
+ */
+async function cutPieces(packName, path, src, cut, image = null) {
+  const lib = state.library;
+  image ||= await decodeImage(src);
+  const known = new Set([...libraryFiles(lib), ...lib.unrecognized, ...lib.removed].filter((f) => f.pack === packName).map((f) => f.path));
+  let added = 0;
+  for (const cell of cut.cells) {
+    const [col, row] = cell.split(',').map(Number);
+    if (col >= cut.cols || row >= cut.rows) continue;
+    const piecePath = cutPath(path, cut.cols, cut.rows, col, row);
+    if (known.has(piecePath)) continue;
+    const piece = cropImage(image, cellRect(image.width, image.height, cut.cols, cut.rows, col, row));
+    const canvas = new OffscreenCanvas(piece.width, piece.height);
+    canvas.getContext('2d').putImageData(new ImageData(piece.data, piece.width, piece.height), 0, 0);
+    const blob = await canvas.convertToBlob({ type: 'image/png' });
+    lib.unrecognized.push({ pack: packName, path: piecePath, src: blob, reason: `Cut from ${path.split('/').pop()}` });
+    added++;
+  }
+  return added;
+}
+
+/** Cuts made before are made again when their folder is opened (before remembered assignments). */
+async function applyCuts(packName, entries) {
+  for (const [key, cut] of Object.entries(state.settings.cuts || {})) {
+    if (!key.startsWith(`${packName}|`)) continue;
+    const path = key.slice(packName.length + 1);
+    const entry = entries.find((e) => e.path === path);
+    if (entry) await cutPieces(packName, path, entry.src, cut).catch(() => 0);
+  }
+}
 
 // ---------- look-alikes ----------
 

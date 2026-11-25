@@ -154,6 +154,10 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
   background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
 #paint-canvas { image-rendering: pixelated; cursor: crosshair; touch-action: none; display: block; }
 select.match-colour { font-size: 12px; padding: 3px 6px; }
+.cut-dialog { width: min(760px, calc(100vw - 48px)); }
+.cut-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.cut-area { max-height: 60vh; overflow: auto; margin: 8px 0; background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 16px 16px; }
+#cut-canvas { display: block; image-rendering: pixelated; cursor: pointer; }
 .part-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 8px; max-height: 96px; overflow-y: auto; }
 .part-chips .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
 .part-chips .chip.suggested { border-color: var(--accent); }
