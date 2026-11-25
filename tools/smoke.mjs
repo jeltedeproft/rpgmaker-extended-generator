@@ -478,9 +478,15 @@ try {
       await sleep(900);
       before = await evaluate(worn);
     }
+    // Moved Body and a changed draw order go back too.
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
+    await sleep(400);
+    await evaluate(`(() => { const i = document.getElementById('off-sprite-x'); i.value = 5; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change')); })()`);
+    await sleep(400);
     await click('#clear-all');
     await sleep(900);
     const after = await evaluate(worn);
+    check('clear all also puts Body back in place', await evaluate(`(() => { document.querySelector('#part-list button.active')?.click(); return Number(document.getElementById('off-sprite-x').value || 0) === 0; })()`));
     check('clear all leaves only body and face', after.every(k => k === 'Body' || k === 'Face') && before.length > after.length, `${before.length} -> ${after.join(',')}`);
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);
     await sleep(500);
