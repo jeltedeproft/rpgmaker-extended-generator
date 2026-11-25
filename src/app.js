@@ -1996,7 +1996,7 @@ async function openAssignDialog(entry, queue = null) {
   $('assign-body').replaceChildren(...bodyOptions(bodies), el('option', { value: '', textContent: 'New folder…' }));
   $('assign-body').value = folderBody || state.character?.bodyType || 'Male';
   $('assign-new-body').value = '';
-  $('assign-part-list').replaceChildren(...[...new Set([...PART_ORDER, ...partNames(state.library, state.character?.bodyType)])].map((p) => el('option', { value: p })));
+  assignRanked = [];
 
   $('assign-slot').replaceChildren(el('option', { value: '', textContent: 'none (not recolourable)' }),
     ...SLOTS.filter((s) => s.m).map((s) => el('option', { value: s.m, textContent: s.label })));
@@ -2042,8 +2042,43 @@ async function openAssignDialog(entry, queue = null) {
     $('assign-mask-note').textContent = `Filled in as the colour mask of ${image.path.split('/').pop()} (${readingOf(image)}).`;
   }
   updateAssignPreview();
+  renderPartChips();
   if (!$('assign-dialog').open) $('assign-dialog').showModal();
   renderSuggestions(entry, !loaded);
+}
+
+/** Parts suggested for the file being assigned (by where it sits and its name), best first. */
+let assignRanked = [];
+
+/**
+ * Every part name to click, under the Part field: the suggested ones first (marked), then the
+ * rest. Typing filters them; a new name is still typed in the field.
+ */
+function renderPartChips() {
+  const typed = $('assign-part').value.trim().toLowerCase();
+  const suggested = [...new Set(assignRanked.map((r) => r.part))];
+  const all = [...new Set([...suggested, ...PART_ORDER, ...partNames(state.library, state.character?.bodyType)])];
+  const exact = all.some((p) => p.toLowerCase() === typed);
+  const shown = exact || !typed ? all : all.filter((p) => p.toLowerCase().includes(typed));
+  $('assign-part-chips').replaceChildren(...shown.map((p) => {
+    const b = el('button', {
+      type: 'button', textContent: p,
+      className: 'chip' + (p.toLowerCase() === typed ? ' active' : '') + (suggested.includes(p) ? ' suggested' : ''),
+      title: suggested.includes(p) ? `Suggested: ${p}` : p,
+    });
+    b.addEventListener('click', () => {
+      const r = assignRanked.find((x) => x.part === p);
+      if (r) applySuggestion(r);
+      else {
+        $('assign-part').value = p;
+        $('assign-layer').value = '';
+        suggestSlot();
+        updateAssignPreview();
+        renderPartChips();
+      }
+    });
+    return b;
+  }), ...(typed && !shown.length ? [el('span', { className: 'muted small', textContent: `"${$('assign-part').value.trim()}" will be a new part.` })] : []));
 }
 
 let assigningPixels = null;
@@ -2102,6 +2137,8 @@ async function renderSuggestions(entry, fill = false) {
   const fileName = entry.path.split('/').pop();
   const named = partsInName(fileName, [...new Set([...PART_ORDER, ...partNames(state.library, state.character?.bodyType)])]);
   const ranked = rankWithName(profile, refs, named).filter((r) => r.score >= 0.15);
+  assignRanked = ranked;
+  renderPartChips();
   if (!ranked.length) {
     box.append(el('span', { className: 'muted', textContent: 'No loaded part sits in the same place.' }));
     return;
@@ -2151,6 +2188,7 @@ function applySuggestion(r) {
   if (r.cell && [...$('assign-cell').options].some((o) => o.value === r.cell)) $('assign-cell').value = r.cell;
   suggestSlot();
   updateAssignPreview();
+  renderPartChips();
 }
 
 /** The colour slot was picked by hand (or kept from the file): the part no longer changes it. */
@@ -2174,7 +2212,10 @@ function suggestSlot() {
   if (!slotChosen) select.value = String(m);
 }
 $('assign-slot').addEventListener('change', () => (slotChosen = true));
-$('assign-part').addEventListener('input', suggestSlot);
+$('assign-part').addEventListener('input', () => {
+  suggestSlot();
+  renderPartChips();
+});
 $('assign-sheet').addEventListener('change', () => assigning && renderSuggestions(assigning));
 
 /** Parts whose variant was taken away (reassigned) are taken off the character. */

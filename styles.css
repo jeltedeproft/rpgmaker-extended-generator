@@ -143,6 +143,10 @@ main.dragging { outline: 3px dashed var(--accent); outline-offset: -8px; }
 .piece-TV, .piece-SV { width: 96px; }
 .piece-TVD { width: 216px; }
 .variant-tabs .tab-gap { width: 12px; }
+.part-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: -4px 0 8px; max-height: 96px; overflow-y: auto; }
+.part-chips .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+.part-chips .chip.suggested { border-color: var(--accent); }
+.part-chips .chip.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .variant.vx { position: relative; }
 .variant.vx::after { content: 'VX Ace'; position: absolute; top: 3px; right: 3px; font-size: 9px; line-height: 1; padding: 2px 3px;
   border-radius: 3px; background: var(--accent); color: var(--accent-text); opacity: .85; pointer-events: none; }

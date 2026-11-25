@@ -526,9 +526,9 @@
         </select>
       </label>
       <label class="field">Part (type a new name for a new category, e.g. AccC)
-        <input id="assign-part" type="text" list="assign-part-list" maxlength="30">
-        <datalist id="assign-part-list"></datalist>
+        <input id="assign-part" type="text" maxlength="30" autocomplete="off">
       </label>
+      <div id="assign-part-chips" class="part-chips" aria-label="Parts to pick from"></div>
       <div class="assign-row">
         <label class="field full-only">Layer number (optional)
           <input id="assign-layer" type="text" maxlength="2" placeholder="e.g. 1 or 2">
