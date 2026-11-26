@@ -5025,8 +5025,9 @@ document.addEventListener('mouseout', (e) => {
 });
 document.addEventListener('click', () => { bigPreview.hidden = true; }, true);
 
-// Clear all: every part to None except Body and Face (and locked parts), and everything done to
-// them undone: positions, pieces, per-image pictures, hiding, draw order, whole image. One click undoes it.
+// Clear all: every part to None, Body and Face too (locked parts stay), and everything done to
+// parts undone: positions, pieces, per-image pictures, hiding, cut-off parts, draw order, whole
+// image, colours. One click undoes it.
 let beforeClear = null;
 let clearTimer;
 $('clear-all').addEventListener('click', () => {
@@ -5045,18 +5046,21 @@ $('clear-all').addEventListener('click', () => {
   for (const key of Object.keys(ch.parts)) {
     const part = partOfKey(key);
     if (state.locked.has(key) || !ch.parts[key]) continue;
-    if (REQUIRED_PARTS.has(part)) {
-      // Body and Face stay on, but as they come: no moving, pieces, other pictures or hiding.
-      for (const k of [key, ...pieceKeys(ch, key)]) {
-        for (const store of [ch.offsets, ch.clip]) if (store?.[k]) { delete store[k]; changes++; }
-      }
-      for (const store of [ch.split, ch.sheetParts, ch.hidden]) if (store?.[key]) { delete store[key]; changes++; }
-      continue;
-    }
     removeItem(ch, key); // extra items ("AccA 2") go away completely
     if (key === part) ch.parts[key] = null; // "None", not "pick a default"
     cleared++;
   }
+  // What is left for parts not worn (hair cut off by a hood, hidden parts...) goes too.
+  const kept = (k) => state.locked.has(itemOfKey(k));
+  for (const field of ['offsets', 'clip', 'split', 'sheetParts', 'hidden']) {
+    for (const k of Object.keys(ch[field] || {})) {
+      if (kept(k)) continue;
+      delete ch[field][k];
+      changes++;
+    }
+  }
+  // Parts cut off by a part that is gone show whole again.
+  for (const [k, clip] of Object.entries(ch.clip || {})) if (!ch.parts[clip.by]) delete ch.clip[k];
   for (const field of ['drawOrder', 'sheetTransform']) {
     if (Object.keys(ch[field] || {}).length) changes++;
     ch[field] = {};
@@ -5069,7 +5073,7 @@ $('clear-all').addEventListener('click', () => {
   state.character.colors = {};
   for (const c of Object.values(state.character.itemColors || {})) for (const slot of Object.keys(c)) c[slot] = null;
   if (!cleared && !coloured && !changes) {
-    toast('Nothing to clear: only Body, Face and locked parts are worn, all in their source colours.');
+    toast('Nothing to clear: only locked parts are worn, all in their source colours.');
     return;
   }
   if (state.selectedPart !== ALL_COLOURS && !(itemOfKey(state.selectedPart) in state.character.parts)) state.selectedPart = partOfKey(state.selectedPart);
@@ -5080,7 +5084,7 @@ $('clear-all').addEventListener('click', () => {
     $('clear-all').textContent = 'Clear all';
   }, 10000);
   renderAll();
-  toast(`Took off ${cleared} part${cleared === 1 ? '' : 's'}, set every colour back to Source and undid moves, pieces, draw order and whole-image changes. Body, Face and locked parts stay.`);
+  toast(`Took off ${cleared} part${cleared === 1 ? '' : 's'}, set every colour back to Source and undid moves, pieces, hiding, cut-off parts, draw order and whole-image changes. Locked parts stay.`);
 });
 
 $('randomize').addEventListener('click', () => {
