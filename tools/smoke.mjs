@@ -417,7 +417,17 @@ try {
   await evaluate(`[...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Smoke hair')).querySelector('.set-icon').click()`);
   await sleep(1500);
   check('a set opens bigger', await evaluate(`document.getElementById('set-view').open && document.querySelectorAll('#set-view-pics canvas').length >= 1`));
-  check('a set card has Use, Export and Remove', await evaluate(`(() => { const c = [...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Smoke hair')); return ['Use', 'Export', 'Remove'].every(t => [...c.querySelectorAll('.gallery-buttons button')].some(b => b.textContent === t)); })()`));
+  check('a set card has Use, Edit, Copy, Export and Remove', await evaluate(`(() => { const c = [...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Smoke hair')); return ['Use', 'Edit', 'Copy', 'Export', 'Remove'].every(t => [...c.querySelectorAll('.gallery-buttons button')].some(b => b.textContent === t)); })()`));
+  await evaluate(`[...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Smoke hair')).querySelector('.set-copy').click()`);
+  await sleep(500);
+  check('a set can be copied', await evaluate(`[...document.querySelectorAll('#set-list .set-apply')].some(b => b.textContent === 'Smoke hair (copy)')`));
+  await evaluate(`[...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Smoke hair (copy)')).querySelector('.set-edit').click()`);
+  await sleep(300);
+  await evaluate(`document.getElementById('set-name').value = 'Edited set'; document.querySelector('#set-dialog button[value="ok"]').click()`);
+  await sleep(500);
+  check('a set can be edited (renamed)', await evaluate(`[...document.querySelectorAll('#set-list .set-apply')].some(b => b.textContent === 'Edited set')`));
+  await evaluate(`[...document.querySelectorAll('#set-list .set')].find(s => s.textContent.includes('Edited set')).querySelector('.set-remove').click()`);
+  await sleep(300);
   await evaluate(`document.getElementById('set-view').close()`);
   await evaluate(`document.querySelector('#variants .variant.selected')?.click()`);
   await sleep(500);

@@ -291,6 +291,32 @@ export function makeSet(character, library, name, keys, includeColours = true) {
 export const OWN_PARTS = new Set(['Body', 'Face', 'Ears', 'Eyes', 'Eyebrows', 'Nose', 'Mouth']);
 
 /**
+ * A set with only some of its items (and their positions, colours, pieces and cuts); colours of
+ * slots that no kept item uses are dropped (when the library knows the slots), or all of them.
+ */
+export function trimSet(set, keys, keepColours = true, library = null) {
+  const keep = (k) => keys.some((key) => k === key || k.startsWith(`${key} #`));
+  const only = (obj) => Object.fromEntries(Object.entries(obj || {}).filter(([k]) => keep(k)));
+  const parts = only(set.parts);
+  let colors = keepColours ? { ...(set.colors || {}) } : {};
+  if (keepColours && library) {
+    const used = new Set(usedSlots({ parts }, library).map((s) => s.id));
+    if (used.size) colors = Object.fromEntries(Object.entries(colors).filter(([slot]) => used.has(slot)));
+  }
+  return { ...set, parts, offsets: only(set.offsets), itemColors: keepColours ? only(set.itemColors) : {}, split: only(set.split), clip: only(set.clip), colors };
+}
+
+/**
+ * A set made from a whole character (it has a Body or Face) without the wearer's own parts: sets
+ * made before they were left out. Other sets are returned as they are.
+ */
+export function withoutOwnParts(set) {
+  const keys = Object.keys(set.parts || {});
+  if (!keys.some((k) => partOfKey(k) === 'Body' || partOfKey(k) === 'Face')) return set;
+  return trimSet(set, keys.filter((k) => !OWN_PARTS.has(partOfKey(k))));
+}
+
+/**
  * Puts a set on a character: its items replace the same items, everything else stays. Colours
  * of slots that the parts underneath use too (skin, eyes...) stay the wearer's.
  */

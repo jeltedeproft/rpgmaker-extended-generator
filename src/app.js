@@ -19,7 +19,7 @@ import { lookalikePairs, pairLayers, findLookalikes, compareVariants, difference
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, isGeneratorSettings, itemKeys, addItem, removeItem, creditsFor, creditsText,
-  makeSet, applySet, OWN_PARTS, DEFAULT_RULES, wearChance, shiftShape,
+  makeSet, applySet, trimSet, withoutOwnParts, OWN_PARTS, DEFAULT_RULES, wearChance, shiftShape,
 } from './character.js';
 import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage, pngSize, fileBytes, decodeImage,
@@ -416,6 +416,14 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeMenus();
 });
 $('open-problems').addEventListener('click', () => $('problems').showModal());
+
+if (state.settings.sets?.length) {
+  const fixed = state.settings.sets.map(withoutOwnParts);
+  if (fixed.some((s, i) => s !== state.settings.sets[i])) {
+    state.settings.sets = fixed;
+    saveSettings();
+  }
+}
 
 $('tile-pictures').addEventListener('change', () => {
   state.settings.tilePictures = $('tile-pictures').value;
@@ -2175,7 +2183,7 @@ function backdropFor(variant) {
  */
 async function setIcon(set) {
   if (!state.character || !state.library.variants.size) return null;
-  const { character } = applySet(state.character, set, state.library);
+  const { character } = applySet(setBase(), set, state.library);
   const order = (key) => ICON_ORDER.indexOf(partOfKey(key));
   const items = Object.keys(set.parts).map((key) => ({ key, variant: state.library.variants.get(character.parts[key]) }))
     .filter((i) => i.variant?.icon).sort((a, b) => order(a.key) - order(b.key));
@@ -2195,12 +2203,17 @@ async function setIcon(set) {
   return parts ? out : null;
 }
 
+/** A character wearing nothing, in Source colours: what set pictures are drawn on, so they stay the same. */
+function setBase() {
+  return { ...createCharacter(state.character?.bodyType || 'Male'), colors: {}, itemColors: {} };
+}
+
 /**
  * What a set looks like on its own: only its parts (no body or anything else of the current
  * character), in its colours; colours it doesn't have are the current character's.
  */
 function setCharacter(set) {
-  const worn = applySet(state.character, set, state.library).character;
+  const worn = applySet(setBase(), set, state.library).character;
   return { ...worn, parts: Object.fromEntries(Object.keys(set.parts || {}).map((k) => [k, worn.parts[k]])), drawOrder: {}, sheetTransform: {} };
 }
 
@@ -2269,31 +2282,55 @@ function renderSets() {
       saveSettings();
       renderSets();
     });
+    const copy = el('button', { type: 'button', className: 'small-button set-copy', textContent: 'Copy', title: 'Make a copy of this set, e.g. to change it' });
+    copy.addEventListener('click', () => {
+      state.settings.sets.splice(i + 1, 0, { ...structuredClone(set), name: `${set.name} (copy)` });
+      saveSettings();
+      renderSets();
+    });
+    const edit = el('button', { type: 'button', className: 'small-button set-edit', textContent: 'Edit', title: 'Rename it, or leave parts out of it' });
+    edit.addEventListener('click', () => openSetDialog(i));
     return el('div', { className: 'gallery-card set' }, [
       setPicture(set),
       name,
       el('div', { className: 'muted small', textContent: `${parts.length} part${parts.length === 1 ? '' : 's'}: ${parts.join(', ')}`, title: parts.join(', ') }),
-      el('div', { className: 'gallery-buttons' }, [use, exportOne, remove]),
+      el('div', { className: 'gallery-buttons' }, [use, edit, copy, exportOne, remove]),
     ]);
   }) : [el('div', { className: 'muted small', textContent: 'None yet. Save → Save set keeps some of the current parts, with their colours, to put on any character.' })]));
   $('export-sets').disabled = !sets.length;
 }
 
-function openSetDialog() {
-  const keys = Object.keys(state.character.parts).filter((k) => state.character.parts[k]);
-  $('set-name').value = '';
+/** editing: the index of a saved set to change (its name, which parts stay), or null for a new set. */
+let editingSet = null;
+function openSetDialog(editing = null) {
+  editingSet = typeof editing === 'number' ? editing : null;
+  const set = editingSet === null ? null : state.settings.sets[editingSet];
+  const keys = set ? Object.keys(set.parts) : Object.keys(state.character.parts).filter((k) => state.character.parts[k]);
+  $('set-dialog-title').textContent = set ? `Edit set "${set.name}"` : 'Save as set';
+  $('set-name').value = set ? set.name : '';
+  $('set-colours').checked = set ? !!Object.keys(set.colors || {}).length || !!Object.keys(set.itemColors || {}).length : true;
   $('set-items').replaceChildren(...keys.map((k) => el('label', { className: 'lock' }, [
-    el('input', { type: 'checkbox', value: k, checked: !OWN_PARTS.has(partOfKey(k)) }), ` ${k}`,
+    el('input', { type: 'checkbox', value: k, checked: set ? true : !OWN_PARTS.has(partOfKey(k)) }), ` ${k}`,
   ])));
   $('set-dialog').showModal();
 }
 
-$('save-set').addEventListener('click', openSetDialog);
+$('save-set').addEventListener('click', () => openSetDialog());
 $('set-dialog').addEventListener('close', () => {
   if ($('set-dialog').returnValue !== 'ok') return;
   const keys = [...$('set-items').querySelectorAll('input:checked')].map((i) => i.value);
   if (!keys.length) {
     toast('Not saved: tick at least one part.');
+    return;
+  }
+  if (editingSet !== null) {
+    const old = state.settings.sets[editingSet];
+    const name = $('set-name').value.trim() || old.name;
+    state.settings.sets[editingSet] = { ...trimSet(old, keys, $('set-colours').checked, state.library), name };
+    editingSet = null;
+    saveSettings();
+    renderSets();
+    toast(`Changed the set "${name}".`);
     return;
   }
   const name = $('set-name').value.trim() || keys.join(' + ');
@@ -4102,10 +4139,14 @@ function saveGallery(entries) {
   }
 }
 
+/** The gallery character being edited (Edit on its card): saving updates it instead of adding one. */
+let editingGalleryId = null;
+
 /** Keeps a character in the gallery. Saving again under the same name updates it. */
 function addToGallery(text, name, kind) {
   const entries = galleryEntries();
-  const same = entries.findIndex((e) => e.text === text || (kind === 'saved' && e.kind === 'saved' && e.name === name));
+  const editing = kind === 'saved' && editingGalleryId ? entries.findIndex((e) => e.id === editingGalleryId) : -1;
+  const same = editing >= 0 ? editing : entries.findIndex((e) => e.text === text || (kind === 'saved' && e.kind === 'saved' && e.name === name));
   const entry = { id: same >= 0 ? entries[same].id : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, kind, text, at: Date.now() };
   if (same >= 0) entries.splice(same, 1);
   entries.unshift(entry);
@@ -4344,7 +4385,32 @@ function galleryCard(item, observer) {
   pics.addEventListener('click', load);
   const exportOne = el('button', { type: 'button', className: 'small-button', textContent: 'Export', title: 'Download this character as a file' });
   exportOne.addEventListener('click', () => downloadBlob(new Blob([item.text], { type: 'application/json' }), `${safeFileName(item.name)}.json`));
-  const buttons = [use, exportOne];
+  const buttons = [use];
+  if (item.id) {
+    const edit = el('button', { type: 'button', className: 'small-button gallery-edit', textContent: 'Edit', title: 'Open it to change it: Save → Save character (or Keep current character) then updates this one' });
+    edit.addEventListener('click', async () => {
+      await load();
+      editingGalleryId = item.id;
+      toast(`Editing "${item.name}": Save → Save character updates it in the Gallery.`, 6000);
+    });
+    const copy = el('button', { type: 'button', className: 'small-button gallery-copy', textContent: 'Copy', title: 'Keep a copy of it in the Gallery, e.g. to change one of them' });
+    copy.addEventListener('click', () => {
+      const entries = galleryEntries();
+      const at = entries.findIndex((e) => e.id === item.id);
+      const name = `${item.name} (copy)`;
+      let text = item.text;
+      try {
+        const data = JSON.parse(text);
+        if (data.character) data.character.name = name;
+        text = JSON.stringify(data, null, 2);
+      } catch { /* not ours to rename: keep the text */ }
+      entries.splice(at + 1, 0, { id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, name, kind: 'saved', text, at: Date.now() });
+      saveGallery(entries);
+      renderGallery();
+    });
+    buttons.push(edit, copy);
+  }
+  buttons.push(exportOne);
   if (item.id) {
     const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Remove from the gallery (files on your computer stay)' });
     remove.addEventListener('click', () => {
@@ -5341,6 +5407,7 @@ async function loadCharacterFile(file) {
 
 /** keep: also put it in the gallery (a character file you loaded; not the folder presets). */
 async function loadCharacterText(text, fileName, keep = false) {
+  editingGalleryId = null; // another character: saving adds it (Edit sets this again after loading)
   try {
     const { character, customGradients, missing } = deserializeCharacter(text, state.library, allGradients(), fileName);
     if (keep) addToGallery(text, character.name, 'loaded');

@@ -5,7 +5,7 @@ import { gradientFromStops, splitGradientImage, gradientsToImage, adjustGradient
 import { composeSheet, layersForSheet, orderIndex, moveLayer, countPieces, piecesPerSheet, sheetLayout, placeOnSheet } from '../src/compose.js';
 import { islandLabels } from '../src/islands.js';
 import { solidOf, insideOutline, applyClip } from '../src/clip.js';
-import { shiftShape, randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter, creditsFor, creditsText, makeSet, applySet } from '../src/character.js';
+import { shiftShape, randomize, serializeCharacter, deserializeCharacter, resolveVariant, applyDefaults, createCharacter, creditsFor, creditsText, makeSet, applySet, trimSet, withoutOwnParts } from '../src/character.js';
 import { createLibrary, addPack } from '../src/parse.js';
 
 function solid(w, h, [r, g, b, a]) {
@@ -407,6 +407,19 @@ test('character sets: save some items with their colours, put them on another ch
   assert.equal(worn.colors.hair, 'red');
   // Nobody underneath uses skin: then the set's skin colour is used.
   assert.equal(applySet({ ...target, parts: {} }, withSkin, lib).character.colors.skin, 'pale');
+});
+
+test('a set made from a whole character loses the body, face, eyes...; trimming keeps some items', () => {
+  const set = { name: 'Knight', parts: { Body: 'b', Face: 'f', Eyes: 'e', Clothing: 'c', FrontHair: 'h' },
+    offsets: { Eyes: {}, Clothing: { face: { x: 1 } } }, itemColors: {}, split: {}, clip: { FrontHair: { mode: 'inside', by: 'Clothing' } }, colors: { skin: 's' } };
+  assert.deepEqual(Object.keys(withoutOwnParts(set).parts), ['Clothing', 'FrontHair']);
+  assert.deepEqual(Object.keys(withoutOwnParts(set).offsets), ['Clothing']);
+  const plain = { name: 'Cat eyes', parts: { Eyes: 'e' }, colors: {} };
+  assert.equal(withoutOwnParts(plain), plain); // a set that is only eyes stays
+  const trimmed = trimSet(set, ['Clothing'], false);
+  assert.deepEqual(trimmed.parts, { Clothing: 'c' });
+  assert.deepEqual(trimmed.colors, {});
+  assert.deepEqual(trimmed.clip, {});
 });
 
 test('parts moved together get the same change', () => {
