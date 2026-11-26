@@ -363,13 +363,14 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .template-grid { display: grid; grid-template-columns: auto repeat(4, 64px); gap: 4px 6px; align-items: center; font-size: 12px; }
 .template-grid input { width: 64px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 5px; }
 .template-grid input[hidden] { display: block !important; visibility: hidden; }
-.set-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; overflow: auto; max-height: 64vh; margin-top: 8px; }
+.set-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; overflow: auto; max-height: 64vh; margin-top: 8px; }
+.gallery-card .set-icon { width: auto; height: 104px; cursor: zoom-in; }
+.gallery-card .set-icon canvas { width: auto; height: 96px; max-width: 100%; object-fit: contain; }
+.gallery-card .set-icon.placeholder { font-size: 24px; }
+button.gallery-name { border: 0; background: transparent; padding: 0; text-align: left; font: inherit; font-weight: 600; }
 #gallery-tabs { margin-bottom: 8px; }
 .sets-head { display: flex; justify-content: space-between; align-items: center; color: var(--muted); margin-bottom: 4px; }
 .sets-head .small-button, .sets-io .small-button { margin-top: 0; }
-.set { display: flex; gap: 4px; margin: 3px 0; }
-.set-apply { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; padding: 3px 8px; font-size: 12px; }
-.set-remove { padding: 0 7px; font-size: 11px; color: var(--muted); }
 .set-icon { width: 32px; height: 32px; flex: none; image-rendering: pixelated; border-radius: 4px;
   background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 8px 8px; }
 .set-icon { padding: 0; border: 0; cursor: zoom-in; overflow: hidden; }

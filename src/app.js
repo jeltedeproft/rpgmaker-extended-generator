@@ -2131,14 +2131,18 @@ async function setIcon(set) {
   return parts ? out : null;
 }
 
-/** The character a set makes: the current character wearing it, in its colours. */
+/**
+ * What a set looks like on its own: only its parts (no body or anything else of the current
+ * character), in its colours; colours it doesn't have are the current character's.
+ */
 function setCharacter(set) {
-  return applySet(state.character, set, state.library).character;
+  const worn = applySet(state.character, set, state.library).character;
+  return { ...worn, parts: Object.fromEntries(Object.keys(set.parts || {}).map((k) => [k, worn.parts[k]])), drawOrder: {}, sheetTransform: {} };
 }
 
-/** A set's picture for its row: the icon composite, or its portrait when no part has an icon. */
+/** A set's picture for its card: the icon composite, or its portrait when no part has an icon. */
 function setPicture(set) {
-  const box = el('button', { type: 'button', className: 'set-icon placeholder', textContent: '?', title: `See ${set.name} bigger` });
+  const box = el('button', { type: 'button', className: 'set-icon gallery-pics placeholder', textContent: '?', title: `See ${set.name} bigger, with its portrait and walk sprite` });
   box.addEventListener('click', () => openSetView(set));
   (async () => {
     const pixels = (await setIcon(set)) || (state.character ? (await characterPicture(setCharacter(set), set.customGradients || [])).face : null);
@@ -2156,6 +2160,7 @@ async function openSetView(set) {
   $('set-view-parts').textContent = `Parts: ${Object.keys(set.parts).join(', ')}`;
   const pics = $('set-view-pics');
   pics.replaceChildren(el('p', { className: 'muted small', textContent: 'Drawing...' }));
+  viewedSet = set;
   if (!$('set-view').open) $('set-view').showModal();
   const [icon, { face, sprite }] = await Promise.all([setIcon(set), characterPicture(setCharacter(set), set.customGradients || [])]);
   const figure = (pixels, label, className) => el('figure', { className: 'set-view-pic' }, [
@@ -2163,35 +2168,49 @@ async function openSetView(set) {
   ]);
   pics.replaceChildren(
     icon ? figure(icon, 'Variation icons, layered', 'set-view-icon') : el('p', { className: 'muted small', textContent: 'None of these parts has a Variation icon.' }),
-    ...(face ? [figure(face, 'Portrait', 'set-view-face')] : []),
-    ...(sprite ? [figure(sprite, 'Walk', 'set-view-sprite')] : []),
+    ...(face ? [figure(face, 'Portrait (only the set)', 'set-view-face')] : []),
+    ...(sprite ? [figure(sprite, 'Walk (only the set)', 'set-view-sprite')] : []),
   );
 }
-$('set-view-use').addEventListener('click', () => {
-  const name = $('set-view-title').textContent;
-  [...document.querySelectorAll('#set-list .set-apply')].find((b) => b.textContent === name)?.click();
-});
+let viewedSet = null;
+$('set-view-use').addEventListener('click', () => viewedSet && putOnSet(viewedSet));
 
+function putOnSet(set) {
+  for (const g of set.customGradients || []) {
+    if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(customGradientFromJson(g));
+  }
+  const { character, missing } = applySet(state.character, set, state.library);
+  state.character = character;
+  renderAll();
+  toast(missing.length ? `Put on "${set.name}", but missing: ${missing.join(', ')}` : `Put on "${set.name}".`);
+}
+
+/** Sets as cards, like the characters: a big picture, Use, Export and Remove. */
 function renderSets() {
   const sets = state.settings.sets || [];
   $('set-list').replaceChildren(...(sets.length ? sets.map((set, i) => {
-    const apply = el('button', { className: 'set-apply', textContent: set.name, title: `Put on: ${Object.keys(set.parts).join(', ')}` });
-    apply.addEventListener('click', () => {
-      for (const g of set.customGradients || []) {
-        if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(customGradientFromJson(g));
-      }
-      const { character, missing } = applySet(state.character, set, state.library);
-      state.character = character;
-      renderAll();
-      toast(missing.length ? `Put on "${set.name}", but missing: ${missing.join(', ')}` : `Put on "${set.name}".`);
+    const parts = Object.keys(set.parts);
+    const name = el('button', { type: 'button', className: 'set-apply gallery-name', textContent: set.name, title: `Put on: ${parts.join(', ')}` });
+    name.addEventListener('click', () => putOnSet(set));
+    const use = el('button', { type: 'button', className: 'small-button primary', textContent: 'Use', title: `Put on: ${parts.join(', ')}` });
+    use.addEventListener('click', () => putOnSet(set));
+    const exportOne = el('button', { type: 'button', className: 'small-button', textContent: 'Export', title: 'Download this set as a file; Load → Load set adds it again' });
+    exportOne.addEventListener('click', () => {
+      const json = JSON.stringify({ format: 'rpgmaker-xgen-sets', version: 1, sets: [set] }, null, 2);
+      downloadBlob(new Blob([json], { type: 'application/json' }), `${safeFileName(set.name)}.set.json`);
     });
-    const remove = el('button', { className: 'set-remove', textContent: '✕', title: 'Delete this set' });
+    const remove = el('button', { type: 'button', className: 'small-button set-remove', textContent: 'Remove', title: 'Delete this set' });
     remove.addEventListener('click', () => {
       state.settings.sets.splice(i, 1);
       saveSettings();
       renderSets();
     });
-    return el('div', { className: 'set' }, [setPicture(set), apply, remove]);
+    return el('div', { className: 'gallery-card set' }, [
+      setPicture(set),
+      name,
+      el('div', { className: 'muted small', textContent: `${parts.length} part${parts.length === 1 ? '' : 's'}: ${parts.join(', ')}`, title: parts.join(', ') }),
+      el('div', { className: 'gallery-buttons' }, [use, exportOne, remove]),
+    ]);
   }) : [el('div', { className: 'muted small', textContent: 'None yet. Save → Save set keeps some of the current parts, with their colours, to put on any character.' })]));
   $('export-sets').disabled = !sets.length;
 }
@@ -4257,7 +4276,9 @@ function galleryCard(item, observer) {
   };
   use.addEventListener('click', load);
   pics.addEventListener('click', load);
-  const buttons = [use];
+  const exportOne = el('button', { type: 'button', className: 'small-button', textContent: 'Export', title: 'Download this character as a file' });
+  exportOne.addEventListener('click', () => downloadBlob(new Blob([item.text], { type: 'application/json' }), `${safeFileName(item.name)}.json`));
+  const buttons = [use, exportOne];
   if (item.id) {
     const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Remove from the gallery (files on your computer stay)' });
     remove.addEventListener('click', () => {
