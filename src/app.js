@@ -19,7 +19,7 @@ import { lookalikePairs, pairLayers, findLookalikes, compareVariants, difference
 import {
   createCharacter, applyDefaults, partNames, usedSlots, randomize, resolveVariant,
   serializeCharacter, deserializeCharacter, isGeneratorSettings, itemKeys, addItem, removeItem, creditsFor, creditsText,
-  makeSet, applySet, DEFAULT_RULES, wearChance, shiftShape,
+  makeSet, applySet, OWN_PARTS, DEFAULT_RULES, wearChance, shiftShape,
 } from './character.js';
 import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage, pngSize, fileBytes, decodeImage,
@@ -2200,7 +2200,7 @@ function openSetDialog() {
   const keys = Object.keys(state.character.parts).filter((k) => state.character.parts[k]);
   $('set-name').value = '';
   $('set-items').replaceChildren(...keys.map((k) => el('label', { className: 'lock' }, [
-    el('input', { type: 'checkbox', value: k, checked: !['Body', 'Face'].includes(k) }), ` ${k}`,
+    el('input', { type: 'checkbox', value: k, checked: !OWN_PARTS.has(partOfKey(k)) }), ` ${k}`,
   ])));
   $('set-dialog').showModal();
 }
@@ -4076,7 +4076,8 @@ function jsonKind(text) {
 /** A character file as a set: all its worn items, with their colours and positions. */
 function setFromCharacterFile(file) {
   const { character, customGradients } = deserializeCharacter(file.text, state.library, allGradients(), file.name);
-  const keys = Object.keys(character.parts).filter((k) => character.parts[k]);
+  // Clothes, hair and accessories: not the body, face, eyes... of the character in the file.
+  const keys = Object.keys(character.parts).filter((k) => character.parts[k] && !OWN_PARTS.has(partOfKey(k)));
   const set = makeSet(character, state.library, character.name || file.name.replace(/\.json$/i, ''), keys, true);
   set.customGradients = customGradients.map(customGradientToJson);
   return { set, customGradients };

@@ -284,7 +284,16 @@ export function makeSet(character, library, name, keys, includeColours = true) {
   return set;
 }
 
-/** Puts a set on a character: its items replace the same items, everything else stays. */
+/**
+ * The wearer's own parts: a set made from a whole character leaves them out, so putting it on
+ * changes clothes, hair and accessories, not who wears them.
+ */
+export const OWN_PARTS = new Set(['Body', 'Face', 'Ears', 'Eyes', 'Eyebrows', 'Nose', 'Mouth']);
+
+/**
+ * Puts a set on a character: its items replace the same items, everything else stays. Colours
+ * of slots that the parts underneath use too (skin, eyes...) stay the wearer's.
+ */
 export function applySet(character, set, library) {
   const next = structuredClone({ ...character, offsets: character.offsets || {}, itemColors: character.itemColors || {}, split: character.split || {}, clip: character.clip || {} });
   const missing = [];
@@ -302,7 +311,8 @@ export function applySet(character, set, library) {
     }
   }
   for (const field of ['offsets', 'itemColors', 'split', 'clip']) Object.assign(next[field], structuredClone(set[field] || {}));
-  Object.assign(next.colors, set.colors || {});
+  const underneath = new Set(usedSlots({ parts: Object.fromEntries(Object.entries(next.parts).filter(([k]) => !(k in (set.parts || {})))) }, library).map((s) => s.id));
+  for (const [slot, colour] of Object.entries(set.colors || {})) if (!underneath.has(slot)) next.colors[slot] = colour;
   return { character: next, missing };
 }
 

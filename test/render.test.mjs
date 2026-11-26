@@ -399,6 +399,14 @@ test('character sets: save some items with their colours, put them on another ch
   assert.equal(character.colors.skin, 'dark'); // skin isn't used by hair: kept
   assert.deepEqual(character.offsets.FrontHair, { face: { x: 1, y: 0 } });
   assert.equal(target.parts.FrontHair, undefined); // the original isn't changed
+  // A set that carries a skin colour (clothes with skin showing) keeps the wearer's skin.
+  const withSkin = { ...set, colors: { hair: 'red', skin: 'pale' } };
+  for (const l of lib.variants.get('P/Male/Body/p01').layers) if (l.mask) l.mask.slots = ['skin']; // as read from the mask
+  const worn = applySet(target, withSkin, lib).character;
+  assert.equal(worn.colors.skin, 'dark');
+  assert.equal(worn.colors.hair, 'red');
+  // Nobody underneath uses skin: then the set's skin colour is used.
+  assert.equal(applySet({ ...target, parts: {} }, withSkin, lib).character.colors.skin, 'pale');
 });
 
 test('parts moved together get the same change', () => {
