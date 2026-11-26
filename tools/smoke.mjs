@@ -272,6 +272,13 @@ try {
   await evaluate(`document.querySelector('#layer-list .layer-clip').click()`);
   await sleep(900);
   check('the scissors show it whole again', (await evaluate(faceHash)) === beforeClip && !(await evaluate(`[...document.querySelectorAll('#cover-box input')].some(i => i.checked)`)));
+  // Show everything again: every way of hiding, at once.
+  await evaluate(`(() => { const l = [...document.querySelectorAll('#cover-box label')].find(l => !l.classList.contains('not-worn')); l.querySelector('input').checked = true; l.querySelector('input').dispatchEvent(new Event('change')); })()`);
+  await sleep(900);
+  check('a cut-off part offers Show everything again', await evaluate(`!document.getElementById('layer-show-all').hidden`));
+  await click('#layer-show-all');
+  await sleep(900);
+  check('Show everything again shows it whole', (await evaluate(faceHash)) === beforeClip && await evaluate(`document.getElementById('layer-show-all').hidden`));
 
   // Every part tile has a picture (its Variation icon, or a render of the part itself).
   await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);

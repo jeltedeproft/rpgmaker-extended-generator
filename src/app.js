@@ -1890,8 +1890,12 @@ function layerPicture(layer, sheet) {
 function renderLayers() {
   const sheet = $('layer-sheet').value;
   // Hidden parts keep their place in the list (faded), so they can be shown again where they were.
-  const topFirst = layersForSheet(sheet, { ...state.character, hidden: {} }, state.library).reverse();
-  const isHidden = (item) => !!state.character.hidden?.[item];
+  // Hidden on this image only ("hidden" under Per image) counts too.
+  const shownSheetParts = Object.fromEntries(Object.entries(state.character.sheetParts || {})
+    .map(([k, s]) => [k, Object.fromEntries(Object.entries(s).filter(([, v]) => v !== HIDDEN))]));
+  const topFirst = layersForSheet(sheet, { ...state.character, hidden: {}, sheetParts: shownSheetParts }, state.library).reverse();
+  const isHidden = (item) => !!state.character.hidden?.[item] || state.character.sheetParts?.[item]?.[sheet] === HIDDEN;
+  $('layer-show-all').hidden = !hiddenOrCut().length;
   const custom = !!state.character.drawOrder?.[sheet];
   $('layer-reset').disabled = !custom;
   const selected = state.selectedPart;
@@ -1917,7 +1921,10 @@ function renderLayers() {
   };
   const setHidden = (item, hide) => {
     if (hide) (state.character.hidden ||= {})[item] = true;
-    else delete state.character.hidden?.[item];
+    else {
+      delete state.character.hidden?.[item];
+      if (state.character.sheetParts?.[item]?.[sheet] === HIDDEN) delete state.character.sheetParts[item][sheet];
+    }
     renderAll();
   };
   const tickFor = (item) => {
@@ -2041,6 +2048,26 @@ function renderLayers() {
   }
   $('layer-list').replaceChildren(...rows);
 }
+
+/** Items hidden or cut off in any way: hidden, hidden on one image, or cut off by another part. */
+function hiddenOrCut() {
+  const c = state.character;
+  return [...new Set([
+    ...Object.keys(c.hidden || {}).filter((k) => c.hidden[k]),
+    ...Object.keys(c.clip || {}),
+    ...Object.keys(c.sheetParts || {}).filter((k) => Object.values(c.sheetParts[k]).includes(HIDDEN)),
+  ])];
+}
+
+$('layer-show-all').addEventListener('click', () => {
+  const c = state.character;
+  const items = hiddenOrCut();
+  c.hidden = {};
+  c.clip = {};
+  for (const s of Object.values(c.sheetParts || {})) for (const [sheet, v] of Object.entries(s)) if (v === HIDDEN) delete s[sheet];
+  renderAll();
+  toast(`Showing everything again: ${items.join(', ')}.`);
+});
 
 /** Mask colours in the selected parts that match no colour slot: those pixels can't be recoloured. */
 function unknownMaskColours() {
