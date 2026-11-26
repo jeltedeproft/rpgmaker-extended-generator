@@ -214,10 +214,10 @@ try {
     }
     const hideFirst = await evaluate(`(() => { const r = document.querySelector('#layer-list .layer-group'); const item = r.dataset.item; r.querySelector('.layer-eye').click(); return item; })()`);
     await sleep(800);
-    check('the eye hides a part; it is listed at the end to show it again', await evaluate(`![...document.querySelectorAll('#layer-list .layer-group')].some(r => r.dataset.item === ${JSON.stringify(hideFirst)}) && !!document.querySelector('#layer-list .layer-hidden .layer-eye')`));
-    await evaluate(`document.querySelector('#layer-list .layer-hidden .layer-eye').click()`);
+    check('the eye hides a part; it keeps its place, faded', await evaluate(`(() => { const r = document.querySelector('#layer-list .layer-group'); return r.dataset.item === ${JSON.stringify(hideFirst)} && r.classList.contains('is-hidden'); })()`));
+    await evaluate(`document.querySelector('#layer-list .layer-group.is-hidden .layer-eye').click()`);
     await sleep(800);
-    check('and shows it again', await evaluate(`[...document.querySelectorAll('#layer-list .layer-group')].some(r => r.dataset.item === ${JSON.stringify(hideFirst)}) && !document.querySelector('#layer-list .layer-hidden')`));
+    check('and shows it again', await evaluate(`!document.querySelector('#layer-list .layer-group.is-hidden')`));
   }
   // Cut a sheet into pieces: the body's walk sheet into its four rows.
   {
@@ -262,12 +262,16 @@ try {
   // The other way round, set on the covering part: the face hides the hair that sticks out of it.
   await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Face')).click()`);
   await sleep(600);
-  const covered = await evaluate(`(() => { const ls = [...document.querySelectorAll('#cover-box label')]; const l = ls.find(l => l.textContent.trim() === 'FrontHair') || ls[0]; l.querySelector('input').checked = true; l.querySelector('input').dispatchEvent(new Event('change')); return l.textContent.trim(); })()`);
+  const covered = await evaluate(`(() => { const ls = [...document.querySelectorAll('#cover-box label')]; const l = ls.find(l => l.textContent.trim() === 'FrontHair') || ls.find(l => !l.classList.contains('not-worn')); l.querySelector('input').checked = true; l.querySelector('input').dispatchEvent(new Event('change')); return l.textContent.trim(); })()`);
   await sleep(900);
   check('a part can hide what sticks out of it', (await evaluate(faceHash)) !== beforeClip, covered);
-  await evaluate(`(() => { const i = [...document.querySelectorAll('#cover-box input')].find(i => i.checked); i.checked = false; i.dispatchEvent(new Event('change')); })()`);
+  check('parts not worn now can be ticked too', await evaluate(`document.querySelectorAll('#cover-box label.not-worn').length > 0`));
+  await evaluate(`(() => { const s = document.getElementById('layer-sheet'); s.value = 'FG'; s.dispatchEvent(new Event('change')); })()`);
+  await sleep(300);
+  check('a part cut off by another has scissors under Layers', await evaluate(`!!document.querySelector('#layer-list .layer-clip')`));
+  await evaluate(`document.querySelector('#layer-list .layer-clip').click()`);
   await sleep(900);
-  check('and show it again', (await evaluate(faceHash)) === beforeClip);
+  check('the scissors show it whole again', (await evaluate(faceHash)) === beforeClip && !(await evaluate(`[...document.querySelectorAll('#cover-box input')].some(i => i.checked)`)));
 
   // Every part tile has a picture (its Variation icon, or a render of the part itself).
   await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('Body')).click()`);

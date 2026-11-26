@@ -6,7 +6,7 @@ import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLab
 import { colourMean, matchAdjust, createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
-  layersForSheet, drawId, itemOfKey, frameFor, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
+  layersForSheet, drawId, itemOfKey, frameFor, clipOf, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
@@ -929,9 +929,10 @@ function renderClip() {
   const key = state.selectedPart;
   const clip = state.character.clip?.[key];
   const others = selectedItems(state.character, state.library).map((i) => i.key).filter((k) => k !== itemOfKey(key));
-  $('clip-by').replaceChildren(...others.map((k) => el('option', { value: k, textContent: k })));
+  const missing = clip?.by && !others.includes(clip.by) ? [el('option', { value: clip.by, textContent: `${clip.by} (not worn)` })] : [];
+  $('clip-by').replaceChildren(...others.map((k) => el('option', { value: k, textContent: k })), ...missing);
   $('clip-mode').value = clip?.mode || '';
-  if (clip?.by && others.includes(clip.by)) $('clip-by').value = clip.by;
+  if (clip?.by) $('clip-by').value = clip.by;
   $('clip-by').disabled = !others.length;
   $('clip-by').hidden = !clip?.mode;
   renderCovers(others);
@@ -941,9 +942,12 @@ function renderClip() {
  * The other way round: this part (a hood, hat or mask) hides what sticks out of it. Each ticked
  * part only shows inside this part's outline ("only inside the outline of" set on that part).
  */
-function renderCovers(others) {
+function renderCovers(worn) {
   const key = state.selectedPart;
   const clips = state.character.clip || {};
+  // Every part, also ones not worn now: ticked, they're cut off once you put them on.
+  const own = partOfKey(itemOfKey(key));
+  const others = [...worn, ...partNames(state.library, state.character.bodyType).filter((p) => p !== own && !worn.includes(p))];
   $('cover-box').hidden = !others.length;
   $('cover-box').replaceChildren(el('span', { className: 'small', textContent: 'Hides what sticks out of it:' }), ...others.map((other) => {
     const box = el('input', { type: 'checkbox', checked: clips[other]?.mode === 'inside' && clips[other]?.by === key });
@@ -954,7 +958,8 @@ function renderCovers(others) {
       renderClip();
       renderPreview();
     });
-    return el('label', { className: 'lock move-chip', title: `${other} only shows inside the outline of ${key}` }, [box, ` ${other}`]);
+    const notWorn = !worn.includes(other);
+    return el('label', { className: 'lock move-chip' + (notWorn ? ' not-worn' : ''), title: `${other} only shows inside the outline of ${key}${notWorn ? ' (not worn now: it is cut off once you put it on)' : ''}` }, [box, ` ${other}`]);
   }));
 }
 
@@ -1858,7 +1863,9 @@ function layerPicture(layer, sheet) {
  */
 function renderLayers() {
   const sheet = $('layer-sheet').value;
-  const topFirst = layersForSheet(sheet, state.character, state.library).reverse();
+  // Hidden parts keep their place in the list (faded), so they can be shown again where they were.
+  const topFirst = layersForSheet(sheet, { ...state.character, hidden: {} }, state.library).reverse();
+  const isHidden = (item) => !!state.character.hidden?.[item];
   const custom = !!state.character.drawOrder?.[sheet];
   $('layer-reset').disabled = !custom;
   const selected = state.selectedPart;
@@ -1867,8 +1874,7 @@ function renderLayers() {
   const grouped = [...moveGroup].filter((k) => k !== selected && movesWith(k));
   $('move-group-note').hidden = !grouped.length;
   $('move-group-note').textContent = grouped.length ? `Moves together with: ${grouped.join(', ')} (tick or untick them under Layers).` : '';
-  const hiddenItems = Object.keys(state.character.hidden || {}).filter((k) => state.character.hidden[k] && state.character.parts[k]);
-  if (!topFirst.length && !hiddenItems.length) {
+  if (!topFirst.length) {
     $('layer-list').replaceChildren(el('li', { className: 'muted', textContent: 'No layers on this image.' }));
     return;
   }
@@ -1973,8 +1979,18 @@ function renderLayers() {
       item, ...(many ? [el('span', { className: 'layer-count', textContent: ` ${draws.length}` })] : []),
     ]);
     pick.addEventListener('click', () => pickItem(item));
-    const row = el('li', { className: 'layer-row layer-group' + (item === selectedItem ? ' selected' : ''), title: 'Drag up or down to change the draw order' }, [
-      el('span', { className: 'grip', textContent: '⋮⋮' }), fold, tickFor(item), thumb, pick, eyeFor(item, false), stepButtons(block),
+    // Cut off by another part (hair under a hood): one click shows it whole again.
+    const clip = clipOf(state.character, item);
+    const scissors = clip ? el('button', { type: 'button', className: 'layer-eye layer-clip', textContent: '✂',
+      title: `${item} ${clip.mode === 'inside' ? `only shows inside the outline of ${clip.by}` : clip.mode === 'over' ? `only shows where it overlaps ${clip.by}` : `is hidden where it overlaps ${clip.by}`}: click to show it whole again` }) : '';
+    if (scissors) {
+      scissors.addEventListener('click', () => {
+        delete state.character.clip[item];
+        renderAll();
+      });
+    }
+    const row = el('li', { className: 'layer-row layer-group' + (item === selectedItem ? ' selected' : '') + (isHidden(item) ? ' is-hidden' : ''), title: 'Drag up or down to change the draw order' }, [
+      el('span', { className: 'grip', textContent: '⋮⋮' }), fold, tickFor(item), thumb, pick, scissors, eyeFor(item, isHidden(item)), stepButtons(block),
     ]);
     row.dataset.item = item;
     dragRow(row, block, block[0], block[block.length - 1]);
@@ -1996,14 +2012,6 @@ function renderLayers() {
       dragRow(subRow, [id], id, id);
       rows.push(subRow);
     });
-  }
-  // Hidden parts draw nothing, so they're listed at the end, to show them again.
-  for (const item of hiddenItems) {
-    const pick = el('button', { type: 'button', className: 'layer-name', textContent: `${item} (hidden)`, title: `Pick ${item}` });
-    pick.addEventListener('click', () => pickItem(item));
-    rows.push(el('li', { className: 'layer-row layer-hidden' + (item === selectedItem ? ' selected' : '') }, [
-      el('span', { className: 'grip' }), el('span', { className: 'layer-fold' }), el('span', { className: 'layer-tick-space' }), el('span', { className: 'layer-thumb' }), pick, eyeFor(item, true),
-    ]));
   }
   $('layer-list').replaceChildren(...rows);
 }
