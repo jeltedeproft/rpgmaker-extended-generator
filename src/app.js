@@ -406,6 +406,12 @@ document.addEventListener('keydown', (e) => {
 });
 $('open-problems').addEventListener('click', () => $('problems').showModal());
 
+$('tile-pictures').addEventListener('change', () => {
+  state.settings.tilePictures = $('tile-pictures').value;
+  saveSettings();
+  renderEditor();
+});
+
 // ---------- rendering ----------
 
 function renderAll() {
@@ -591,6 +597,8 @@ async function renderEditor() {
       return b;
     }));
     const sheets = tab ? [tab] : undefined;
+    $('tile-pictures-box').hidden = !!tab || ![...own, ...others].some((v) => v.icon);
+    $('tile-pictures').value = state.settings.tilePictures || 'auto';
     for (const variant of own.filter(shown)) $('variants').append(variantTile(key, variant, sheets));
     if (!$('variants').children.length) $('variants').append(el('p', { className: 'muted small', textContent: `No ${part} parts here${others.some(shown) ? ': see the other body types below' : ''}.` }));
     if (others.some(shown)) {
@@ -612,6 +620,21 @@ async function renderEditor() {
   await ensureVariants(variantsToDecode(state.character, state.library));
   if (token !== state.editorToken) return;
   renderSlots();
+  // The part's colour slots are known now: tiles may switch between icon and part as drawn.
+  if (!isColours) refreshTiles();
+}
+
+/** Whether an item has colours other than Source: then its tiles can show the part as drawn. */
+function itemRecoloured(key) {
+  const worn = state.character.parts[key];
+  if (!worn) return false;
+  return usedSlots({ parts: { [key]: worn } }, state.library).some((s) => itemColor(state.character, key, s.id));
+}
+
+/** Tiles show the Variation icon, or the part as drawn (like the preview): see #tile-pictures. */
+function tileUsesIcon(key) {
+  const mode = state.settings.tilePictures || 'auto';
+  return mode === 'icons' || (mode === 'auto' && !itemRecoloured(key));
 }
 
 /** sheets: the images to draw the tile from, best first (default: portrait, walk, battler, damage). */
@@ -631,9 +654,11 @@ ${variant.id}${selected ? '\nWorn: click again to take it off' : ''}` : 'None' }
     // The part's Variation icon, the picture RPG Maker's own generator shows, recoloured like the
     // part. Parts without one, and the per-image sections, are drawn from their pictures.
     let shown = thumb;
-    const icon = !sheets && variant.icon;
-    if (icon) tile.classList.add('has-icon');
-    tile.refresh = () => (icon ? iconThumbnail(key, variant).catch(() => null) : Promise.resolve(null))
+    tile.refresh = () => {
+      // Decided again on each redraw: recolouring the part switches to the part as drawn.
+      const icon = !sheets && variant.icon && tileUsesIcon(key);
+      tile.classList.toggle('has-icon', !!icon);
+      return (icon ? iconThumbnail(key, variant).catch(() => null) : Promise.resolve(null))
       .then((pixels) => pixels || partThumbnail(key, variant, sheets))
       .then((pixels) => pixels || (variant.icon ? ensureImage(variant.icon) : null))
       .then((pixels) => {
@@ -643,6 +668,7 @@ ${variant.id}${selected ? '\nWorn: click again to take it off' : ''}` : 'None' }
         shown = canvas;
       })
       .catch(() => {});
+    };
     tile.refresh();
   }
   tile.addEventListener('click', async () => {

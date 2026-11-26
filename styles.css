@@ -336,6 +336,8 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .layer-apart { font-size: 10px; flex: none; }
 .layer-row.is-hidden .layer-thumb, .layer-row.is-hidden .layer-name { opacity: .35; }
 .layer-clip { opacity: 1; color: var(--accent); }
+.tile-pictures { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; }
+.tile-pictures select { padding: 2px 6px; font-size: 12px; }
 .move-chip.not-worn { color: var(--muted); }
 .layer-buttons button { padding: 0 5px; font-size: 11px; margin-left: 2px; }
 .part-list button.piece { padding-left: 14px; font-size: 12px; color: var(--muted); }
