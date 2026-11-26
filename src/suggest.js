@@ -27,6 +27,8 @@ export function guessSheet(width, height) {
     const fh = height / rows;
     if (fw === fh) return { sheet, why: `splits into ${cols}×${rows} square frames of ${fw}px, like a ${SHEETS[sheet].label.toLowerCase()} sheet` };
   }
+  // RPG Maker 2000/2003: one character of a charset, 3 x 4 frames of 24 x 32.
+  if (width === 72 && height === 128) return { sheet: 'RM2K', why: '72×128px is one RPG Maker 2000/2003 character (3×4 frames of 24×32)' };
   // RPG Maker XP: 4 x 4 frames of any size, taller than wide (32 x 48 and the like).
   if (height > width && fitsXp(width, height)) return { sheet: 'XP', why: `splits into 4×4 frames of ${width / 4}×${height / 4}px, like an RPG Maker XP character` };
   if (width === height) return { sheet: 'FG', why: 'square, like a face' };

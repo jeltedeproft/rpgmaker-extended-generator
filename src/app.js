@@ -9,7 +9,7 @@ import {
   layersForSheet, drawId, itemOfKey, frameFor, clipOf, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
-import { xpToWalk, walkToXp } from './xp.js';
+import { WALK_LAYOUTS } from './xp.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
 import { groupLayers, topRun, moveBlock, stepBlock } from './layers.js';
@@ -354,7 +354,7 @@ function ensureCharacter() {
 function unsupportedHint(gradientFiles) {
   if (gradientFiles) return `only colour sheets were found (${gradientFiles}); they've been added to the colour lists.`;
   return 'no files are named like MV/MZ generator parts (FG_..., TV_..., SV_...) or VX Ace ones (Face/..., Mini/...). '
-    + 'Generator folders from XP and older are not supported.';
+    + 'RPG Maker XP and 2000/2003 sprites can be assigned by hand (Files → To assign); cut a 2000/2003 charset into its 8 characters first (Cut…).';
 }
 
 /** The Files menu: how many files wait to be assigned, and how many look-alikes there are. */
@@ -1854,9 +1854,10 @@ async function renderPreview() {
   }
   state.extraComposites = extraSheets().filter((x) => !x.off).map((x) => {
     // RPG Maker XP: the walk sheet, as 4 x 4 frames.
-    if (x.base === 'XP') {
+    const other = WALK_LAYOUTS[x.base];
+    if (other) {
       const { image } = composeSheet('TV', state.character, state.library, byId, extraSettings({ ...x, base: 'TV', cols: 3, rows: 4 }));
-      return { sheet: x, image: image && walkToXp(image) };
+      return { sheet: x, image: image && other.fromWalk(image) };
     }
     const { image } = composeSheet(x.base, state.character, state.library, byId, extraSettings(x));
     return { sheet: x, image };
@@ -2489,8 +2490,8 @@ $('import-sets').addEventListener('change', async (e) => {
 function assignFields() {
   const sheet = $('assign-sheet').value;
   return {
-    sheet: sheet === 'XP' ? 'TV' : sheet,
-    xp: sheet === 'XP',
+    sheet: WALK_LAYOUTS[sheet] ? 'TV' : sheet,
+    layout: WALK_LAYOUTS[sheet]?.layout || null,
     part: $('assign-part').value.trim(),
     layer: $('assign-layer').value.replace(/\D+/g, ''),
     pid: $('assign-pid').value.trim(),
@@ -2717,9 +2718,9 @@ let suggestToken = 0;
 async function renderSuggestions(entry, fill = false) {
   const token = ++suggestToken;
   const box = $('assign-suggest');
-  const xp = $('assign-sheet').value === 'XP';
-  const sheet = xp ? 'TV' : $('assign-sheet').value;
-  const pixels = xp && assigningPixels ? xpToWalk(assigningPixels) : assigningPixels;
+  const other = WALK_LAYOUTS[$('assign-sheet').value];
+  const sheet = other ? 'TV' : $('assign-sheet').value;
+  const pixels = other && assigningPixels ? other.toWalk(assigningPixels) : assigningPixels;
   box.replaceChildren();
   if (assigningGuess) box.append(el('span', { className: 'muted', textContent: `Suggested image: ${SHEET_NAMES[assigningGuess.sheet] || 'Variation icon'} (${assigningGuess.why}).` }));
   const fileName = entry.path.split('/').pop();
@@ -2912,17 +2913,18 @@ function applyRememberedAssignments(packName) {
     }
     if (now && now.readAs === a.readAs && now.bodyType === (a.bodyType || 'Default')) continue;
     const file = unassignFile(state.library, packName, path);
-    if (file && !assignFile(state.library, packName, path, file.src, a.readAs, a.bodyType) && a.xp) markXp(packName, path);
+    const layout = a.layout || (a.xp ? 'xp' : null);
+    if (file && !assignFile(state.library, packName, path, file.src, a.readAs, a.bodyType) && layout) markLayout(packName, path, layout);
   }
 }
 
-/** An RPG Maker XP sheet (4 x 4 frames): its picture is read as a 3 x 4 walk sheet. */
-function markXp(packName, path) {
+/** A walk sheet of another RPG Maker (XP, 2000/2003): its picture is read as an MV/MZ walk sheet. */
+function markLayout(packName, path, layout) {
   for (const f of libraryFiles(state.library)) {
     if (f.pack !== packName || f.path !== path) continue;
     const ref = f.role === 'mask' ? f.layer.mask : f.role === 'icon' ? null : f.layer.base;
     if (!ref) continue;
-    ref.xp = true;
+    ref.layout = layout;
     ref.pixels = null;
   }
 }
@@ -3460,8 +3462,9 @@ $('assign-dialog').addEventListener('close', () => {
       toast(error);
       return;
     }
-    if (f.xp) markXp(entry.pack, entry.path);
-    if ($('assign-remember').checked) remember(entry, { readAs, bodyType, ...(f.xp ? { xp: true } : {}) });
+    const layoutField = f.layout ? { layout: f.layout } : {};
+    if (f.layout) markLayout(entry.pack, entry.path, f.layout);
+    if ($('assign-remember').checked) remember(entry, { readAs, bodyType, ...layoutField });
     const parsed = parsePartPath(`${bodyType}/${readAs}`);
     if (mask && parsed.sheet && parsed.sheet !== 'FG' && !parsed.isMask) {
       const maskAs = readAs.replace(/\.png$/i, '_c.png');
@@ -3473,9 +3476,9 @@ $('assign-dialog').addEventListener('close', () => {
     }
     // Its colour mask (or, for a mask, its image) waiting in the list comes along.
     const counterpart = !mask && assignCounterpart(state.library, entry.pack, entry.path, readAs, bodyType);
-    if (counterpart && f.xp) markXp(entry.pack, counterpart.path);
-    if (mask && f.xp) markXp(entry.pack, mask);
-    if (counterpart && $('assign-remember').checked) remember({ pack: entry.pack, path: counterpart.path }, { readAs: counterpart.readAs, bodyType, ...(f.xp ? { xp: true } : {}) });
+    if (counterpart && f.layout) markLayout(entry.pack, counterpart.path, f.layout);
+    if (mask && f.layout) markLayout(entry.pack, mask, f.layout);
+    if (counterpart && $('assign-remember').checked) remember({ pack: entry.pack, path: counterpart.path }, { readAs: counterpart.readAs, bodyType, ...layoutField });
     const along = mask || counterpart ? (parsed.isMask ? `, with its image ${counterpart.path.split('/').pop()}` : `, with its colour mask${counterpart ? ` ${counterpart.path.split('/').pop()}` : ''}`) : '';
     toast(`${entry.path.split('/').pop()}: ${bodyType} ${f.part}${along}.`);
     afterFilesChanged();
@@ -3825,8 +3828,8 @@ async function assignFolder(d, part, bodyType) {
       const stem = f.path.split('/').pop().replace(/\.png$/i, '');
       const mask = /_c$/i.test(stem);
       const guessed = size ? guessSheet(size.w, size.h).sheet : 'TV';
-      const xp = guessed === 'XP';
-      const sheet = xp ? 'TV' : guessed;
+      const layout = WALK_LAYOUTS[guessed]?.layout || null;
+      const sheet = layout ? 'TV' : guessed;
       const readAs = buildPartName({ sheet, part, pid: stem.replace(/_c$/i, ''), mask, cell: 'c1', slotM: sheet === 'FG' ? slot : null });
       if (!parsePartPath(`${bodyType}/${readAs}`)) {
         failed.push(f.path);
@@ -3836,8 +3839,8 @@ async function assignFolder(d, part, bodyType) {
       const error = assignFile(lib, f.pack, f.path, file.src, readAs, bodyType);
       if (error) failed.push(f.path);
       else {
-        if (xp) markXp(f.pack, f.path);
-        remember(f, { readAs, bodyType, ...(xp ? { xp: true } : {}) });
+        if (layout) markLayout(f.pack, f.path, layout);
+        remember(f, { readAs, bodyType, ...(layout ? { layout } : {}) });
         done++;
       }
     }
@@ -5943,7 +5946,7 @@ function showSheetOptions() {
   for (const b of document.querySelectorAll('#export-buttons [data-export^="extra:"]')) b.remove();
   const all = document.querySelector('#export-buttons [data-export="all"]');
   for (const x of extraSheets().filter((s) => !s.off)) {
-    const button = el('button', { textContent: x.name || 'Sheet', title: x.base === 'XP' ? 'Your walk sheet for RPG Maker XP (4 x 4 frames)' : `Your sheet, from the ${SHEET_NAMES[x.base]} parts` });
+    const button = el('button', { textContent: x.name || 'Sheet', title: WALK_LAYOUTS[x.base] ? `Your walk sheet for ${WALK_LAYOUTS[x.base].note}` : `Your sheet, from the ${SHEET_NAMES[x.base]} parts` });
     button.dataset.export = `extra:${x.id}`;
     all.before(button);
   }
@@ -5953,7 +5956,7 @@ function showSheetOptions() {
 function renderExtraPreviews() {
   $('extra-previews').replaceChildren(...(state.extraComposites || []).filter((x) => x.image).map((x) => el('figure', { className: 'wide' }, [
     toCanvas(x.image),
-    el('figcaption', { textContent: `${x.sheet.name || 'Sheet'} (${x.image.width} x ${x.image.height}, ${x.sheet.base === 'XP' ? 'RPG Maker XP, 4 x 4 frames' : `from the ${SHEET_NAMES[x.sheet.base]} parts`})` }),
+    el('figcaption', { textContent: `${x.sheet.name || 'Sheet'} (${x.image.width} x ${x.image.height}, ${WALK_LAYOUTS[x.sheet.base] ? WALK_LAYOUTS[x.sheet.base].note : `from the ${SHEET_NAMES[x.sheet.base]} parts`})` }),
   ])));
 }
 
@@ -5973,7 +5976,7 @@ function renderTemplates() {
   const partsSelect = (value, onChange, xp = false) => {
     const select = el('select', { title: 'Which parts it is made of. RPG Maker XP: the walk sheet as 4 x 4 frames (stand, step, stand, other step)' }, [
       ...SHEET_KEYS.map((s) => el('option', { value: s, textContent: `${SHEET_NAMES[s]} parts`, selected: s === value })),
-      ...(xp ? [el('option', { value: 'XP', textContent: 'Walk, RPG Maker XP', selected: value === 'XP' })] : []),
+      ...(xp ? Object.entries(WALK_LAYOUTS).map(([key, w]) => el('option', { value: key, textContent: w.label, selected: value === key })) : []),
     ]);
     select.addEventListener('change', () => onChange(select.value));
     return select;

@@ -20,6 +20,19 @@ test('an RPG Maker XP character sheet (4 x 4 frames, any size) is suggested as X
   assert.deepEqual([0, 1, 2, 3].map((c) => back.data[(2 * 4 + c) * 4]), [2, 12, 2, 32]); // stand, step, stand, other step
 });
 
+test('RPG Maker 2000/2003: a charset is cut into 8 characters, read with its rows turned', async () => {
+  const { guessGrid } = await import('../src/cut.js');
+  assert.deepEqual(guessGrid(288, 256, 'Chara1.png'), [4, 2]);
+  assert.equal(guessSheet(72, 128).sheet, 'RM2K');
+  const { rm2kToWalk, walkToRm2k } = await import('../src/xp.js');
+  const { createImage } = await import('../src/recolor.js');
+  const sheet = createImage(1, 4);
+  for (let r = 0; r < 4; r++) sheet.data.set([r, 0, 0, 255], r * 4); // rows up, right, down, left
+  const walk = rm2kToWalk(sheet);
+  assert.deepEqual([0, 1, 2, 3].map((r) => walk.data[r * 4]), [2, 3, 1, 0]); // down, left, right, up
+  assert.deepEqual([0, 1, 2, 3].map((r) => walkToRm2k(walk).data[r * 4]), [0, 1, 2, 3]);
+});
+
 test('folder names suggest a part when the file name names none, as asset packs sort them', () => {
   const cases = {
     'Body/Face/Brows/Female Brows/Female Brow 10.png': 'Eyebrows',

@@ -3,7 +3,7 @@
 import { cellOf } from './vxace.js';
 import { splitGradientImage } from './gradients.js';
 import { scanMask } from './recolor.js';
-import { xpToWalk } from './xp.js';
+import { layoutToWalk } from './xp.js';
 
 /** Entries from <input type=file webkitdirectory>. */
 export function entriesFromFileList(fileList) {
@@ -124,7 +124,7 @@ export function ensureImage(ref, isMask = false) {
         ref.full = full;
         return cellOf(ref, 0);
       })
-      : decodeImage(ref.src).then((pixels) => (ref.xp ? xpToWalk(pixels) : pixels)); // XP: 4 x 4 read as 3 x 4
+      : decodeImage(ref.src).then((pixels) => (ref.layout ? layoutToWalk(ref.layout, pixels) : pixels)); // XP, 2000/2003: read as MV/MZ
     pending.set(
       ref,
       decoded.then((pixels) => {
