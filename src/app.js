@@ -4820,6 +4820,15 @@ $('folder-input').addEventListener('change', async (e) => {
   await importEntries(entries, packNameFromEntries(entries));
 });
 
+// Single files without a folder: a pack named after the first file.
+$('files-input').addEventListener('change', async (e) => {
+  const entries = entriesFromFileList(e.target.files);
+  e.target.value = '';
+  if (!entries.length) return;
+  const first = entries[0].path.replace(/\.png$/i, '');
+  await importEntries(entries, entries.length > 1 ? `${first} +${entries.length - 1}` : first);
+});
+
 async function loadSampleKit() {
   try {
     await importEntries(await sampleKitEntries(), 'Sample kit');

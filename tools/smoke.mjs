@@ -176,7 +176,7 @@ try {
   await sleep(300);
   check('Save setup opens from the Save menu, and the menu closes', await evaluate(`document.getElementById('setup-dialog').open && document.querySelector('#save-menu .menu-list').hidden`));
   await evaluate(`document.getElementById('setup-dialog').close()`);
-  check('the Load menu holds character, set, setup and sample kit', await evaluate(`['load-character', 'import-sets', 'import-setup', 'sample-kit'].every(id => document.querySelector('#load-menu .menu-list').contains(document.getElementById(id)))`));
+  check('the Load menu holds files, character, set, setup and sample kit', await evaluate(`['files-input', 'load-character', 'import-sets', 'import-setup', 'sample-kit'].every(id => document.querySelector('#load-menu .menu-list').contains(document.getElementById(id)))`));
   await click('#open-sets');
   await sleep(300);
   check('the sets are in the Gallery, with Export', await evaluate(`document.getElementById('gallery-dialog').open && !document.getElementById('gallery-sets').hidden && !!document.querySelector('#gallery-sets #export-sets')`));
@@ -1302,6 +1302,14 @@ try {
     await sleep(1200);
     check('a painted colour repaints the hair', (await evaluate(faceSig)) !== beforePaint);
     await shot('6-vxace.png');
+  }
+  // Single files, without a folder: a pack of their own.
+  {
+    const root = (await send('DOM.getDocument')).result.root.nodeId;
+    const input = (await send('DOM.querySelector', { nodeId: root, selector: '#files-input' })).result.nodeId;
+    await send('DOM.setFileInputFiles', { nodeId: input, files: [join(process.cwd(), 'sample-kit/Generator/Face/Male/FG_Eyes_p01_c1_m002.png')] });
+    for (let i = 0; i < 20 && !(await evaluate(`/FG_Eyes_p01_c1_m002/.test(document.getElementById('packs').textContent)`)); i++) await sleep(500);
+    check('single files open as a pack of their own', await evaluate(`/FG_Eyes_p01_c1_m002/.test(document.getElementById('packs').textContent)`));
   }
   check('no uncaught errors', errors.length === 0, errors.join(' | '));
 } catch (e) {
