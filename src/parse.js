@@ -580,7 +580,9 @@ export function isPairedMask(library, entry) {
   const stem = MASK_NAME_RE.exec(entry.path.slice(dir.length))?.[1];
   if (!stem) return false;
   const want = `${dir}${stem}.png`.toLowerCase();
-  return library.unrecognized.some((u) => u !== entry && u.pack === entry.pack && u.path.toLowerCase() === want);
+  return library.unrecognized.some((u) => u !== entry && u.pack === entry.pack && u.path.toLowerCase() === want)
+    // The image was read already (it has its own mask, so this one is left over).
+    || !!imageOfMask(library, entry.pack, entry.path);
 }
 
 /** The generator name a loaded file is read as: its own name, or what it was read as. */
@@ -596,6 +598,17 @@ function readName(library, file) {
  */
 export function attachWaitingMasks(library, packName) {
   const moved = [];
+  // A colour mask still waiting to be assigned whose image was read already (named like a part,
+  // or assigned before): it becomes that image's mask, so it doesn't wait in "To assign".
+  for (const u of library.unrecognized.filter((x) => x.pack === packName && MASK_NAME_RE.test(x.path.split('/').pop()))) {
+    const image = imageOfMask(library, packName, u.path);
+    if (!image || (image.layer.mask && !image.layer.mask.auto)) continue;
+    const readAs = readName(library, image).replace(/\.png$/i, '_c.png');
+    const bodyType = image.variant.bodyType;
+    if (assignFile(library, packName, u.path, u.src, readAs, bodyType)) continue;
+    library.readAs.set(`${packName}|${u.path}`, { readAs, bodyType, how: 'odd' });
+    moved.push({ path: u.path, readAs, bodyType, text: `${u.path}: read as the colour mask of ${image.path}, the image of that name next to it` });
+  }
   const waiting = libraryFiles(library).filter((f) => f.pack === packName && f.role === 'mask' && !f.layer.base);
   for (const mask of waiting) {
     const image = imageOfMask(library, packName, mask.path);

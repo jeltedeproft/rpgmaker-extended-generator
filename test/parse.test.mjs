@@ -452,6 +452,20 @@ test('a mask assigned under another variation joins the image it is named after'
   assert.equal(attachWaitingMasks(lib, 'Fur').length, 0);
 });
 
+test('a colour mask waiting next to an image that was read already becomes its mask', () => {
+  const lib = createLibrary();
+  addPack(lib, 'P', ['odd/Hood.png', 'odd/Hood_c.png'].map((path) => ({ path, src: path })));
+  // The image was assigned (remembered from before); its mask still waits.
+  assert.equal(assignFile(lib, 'P', 'odd/Hood.png', 'odd/Hood.png', 'TV_Cloak_p09.png', 'Male'), null);
+  assert.equal(lib.unrecognized.length, 1);
+  assert.ok(isPairedMask(lib, lib.unrecognized[0]));
+  const moved = attachWaitingMasks(lib, 'P');
+  assert.equal(moved.length, 1);
+  assert.equal(moved[0].readAs, 'TV_Cloak_p09_c.png');
+  assert.equal(lib.unrecognized.length, 0);
+  assert.equal(lib.variants.get('P/Male/Cloak/p09').layers[0].mask.path, 'odd/Hood_c.png');
+});
+
 test('a removed file can be taken back to reassign it', () => {
   const lib = createLibrary();
   addPack(lib, 'P', [{ path: 'TV/Male/TV_Hat_p01.png', src: 'a' }]);
