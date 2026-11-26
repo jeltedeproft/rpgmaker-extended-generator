@@ -1,7 +1,28 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createImage, matchSlot } from '../src/recolor.js';
-import { guessSheet, shapeProfile, shapeSimilarity, rankParts, sampleRegion, nameWords, partsInName, maskColourShare, rankWithName, NAME_BONUS, slotForPart } from '../src/suggest.js';
+import { guessSheet, shapeProfile, shapeSimilarity, rankParts, sampleRegion, nameWords, partsInName, partsInPath, maskColourShare, rankWithName, NAME_BONUS, slotForPart } from '../src/suggest.js';
+
+test('folder names suggest a part when the file name names none, as asset packs sort them', () => {
+  const cases = {
+    'Body/Face/Brows/Female Brows/Female Brow 10.png': 'Eyebrows',
+    'Body/Face/Mouths/Unisex Mouths Snouted/Snouted 3.png': 'Mouth',
+    'Body/Face/Noses/Male Noses/Male Nose 1.png': 'Nose',
+    'Body/Head/Female Head/Female Head 2.png': 'Face',
+    'Body/Head/Male Ears/Male Ear 4.png': 'Ears',
+    'Body/Hair/Male Facial Hair/Beard 2.png': 'Beard',
+    'Body/Hair/Female Hair/Female Hair 7.png': 'FrontHair',
+    'Hair/Hair Accessories/Clip 1.png': 'AccB',
+    'Clothing/Headwear/Female Headwear/Witch 1.png': 'AccA',
+    'Clothing/Bodywear/Male Bodywear/Male Bodywear 12.png': 'Clothing',
+    'Clothing/Footwear/Female Footwear/Female Footwear 2.png': 'Clothing',
+    'Clothing/Neckwear/Male Neckwear/Male Neckwear 1.png': 'AccB',
+    'Face/Face Accessories/Male Face Accessories/Monocle 1.png': 'Glasses',
+    'Body/Female Body/Female Body 3.png': 'Body',
+  };
+  for (const [path, part] of Object.entries(cases)) assert.deepEqual(partsInPath(path), [part], path);
+  assert.deepEqual(partsInPath('Clothing/Headwear/Cape 1.png'), ['Cloak']); // the file name goes first
+});
 
 const dot = (img, x, y, rgba = [200, 0, 0, 255]) => img.data.set(rgba, (y * img.width + x) * 4);
 
@@ -67,7 +88,7 @@ test('a part suggests the colour slot RPG Maker uses for it, or for the part it 
   assert.equal(slot('Robe'), 'clothing');
   assert.equal(slot('Cape'), 'cloak');
   assert.equal(slot('Skin'), 'skin'); // named like a slot
-  assert.equal(slot('Hat'), null);
+  assert.equal(slot('Hat'), 'accA'); // hats are RPG Maker's AccA
 });
 
 test('a part the name names is ranked higher, even without a loaded one', () => {

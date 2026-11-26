@@ -508,3 +508,12 @@ test('a file read as a VX Ace part can be reassigned as an MV/MZ part: it leaves
   assert.equal(left[0].pid, 'p02');
   assert.ok(!library.unrecognized.some((u) => u.path === 'Face/Ears01.png'));
 });
+
+test('a folder named with a body type as one of its words suggests that body type', async () => {
+  const { suggestedBody } = await import('../src/parse.js');
+  const words = { words: true };
+  assert.equal(suggestedBody('Body/Face/Brows/Female Brows', ['Female', 'Male'], words), 'Female');
+  assert.equal(suggestedBody('Clothing/Headwear/Male Headwear', ['Female', 'Male'], words), 'Male');
+  assert.equal(suggestedBody('Hair/Hair Accessories', ['Female', 'Male'], words), '');
+  assert.equal(suggestedBody('Body/Face/Brows/Female Brows', ['Female', 'Male']), ''); // moving folders: exact names only
+});

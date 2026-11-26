@@ -41,9 +41,17 @@ export function assignmentBodies(library, created = [], removed = []) {
   return [...names].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }) || (a < b ? -1 : a > b ? 1 : 0));
 }
 
-export function suggestedBody(dir, bodies) {
+/** words: also a folder with the body type as one of its words ("Female Brows"), for assigning. */
+export function suggestedBody(dir, bodies, { words: byWord = false } = {}) {
   for (const segment of dir.split(/[\\/]/).reverse()) {
     const match = bodies.find((b) => b === segment) || bodies.find((b) => b.toLowerCase() === segment.toLowerCase());
+    if (match) return match;
+  }
+  // A folder named with the body type as one of its words: "Female Brows" is Female ("Male" is not
+  // in "Female": whole words only).
+  for (const segment of byWord ? dir.split(/[\/]/).reverse() : []) {
+    const words = segment.toLowerCase().split(/[^a-z0-9]+/);
+    const match = bodies.filter((b) => words.includes(b.toLowerCase())).sort((a, b) => b.length - a.length)[0];
     if (match) return match;
   }
   return '';

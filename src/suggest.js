@@ -113,7 +113,14 @@ const PART_WORDS = {
   clothing: 'Clothing', clothes: 'Clothing', outfit: 'Clothing', shirt: 'Clothing', dress: 'Clothing', robe: 'Clothing', armor: 'Clothing', armour: 'Clothing',
   cloak: 'Cloak', cape: 'Cloak', mantle: 'Cloak',
   glasses: 'Glasses', goggles: 'Glasses', monocle: 'Glasses', spectacles: 'Glasses',
-  body: 'Body', face: 'Face', acca: 'AccA', accb: 'AccB',
+  body: 'Body', face: 'Face', head: 'Face', acca: 'AccA', accb: 'AccB',
+  // Worn things, as asset packs sort them (Headwear, Bodywear, Legwear...).
+  headwear: 'AccA', hat: 'AccA', hats: 'AccA', helmet: 'AccA', helm: 'AccA', hood: 'AccA', crown: 'AccA', tiara: 'AccA', cap: 'AccA', bandana: 'AccA', headband: 'AccA',
+  bodywear: 'Clothing', torso: 'Clothing', top: 'Clothing', tunic: 'Clothing', jacket: 'Clothing', coat: 'Clothing', vest: 'Clothing',
+  legwear: 'Clothing', pants: 'Clothing', trousers: 'Clothing', skirt: 'Clothing', shorts: 'Clothing',
+  footwear: 'Clothing', shoes: 'Clothing', boots: 'Clothing', armwear: 'Clothing', sleeves: 'Clothing',
+  handwear: 'Clothing', gloves: 'Clothing', gauntlets: 'Clothing', uniform: 'Clothing',
+  neckwear: 'AccB', scarf: 'AccB', necklace: 'AccB', collar: 'AccB', earring: 'AccB', earrings: 'AccB', facewear: 'AccB', ribbon: 'AccB', hairpin: 'AccB',
 };
 
 /** The words of a file name: "TV_LongBeard2-dark" -> ["tv", "long", "beard", "dark"]. */
@@ -130,6 +137,8 @@ const WORD_PAIRS = [
   [['back', 'hair'], 'RearHair'], [['eye', 'brow'], 'Eyebrows'], [['face', 'mark'], 'FacialMark'],
   [['facial', 'hair'], 'Beard'], [['animal', 'ear'], 'BeastEars'], [['beast', 'ear'], 'BeastEars'],
   [['accessory', 'a'], 'AccA'], [['accessory', 'b'], 'AccB'],
+  [['hair', 'accessory'], 'AccB'], [['face', 'accessory'], 'Glasses'], [['facial', 'accessory'], 'Glasses'],
+  [['upper', 'facewear'], 'Glasses'],
 ];
 
 /** The words of a part name: "FrontHair" -> ["front", "hair"], "AccA" -> ["acc", "a"]. */
@@ -138,7 +147,8 @@ export function partNameWords(part) {
 }
 
 /** "ears" and "ear" are the same word here. */
-const singular = (w) => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w);
+const singular = (w) => (w.length > 4 && w.endsWith('ies') ? `${w.slice(0, -3)}y`
+  : w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w);
 
 /**
  * Part names in a list of words, however they are written: in one piece ("RearHair", "rearhair"),
@@ -154,7 +164,10 @@ export function partsInWords(words, partNames = [], synonyms = true) {
     if (!found.has(part) || found.get(part).size < ws.length) found.set(part, new Set(ws));
   };
   if (synonyms) {
-    for (const w of words) if (PART_WORDS[w]) add(PART_WORDS[w], [singular(w)]);
+    for (const w of words) {
+    const part = PART_WORDS[w] || PART_WORDS[singular(w)];
+    if (part) add(part, [singular(w)]);
+  }
     for (const [ws, part] of WORD_PAIRS) if (ws.every((x) => have.has(x))) add(part, ws);
   }
   for (const part of new Set([...PART_ORDER, ...partNames])) {
@@ -195,6 +208,19 @@ export function partsInName(fileName, partNames = []) {
   if (found.has('BeastEars')) found.delete('Ears');
   if (found.has('RearHair') && !words.includes('front')) found.delete('FrontHair');
   return [...found.keys()];
+}
+
+/**
+ * Parts a file's path names: its file name first; when that names none, the folders it is in,
+ * the nearest first ("Brows/Female Brows/Female Brow 10.png" -> Eyebrows).
+ */
+export function partsInPath(path, partNames = []) {
+  const pieces = path.split('/').filter(Boolean).reverse();
+  for (const piece of pieces) {
+    const found = partsInName(piece, partNames);
+    if (found.length) return found;
+  }
+  return [];
 }
 
 /**
