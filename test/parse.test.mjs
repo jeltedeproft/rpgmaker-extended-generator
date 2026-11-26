@@ -493,3 +493,18 @@ test('All body types lists every body type\'s parts in the main list', () => {
   assert.deepEqual(all.own.map((v) => v.pid).sort(), ['p01', 'p02', 'p03']);
   assert.equal(all.others.length, 0);
 });
+
+test('a file read as a VX Ace part can be reassigned as an MV/MZ part: it leaves every body type', async () => {
+  const { unassignFile, assignFile } = await import('../src/parse.js');
+  const library = createLibrary();
+  addPack(library, 'Gobbo', [{ path: 'Face/Ears01.png', src: 'x' }, { path: 'Generator/Face/Male/FG_Face_p01.png', src: 'y' }]);
+  const vx = [...library.variants.values()].filter((v) => v.layers.some((l) => l.vxace));
+  assert.ok(vx.length >= 2, 'read as VX Ace for Male and Female');
+  const file = unassignFile(library, 'Gobbo', 'Face/Ears01.png');
+  assert.equal(assignFile(library, 'Gobbo', 'Face/Ears01.png', file.src, 'FG_Ears_p02.png', 'Male'), null);
+  const left = [...library.variants.values()].filter((v) => v.layers.some((l) => l.base?.path === 'Face/Ears01.png'));
+  assert.equal(left.length, 1);
+  assert.ok(!left[0].layers.some((l) => l.vxace));
+  assert.equal(left[0].pid, 'p02');
+  assert.ok(!library.unrecognized.some((u) => u.path === 'Face/Ears01.png'));
+});

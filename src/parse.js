@@ -414,9 +414,19 @@ export function libraryFiles(library) {
  * @returns {{src:any}|null} the file, or null when it isn't in the library
  */
 export function unassignFile(library, packName, path, reason = 'Unassigned') {
-  const found = libraryFiles(library).find((f) => f.pack === packName && f.path === path);
-  if (!found) return library.unrecognized.find((u) => u.pack === packName && u.path === path) || null;
-  const { variant, layer, role, src } = found;
+  const all = libraryFiles(library).filter((f) => f.pack === packName && f.path === path);
+  if (!all.length) return library.unrecognized.find((u) => u.pack === packName && u.path === path) || null;
+  // One file can be in several parts (a VX Ace file is read for Male and Female, its colours as
+  // more layers): it leaves all of them.
+  for (const found of all) takeOut(library, packName, found);
+  library.readAs.delete(`${packName}|${path}`);
+  library.unrecognized = library.unrecognized.filter((u) => !(u.pack === packName && u.path === path));
+  library.unrecognized.push({ pack: packName, path, src: all[0].src, reason });
+  return { src: all[0].src };
+}
+
+/** Takes one reading of a file out of its part (see unassignFile). */
+function takeOut(library, packName, { variant, layer, role }) {
   if (role === 'icon') variant.icon = null;
   if (role === 'mask') layer.mask = null;
   if (role === 'image') {
@@ -438,9 +448,6 @@ export function unassignFile(library, packName, path, reason = 'Unassigned') {
     if (parts && !parts.get(variant.part)?.size) parts.delete(variant.part);
     if (parts && !parts.size) library.bodyTypes.delete(variant.bodyType); // e.g. all Kid parts moved
   }
-  library.readAs.delete(`${packName}|${path}`);
-  library.unrecognized.push({ pack: packName, path, src, reason });
-  return { src };
 }
 
 /**
