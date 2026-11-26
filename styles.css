@@ -369,8 +369,12 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .assign-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 10px; }
 .assign-form .field input, .assign-form .field select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .problems .assign { margin: 0 0 0 4px; padding: 0 6px; font-size: 11px; }
-.template-grid { display: grid; grid-template-columns: auto 130px 96px repeat(4, 64px) auto; gap: 4px 6px; align-items: center; font-size: 12px; }
-.template-grid .tpl-name { width: 130px; }
+.templates-dialog { width: min(820px, calc(100vw - 32px)); overflow-x: hidden; }
+.template-grid { display: grid; grid-template-columns: 22px minmax(110px, 1fr) 130px repeat(4, 64px) 72px; gap: 4px 6px; align-items: center; font-size: 12px; }
+.template-grid .tpl-head { color: var(--muted); font-size: 11px; }
+.template-grid input[type="checkbox"] { margin: 0; justify-self: center; }
+.template-grid .tpl-name { width: 100%; min-width: 0; }
+.template-grid .small-button { margin: 0; }
 .template-grid select { font: inherit; padding: 2px 4px; }
 .extra-previews:empty { display: none; }
 .extra-previews { margin-top: 10px; }
@@ -487,11 +491,16 @@ button.gallery-name { border: 0; background: transparent; padding: 0; text-align
 #face-canvas, #walk-canvas, #sv-canvas, #damage-canvas { cursor: zoom-in; }
 .focus-dialog { width: min(1180px, 96vw); }
 .focus-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 12px; align-items: start; }
-.focus-stage { display: grid; place-items: center; min-height: 420px; max-height: 76vh; overflow: auto; border-radius: 8px;
+html:has(#focus-dialog[open]) { overflow: hidden; }
+.focus-dialog { overscroll-behavior: contain; }
+.focus-zoom { display: inline-flex; gap: 2px; }
+.focus-zoom .small-button { margin: 0; min-width: 28px; }
+.focus-stage { display: grid; place-items: center; height: 70vh; overflow: auto; overscroll-behavior: contain; border-radius: 8px;
   background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 24px 24px; }
-#focus-canvas { image-rendering: pixelated; cursor: grab; outline: none; touch-action: none; }
+#focus-canvas { image-rendering: pixelated; cursor: grab; outline: none; touch-action: none; margin: auto; }
+.focus-stage.panning, .focus-stage.panning #focus-canvas { cursor: move; }
 #focus-canvas.dragging { cursor: grabbing; }
-.focus-side { max-height: 76vh; overflow: auto; display: grid; gap: 6px; }
+.focus-side { max-height: 70vh; overflow: auto; display: grid; gap: 6px; }
 .focus-side details > summary { cursor: pointer; font-weight: 600; font-size: 13px; padding: 4px 0; }
 .focus-side .layer-panel { border: 0; padding: 0; margin: 0; position: static; max-height: none; }
 .focus-side [data-tab] { display: block; }

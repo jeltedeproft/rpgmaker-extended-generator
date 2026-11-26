@@ -98,6 +98,7 @@
         <div class="head-actions">
           <button id="add-item" class="small-button" hidden title="Wear a second one of this part, e.g. two accessories">+ Another</button>
           <button id="remove-item" class="small-button" hidden title="Take off this extra one (e.g. the second accessory). The part stays in the generator">Take off this extra</button>
+          <button id="reassign-part" class="small-button" hidden title="Read as the wrong part, or as a VX Ace part when it is MV/MZ (or the other way)? Tell the generator what its file is">Reassign…</button>
           <button id="remove-part" class="small-button" hidden title="Take this part out of the generator's lists (only this one, not its folder; the file on your computer stays). You're asked first">Remove from generator…</button>
           <label class="lock"><input type="checkbox" id="lock-part"> Lock when randomizing</label>
         </div>
@@ -440,10 +441,15 @@
         <span id="focus-dirs" class="dir-buttons" hidden>
           <button type="button" data-dir="0" title="Down">↓</button><button type="button" data-dir="1" title="Left">←</button><button type="button" data-dir="2" title="Right">→</button><button type="button" data-dir="3" title="Up">↑</button>
         </span>
+        <span class="focus-zoom">
+          <button type="button" id="focus-zoom-out" class="small-button" title="Zoom out (or the mouse wheel)">−</button>
+          <button type="button" id="focus-zoom-fit" class="small-button" title="Fit the window">Fit</button>
+          <button type="button" id="focus-zoom-in" class="small-button" title="Zoom in (or the mouse wheel)">+</button>
+        </span>
         <label class="lock small" title="The grid of the frame, one square per pixel, when it is big enough"><input type="checkbox" id="focus-grid"> pixel grid</label>
         <button value="close" class="small-button">Close</button>
       </div>
-      <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility hides what sticks out of another part.</p>
+      <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Mouse wheel: zoom; right- or middle-drag: pan. Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility hides what sticks out of another part.</p>
       <div class="focus-body">
         <div class="focus-stage"><canvas id="focus-canvas" width="0" height="0" tabindex="0"></canvas></div>
         <div class="focus-side">
@@ -671,16 +677,19 @@
     </form>
   </dialog>
 
-  <dialog id="templates-dialog" class="assign-form-dialog">
+  <dialog id="templates-dialog" class="assign-form-dialog templates-dialog">
     <form method="dialog" class="assign-form">
       <div class="files-head">
         <h3>Sheet templates</h3>
         <button value="close" class="small-button">Close</button>
       </div>
       <p class="muted small">Frame size (and grid) of each sheet. Leave empty for automatic: the body's size and RPG Maker's grid. Sprite parts with other frame sizes are placed frame by frame, centred and standing on the bottom; other parts are centred.</p>
-      <p class="muted small">Untick a sheet to leave it out of the preview and the export, or give it a name of your own. "Add a sheet" makes another one from the parts of a portrait, walk, damage or battler sheet, with a frame size and grid of its own (e.g. a 4 x 4 walk sheet next to RPG Maker's 3 x 4); it is exported as name_sheet.png.</p>
+      <p class="muted small">Untick a sheet to leave it out of the preview and the export, rename it, or pick which parts it is made of. "Add a sheet" makes another one with a frame size and grid of its own (e.g. a 4 x 4 walk sheet next to RPG Maker's 3 x 4, or a face set of 4 x 2 portraits); it is exported as name_sheet.png. A portrait with columns and rows repeats the face in every cell.</p>
       <div id="template-grid" class="template-grid"></div>
-      <div class="dialog-actions"><button type="button" id="add-sheet" class="small-button">+ Add a sheet</button></div>
+      <div class="dialog-actions">
+        <button type="button" id="restore-sheets" class="small-button" hidden>Bring back RPG Maker's sheets</button>
+        <button type="button" id="add-sheet" class="small-button">+ Add a sheet</button>
+      </div>
     </form>
   </dialog>
 

@@ -584,6 +584,11 @@ async function renderEditor() {
   $('add-item').textContent = `+ Another ${part}`;
   $('remove-item').hidden = !isExtra;
   $('remove-part').hidden = isColours || isPiece || !worn;
+  $('reassign-part').hidden = isColours || isPiece || !worn;
+  if (worn) {
+    const v = state.library.variants.get(state.character.parts[itemOfKey(key)]);
+    $('reassign-part').title = `Now read as ${v ? `${v.bodyType} ${v.part} ${v.pid}, ${styleOf(v) === 'vxace' ? 'a VX Ace part' : 'an MV/MZ part'}` : 'unknown'}. Read wrong (another part, or VX Ace instead of MV/MZ)? Tell the generator what its file is`;
+  }
   $('pieces').hidden = !worn || isPiece;
   $('clip-box').hidden = !worn;
   if (worn) renderClip();
@@ -1809,9 +1814,13 @@ async function renderPreview() {
       state.composites[sheet] = null;
       continue;
     }
-    const { image, problems: pr, ...p } = composeSheet(sheet, state.character, state.library, byId, state.settings);
+    // Made of another sheet's parts: drawn as that sheet, in this sheet's template.
+    const base = sheetBase(sheet);
+    const settings = base === sheet ? state.settings
+      : { ...state.settings, templates: { ...(state.settings.templates || {}), [base]: state.settings.templates?.[sheet] } };
+    const { image, problems: pr, ...p } = composeSheet(base, state.character, state.library, byId, settings);
     problems.push(...pr);
-    state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(sheet, image, p.frame) } : null;
+    state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame) } : null;
   }
   state.extraComposites = extraSheets().filter((x) => !x.off).map((x) => {
     const { image } = composeSheet(x.base, state.character, state.library, byId, extraSettings(x));
@@ -3275,6 +3284,23 @@ async function removePartByUser() {
   });
 }
 $('remove-part').addEventListener('click', removePartByUser);
+// Recategorise a part: its one file straight in the assign dialog, several in Files.
+$('reassign-part').addEventListener('click', () => {
+  const variant = state.library.variants.get(state.character.parts[itemOfKey(state.selectedPart)]);
+  if (!variant) return;
+  const files = libraryFiles(state.library).filter((f) => f.variant === variant && f.role === 'image')
+    .filter((f, i, all) => all.findIndex((g) => g.path === f.path) === i);
+  if (files.length === 1) {
+    openAssignDialog(files[0]);
+    return;
+  }
+  // The folder they share, as the search.
+  const paths = files.map((f) => f.path);
+  let common = paths[0] || '';
+  for (const p of paths) while (!p.startsWith(common)) common = common.slice(0, -1);
+  $('files-search').value = common || variant.pid;
+  openFilesDialog('all');
+});
 
 function putPartBack(variant, render = true) {
   variant.removed = false;
@@ -5382,6 +5408,10 @@ $('layer-sheet').addEventListener('change', renderLayers);
 const focusPanels = [['layers', 'focus-layers'], ['slots', 'focus-colours'], ['clip-box', 'focus-visibility']];
 const focusHomes = new Map();
 let focusZoom = 1;
+/** Zoom picked with the wheel or the buttons; null = fit the window. */
+let focusUserZoom = null;
+/** Transparent room shown around the frame, so an outline at its edge isn't cut off. */
+const FOCUS_PAD = 2;
 let focusTimer = 0;
 
 function openFocus(sheet) {
@@ -5394,6 +5424,7 @@ function openFocus(sheet) {
     $(place).append(node);
   }
   $('focus-dirs').hidden = sheet !== 'TV';
+  focusUserZoom = null;
   if (!$('focus-dialog').open) $('focus-dialog').showModal();
   renderLayers();
   drawFocus();
@@ -5459,18 +5490,26 @@ function drawFocus() {
     return;
   }
   const r = focusRect(sheet, c.image, c.frame);
-  focusZoom = Math.max(1, Math.min(16, Math.floor(Math.min(640 / r.w, 560 / r.h))));
-  canvas.width = r.w * focusZoom;
-  canvas.height = r.h * focusZoom;
+  const P = FOCUS_PAD;
+  const stage = canvas.parentElement;
+  const fit = Math.max(1, Math.min(16, Math.floor(Math.min((stage.clientWidth - 16) / (r.w + 2 * P), (stage.clientHeight - 16) / (r.h + 2 * P)))));
+  focusZoom = focusUserZoom || fit;
+  canvas.width = (r.w + 2 * P) * focusZoom;
+  canvas.height = (r.h + 2 * P) * focusZoom;
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(c.canvas, r.x, r.y, r.w, r.h, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(c.canvas, r.x, r.y, r.w, r.h, P * focusZoom, P * focusZoom, r.w * focusZoom, r.h * focusZoom);
+  // The frame's edge: what lies outside it is not in the file.
+  ctx.strokeStyle = 'rgba(128, 128, 128, 0.6)';
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(P * focusZoom - 0.5, P * focusZoom - 0.5, r.w * focusZoom + 1, r.h * focusZoom + 1);
+  ctx.setLineDash([]);
   if ($('focus-grid').checked && focusZoom >= 4) {
     ctx.strokeStyle = 'rgba(128, 128, 128, 0.35)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let x = 0; x <= r.w; x++) { ctx.moveTo(x * focusZoom + 0.5, 0); ctx.lineTo(x * focusZoom + 0.5, canvas.height); }
-    for (let y = 0; y <= r.h; y++) { ctx.moveTo(0, y * focusZoom + 0.5); ctx.lineTo(canvas.width, y * focusZoom + 0.5); }
+    for (let x = 0; x <= r.w; x++) { ctx.moveTo((x + P) * focusZoom + 0.5, P * focusZoom); ctx.lineTo((x + P) * focusZoom + 0.5, (r.h + P) * focusZoom); }
+    for (let y = 0; y <= r.h; y++) { ctx.moveTo(P * focusZoom, (y + P) * focusZoom + 0.5); ctx.lineTo((r.w + P) * focusZoom, (y + P) * focusZoom + 0.5); }
     ctx.stroke();
   }
   const key = focusKey();
@@ -5481,12 +5520,15 @@ function drawFocus() {
   for (const k of Object.keys(state.character.parts)) if (k !== key && k !== itemOfKey(key) && !(k in hidden)) hidden[k] = true;
   const alone = composeSheet(sheet, { ...state.character, hidden }, state.library, gradientsById(), state.settings).image;
   if (!alone || alone.width !== c.image.width || alone.height !== c.image.height) return;
-  const edge = createImage(r.w, r.h);
+  // The outline goes around the part, also outside the frame (the room around it).
+  const ew = r.w + 2 * P;
+  const eh = r.h + 2 * P;
+  const edge = createImage(ew, eh);
   const solid = (x, y) => x >= 0 && y >= 0 && x < r.w && y < r.h && alone.data[((r.y + y) * alone.width + r.x + x) * 4 + 3] > 40;
-  for (let y = 0; y < r.h; y++) {
-    for (let x = 0; x < r.w; x++) {
+  for (let y = -P; y < r.h + P; y++) {
+    for (let x = -P; x < r.w + P; x++) {
       if (solid(x, y)) continue;
-      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) edge.data.set([255, 214, 64, 255], (y * r.w + x) * 4);
+      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) edge.data.set([255, 214, 64, 255], ((y + P) * ew + x + P) * 4);
     }
   }
   ctx.save();
@@ -5495,6 +5537,29 @@ function drawFocus() {
   ctx.drawImage(toCanvas(edge), 0, 0, canvas.width, canvas.height);
   ctx.restore();
 }
+
+/** Zooms the close up, keeping the point under the pointer (fx, fy: 0..1 of the picture) in place. */
+function setFocusZoom(zoom, fx = 0.5, fy = 0.5, clientX = null, clientY = null) {
+  const next = Math.max(1, Math.min(32, Math.round(zoom)));
+  if (next === focusZoom && focusUserZoom) return;
+  focusUserZoom = next;
+  const canvas = $('focus-canvas');
+  const stage = canvas.parentElement;
+  drawFocus();
+  // Scroll so the same spot stays under the pointer (or the middle stays in the middle).
+  const rect = canvas.getBoundingClientRect();
+  const box = stage.getBoundingClientRect();
+  const px = clientX ?? box.left + box.width / 2;
+  const py = clientY ?? box.top + box.height / 2;
+  stage.scrollLeft += rect.left + fx * rect.width - px;
+  stage.scrollTop += rect.top + fy * rect.height - py;
+}
+$('focus-zoom-in').addEventListener('click', () => setFocusZoom(focusZoom + 1));
+$('focus-zoom-out').addEventListener('click', () => setFocusZoom(focusZoom - 1));
+$('focus-zoom-fit').addEventListener('click', () => {
+  focusUserZoom = null;
+  drawFocus();
+});
 
 /** Moves the picked part by (dx, dy) pixels on this image (portrait, or every sprite sheet). */
 function focusNudge(dx, dy) {
@@ -5510,7 +5575,10 @@ function focusNudge(dx, dy) {
   updateOffset();
 }
 
-$('focus-canvas').addEventListener('keydown', (e) => {
+// Arrow keys work wherever you are in the close up (after picking a part under Layers too), but
+// not in a text box or a dropdown.
+$('focus-dialog').addEventListener('keydown', (e) => {
+  if (e.target.closest('input, select, textarea')) return;
   const step = e.shiftKey ? 10 : 1;
   const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
   if (!move) return;
@@ -5520,8 +5588,37 @@ $('focus-canvas').addEventListener('keydown', (e) => {
 {
   let drag = null;
   const canvas = $('focus-canvas');
+  const stage = canvas.parentElement;
+  let pan = null;
+  // Right- or middle-drag pans; the wheel zooms around the pointer.
+  stage.addEventListener('pointerdown', (e) => {
+    if (e.button !== 1 && e.button !== 2) return;
+    e.preventDefault();
+    stage.setPointerCapture(e.pointerId);
+    stage.classList.add('panning');
+    pan = { x: e.clientX, y: e.clientY, left: stage.scrollLeft, top: stage.scrollTop };
+  });
+  stage.addEventListener('pointermove', (e) => {
+    if (!pan) return;
+    stage.scrollLeft = pan.left - (e.clientX - pan.x);
+    stage.scrollTop = pan.top - (e.clientY - pan.y);
+  });
+  const endPan = () => {
+    pan = null;
+    stage.classList.remove('panning');
+  };
+  stage.addEventListener('pointerup', endPan);
+  stage.addEventListener('pointercancel', endPan);
+  stage.addEventListener('contextmenu', (e) => e.preventDefault());
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const fx = (e.clientX - rect.left) / (rect.width || 1);
+    const fy = (e.clientY - rect.top) / (rect.height || 1);
+    setFocusZoom(focusZoom + (e.deltaY < 0 ? 1 : -1), fx, fy, e.clientX, e.clientY);
+  }, { passive: false });
   canvas.addEventListener('pointerdown', (e) => {
-    if (!focusKey()) return;
+    if (e.button !== 0 || !focusKey()) return;
     canvas.focus();
     canvas.setPointerCapture(e.pointerId);
     canvas.classList.add('dragging');
@@ -5564,7 +5661,9 @@ $('sv-motion').addEventListener('change', (e) => (state.svMotion = Number(e.targ
 // Sheet templates: frame size and grid per sheet; blank = automatic.
 /** A built-in sheet's own options: {off, name}. */
 const sheetOption = (sheet) => state.settings.sheetOptions?.[sheet] || {};
-const sheetOn = (sheet) => !sheetOption(sheet).off;
+const sheetOn = (sheet) => !sheetOption(sheet).off && !sheetOption(sheet).removed;
+/** The sheet whose parts a built-in sheet is made of: its own unless picked otherwise. */
+const sheetBase = (sheet) => sheetOption(sheet).base || sheet;
 const sheetLabel = (sheet) => sheetOption(sheet).name || SHEET_NAMES[sheet];
 /** Sheets added in Sheet templates: {id, base, name, off, fw, fh, cols, rows}. */
 const extraSheets = () => state.settings.extraSheets || [];
@@ -5614,72 +5713,70 @@ function sheetsChanged() {
 
 function renderTemplates() {
   const t = state.settings.templates || {};
-  const number = (value, placeholder, hidden, save) => {
-    const i = el('input', { type: 'number', min: 1, max: 1024, value: value || '', placeholder, title: placeholder, className: 'tpl-num' });
-    i.hidden = hidden;
+  const number = (value, placeholder, save) => {
+    const i = el('input', { type: 'number', min: 1, max: 1024, value: value || '', placeholder: 'auto', title: `${placeholder}; empty: automatic`, className: 'tpl-num' });
     i.addEventListener('change', () => save(Math.max(0, Math.min(1024, Math.round(Number(i.value) || 0))) || undefined));
     return i;
   };
-  const builtIn = SHEET_KEYS.flatMap((sheet) => {
+  const partsSelect = (value, onChange) => {
+    const select = el('select', { title: 'Which parts it is made of' }, SHEET_KEYS.map((s) => el('option', { value: s, textContent: `${SHEET_NAMES[s]} parts`, selected: s === value })));
+    select.addEventListener('change', () => onChange(select.value));
+    return select;
+  };
+  /** One row: on, name, parts, width, height, columns, rows, Remove. Every sheet alike. */
+  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove }) => {
+    const tick = el('input', { type: 'checkbox', checked: on, title: 'Untick to leave it out of the preview and the export' });
+    tick.addEventListener('change', () => onToggle(tick.checked));
+    const nameBox = el('input', { type: 'text', className: 'tpl-name', value: name || '', placeholder, title: 'Its name in the preview and on the export button' });
+    nameBox.addEventListener('change', () => onName(nameBox.value.trim()));
+    const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Take this sheet out of the list' });
+    remove.addEventListener('click', onRemove);
+    return [tick, nameBox, partsSelect(base, onBase),
+      ...['fw', 'fh', 'cols', 'rows'].map((f, k) => number(size?.[f], ['width', 'height', 'columns', 'rows'][k], (v) => onSize(f, v))), remove];
+  };
+  const head = ['', 'Name', 'Made of', 'Width', 'Height', 'Columns', 'Rows', ''].map((text) => el('span', { className: 'tpl-head', textContent: text }));
+  const builtIn = SHEET_KEYS.filter((sheet) => !sheetOption(sheet).removed).flatMap((sheet) => {
     const options = () => ((state.settings.sheetOptions ||= {})[sheet] ||= {});
-    const on = el('input', { type: 'checkbox', checked: sheetOn(sheet), title: 'Untick to leave it out of the preview and the export' });
-    on.addEventListener('change', () => {
-      options().off = !on.checked || undefined;
-      sheetsChanged();
+    return row({
+      on: sheetOn(sheet),
+      onToggle: (on) => { options().off = !on || undefined; sheetsChanged(); },
+      name: sheetOption(sheet).name, placeholder: SHEET_NAMES[sheet],
+      onName: (v) => { options().name = v || undefined; sheetsChanged(); },
+      base: sheetBase(sheet),
+      onBase: (v) => { options().base = v === sheet ? undefined : v; sheetsChanged(); },
+      size: t[sheet],
+      onSize: (field, v) => {
+        const templates = (state.settings.templates ||= {});
+        const entry = (templates[sheet] ||= {});
+        entry[field] = v;
+        if (!Object.values(entry).some(Boolean)) delete templates[sheet];
+        saveSettings();
+        if (state.character) renderPreview();
+      },
+      onRemove: () => { options().removed = true; sheetsChanged(); renderTemplates(); },
     });
-    const name = el('input', { type: 'text', className: 'tpl-name', value: sheetOption(sheet).name || '', placeholder: SHEET_NAMES[sheet], title: 'Its name in the preview and on the export button' });
-    name.addEventListener('change', () => {
-      options().name = name.value.trim() || undefined;
-      sheetsChanged();
-    });
-    const save = (field) => (v) => {
-      const templates = (state.settings.templates ||= {});
-      const entry = (templates[sheet] ||= {});
-      entry[field] = v;
-      if (!Object.values(entry).some(Boolean)) delete templates[sheet];
-      saveSettings();
-      if (state.character) renderPreview();
-    };
-    const grid = sheet !== 'FG';
-    return [el('label', { className: 'lock' }, [on, ` ${SHEET_NAMES[sheet]}`]), name, el('span'),
-      number(t[sheet]?.fw, 'width', false, save('fw')), number(t[sheet]?.fh, 'height', false, save('fh')),
-      number(t[sheet]?.cols, 'columns', !grid, save('cols')), number(t[sheet]?.rows, 'rows', !grid, save('rows')), el('span')];
   });
-  const extras = extraSheets().flatMap((x) => {
-    const change = () => sheetsChanged();
-    const on = el('input', { type: 'checkbox', checked: !x.off, title: 'Untick to leave it out of the preview and the export' });
-    on.addEventListener('change', () => {
-      x.off = !on.checked || undefined;
-      change();
-    });
-    const name = el('input', { type: 'text', className: 'tpl-name', value: x.name || '', placeholder: 'name', title: 'Its name; the file is saved as character_name.png' });
-    name.addEventListener('change', () => {
-      x.name = name.value.trim() || 'Sheet';
-      change();
-    });
-    const base = el('select', { title: 'Which parts it is made of' }, SHEET_KEYS.map((s) => el('option', { value: s, textContent: `${SHEET_NAMES[s]} parts`, selected: s === x.base })));
-    base.addEventListener('change', () => {
-      x.base = base.value;
-      change();
-      renderTemplates();
-    });
-    const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Delete this sheet' });
-    remove.addEventListener('click', () => {
-      state.settings.extraSheets = extraSheets().filter((s) => s !== x);
-      change();
-      renderTemplates();
-    });
-    const save = (field) => (v) => {
-      x[field] = v;
-      change();
-    };
-    const grid = x.base !== 'FG';
-    return [el('label', { className: 'lock' }, [on, ' Your sheet']), name, base,
-      number(x.fw, 'width', false, save('fw')), number(x.fh, 'height', false, save('fh')),
-      number(x.cols, 'columns', !grid, save('cols')), number(x.rows, 'rows', !grid, save('rows')), remove];
-  });
-  $('template-grid').replaceChildren(...builtIn, ...extras);
+  const extras = extraSheets().flatMap((x) => row({
+    on: !x.off,
+    onToggle: (on) => { x.off = !on || undefined; sheetsChanged(); },
+    name: x.name, placeholder: 'name',
+    onName: (v) => { x.name = v || 'Sheet'; sheetsChanged(); },
+    base: x.base,
+    onBase: (v) => { x.base = v; sheetsChanged(); },
+    size: x,
+    onSize: (field, v) => { x[field] = v; sheetsChanged(); },
+    onRemove: () => { state.settings.extraSheets = extraSheets().filter((s) => s !== x); sheetsChanged(); renderTemplates(); },
+  }));
+  $('template-grid').replaceChildren(...head, ...builtIn, ...extras);
+  const removed = SHEET_KEYS.filter((s) => sheetOption(s).removed);
+  $('restore-sheets').hidden = !removed.length;
+  $('restore-sheets').textContent = `Bring back ${removed.map((s) => SHEET_NAMES[s]).join(', ')}`;
 }
+$('restore-sheets').addEventListener('click', () => {
+  for (const s of SHEET_KEYS) if (state.settings.sheetOptions?.[s]) delete state.settings.sheetOptions[s].removed;
+  sheetsChanged();
+  renderTemplates();
+});
 $('add-sheet').addEventListener('click', () => {
   const list = (state.settings.extraSheets ||= []);
   list.push({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, base: 'TV', name: `Sheet ${list.length + 1}` });

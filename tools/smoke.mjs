@@ -464,8 +464,8 @@ try {
   check('template can be cleared', await evaluate(`document.getElementById('walk-canvas').width === 48`));
   // Sheets: one turned off and renamed, one added.
   {
-    const rowInputs = `[...document.querySelectorAll('#template-grid > *')]`;
-    await evaluate(`(() => { const c = ${rowInputs}[0].querySelector('input'); c.checked = false; c.dispatchEvent(new Event('change')); })()`);
+    const ticks = `[...document.querySelectorAll('#template-grid input[type=checkbox]')]`;
+    await evaluate(`(() => { const c = ${ticks}[0]; c.checked = false; c.dispatchEvent(new Event('change')); })()`);
     await evaluate(`(() => { const n = document.querySelectorAll('#template-grid .tpl-name')[1]; n.value = 'Overworld'; n.dispatchEvent(new Event('change')); })()`);
     await sleep(900);
     check('a sheet can be turned off and renamed', await evaluate(`document.querySelector('#preview figure[data-sheet="FG"]').hidden && document.querySelector('#export-buttons [data-export="FG"]').hidden && document.querySelector('#preview figure[data-sheet="TV"] .sheet-label').textContent === 'Overworld' && document.querySelector('#export-buttons [data-export="TV"]').textContent === 'Overworld'`));
@@ -475,8 +475,8 @@ try {
     await sleep(1200);
     check('an added sheet is drawn with its own grid and can be exported', await evaluate(`(() => { const c = document.querySelector('#extra-previews canvas'); return !!c && c.width === 128 && c.height === 128 && !!document.querySelector('#export-buttons [data-export^="extra:"]'); })()`),
       await evaluate(`document.getElementById('extra-previews').textContent`));
-    await evaluate(`[...document.querySelectorAll('#template-grid button')].find(b => b.textContent === 'Remove').click()`);
-    await evaluate(`(() => { const c = ${rowInputs}[0].querySelector('input'); c.checked = true; c.dispatchEvent(new Event('change')); const n = document.querySelectorAll('#template-grid .tpl-name')[1]; n.value = ''; n.dispatchEvent(new Event('change')); })()`);
+    await evaluate(`[...document.querySelectorAll('#template-grid button')].filter(b => b.textContent === 'Remove').pop().click()`);
+    await evaluate(`(() => { const c = ${ticks}[0]; c.checked = true; c.dispatchEvent(new Event('change')); const n = document.querySelectorAll('#template-grid .tpl-name')[1]; n.value = ''; n.dispatchEvent(new Event('change')); })()`);
     await sleep(900);
     check('sheets back to normal', await evaluate(`!document.querySelector('#preview figure[data-sheet="FG"]').hidden && !document.querySelector('#extra-previews canvas') && document.querySelector('#export-buttons [data-export="TV"]').textContent === 'Walk'`));
   }

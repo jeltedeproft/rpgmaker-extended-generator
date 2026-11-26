@@ -450,6 +450,22 @@ export function countPieces(character, library, key, gap, settings = null) {
  * @returns {{image:object|null, problems:string[]}}
  */
 export function composeSheet(sheet, character, library, gradientsById, settings) {
+  // A portrait with columns and rows (a face set): the face repeated in every cell.
+  const faceGrid = sheet === 'FG' && settings?.templates?.FG;
+  if (faceGrid && (faceGrid.cols > 1 || faceGrid.rows > 1)) {
+    const cols = faceGrid.cols || 1;
+    const rows = faceGrid.rows || 1;
+    const one = composeSheet(sheet, character, library, gradientsById, { ...settings, templates: { ...settings.templates, FG: { fw: faceGrid.fw, fh: faceGrid.fh } } });
+    if (!one.image) return one;
+    const { width: w, height: h } = one.image;
+    const out = createImage(w * cols, h * rows);
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        for (let y = 0; y < h; y++) out.data.set(one.image.data.subarray(y * w * 4, (y + 1) * w * 4), (((row * h + y) * out.width) + col * w) * 4);
+      }
+    }
+    return { image: out, problems: one.problems, frame: { w, h, cols, rows } };
+  }
   const layers = layersForSheet(sheet, character, library);
   const problems = [];
   if (!layers.length) return { image: null, problems };

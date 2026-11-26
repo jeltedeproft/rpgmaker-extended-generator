@@ -153,6 +153,21 @@ test('fit into RPG Maker size shrinks frames that stick out back to the frame si
   assert.equal(alpha(fitted, 1, 0), 255);
 });
 
+test('a portrait with columns and rows repeats the face in every cell', async () => {
+  const { composeSheet } = await import('../src/compose.js');
+  const library = createLibrary();
+  const face = createImage(4, 4);
+  face.data.set([200, 100, 50, 255], 0);
+  addPack(library, 'k', [{ path: 'Face/Male/FG_Body_p01.png', src: null }]);
+  const v = [...library.variants.values()][0];
+  v.layers[0].base.pixels = face;
+  const character = { bodyType: 'Male', parts: { Body: v.id }, colors: {}, offsets: {}, split: {} };
+  const image = composeSheet('FG', character, library, new Map(), { templates: { FG: { cols: 3, rows: 2 } } }).image;
+  assert.equal(image.width, 12);
+  assert.equal(image.height, 8);
+  assert.equal(alpha(image, 8, 4), 255); // the face's corner pixel in the last cell
+});
+
 test('a whole image can be stretched: width and height sizes of their own', () => {
   const img = createImage(8, 8);
   dot(img, 5, 5);
