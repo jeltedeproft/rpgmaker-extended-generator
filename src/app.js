@@ -12,6 +12,7 @@ import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './rec
 import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
 import { groupLayers, topRun, moveBlock, stepBlock } from './layers.js';
+import { encodeGif } from './gif.js';
 import { CUT_PRESETS, guessGrid, cellRect, cutPath, cropImage, hasPixels, drawnBounds } from './cut.js';
 import { codeOf, emptyEdits, hasEdits, encodeEdits, decodeEdits, paintLine, paintColour, applyEdits } from './maskpaint.js';
 import { colourGroups, makeMask, defaultGroupSlots, MAX_GROUPS, AUTO_SPREAD, iconMask, iconSilhouette, iconPart, isCloseUp, closeUpMask } from './automask.js';
@@ -5468,6 +5469,73 @@ document.querySelector('.export').addEventListener('click', async (e) => {
     if (exportable.length) await downloadImage(gradientsToImage(exportable), `${name}_custom_gradients.png`);
   }
   toast(count ? `Exported ${count} image(s).` : 'Nothing to export for this sheet: no selected part has layers for it.');
+});
+
+// ---------- animated GIFs ----------
+
+/** The plain colour the pictures are on (Background), as [r, g, b]; null when it is checks or none. */
+function gifBackground() {
+  const named = { white: '#ffffff', grey: '#8a8a8a', green: '#3fbf5a', magenta: '#e040c0' };
+  const hex = state.settings.picBg === 'custom' ? state.settings.picBgColour || '#3a6ea5' : named[state.settings.picBg];
+  if (!hex) return null;
+  return [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+}
+
+/**
+ * GIF frames from a composed sheet: each animation step shows the given rows' frames side by side
+ * (one row, or the four walk directions), enlarged `zoom` times.
+ * @param {{image:object, frame:object}} composite
+ * @param {number[][]} steps per step, the [col, row] of each frame shown side by side
+ */
+function gifOf(composite, steps, zoom) {
+  const f = frameOf('', composite.image, composite.frame);
+  const across = steps[0].length;
+  const width = f.w * across * zoom;
+  const height = f.h * zoom;
+  const src = composite.image;
+  const frames = steps.map((cells) => {
+    const out = new Uint8ClampedArray(width * height * 4);
+    cells.forEach(([col, row], n) => {
+      for (let y = 0; y < height; y++) {
+        const sy = row * f.h + Math.floor(y / zoom);
+        for (let x = 0; x < f.w * zoom; x++) {
+          const si = (sy * src.width + col * f.w + Math.floor(x / zoom)) * 4;
+          out.set(src.data.subarray(si, si + 4), (y * width + n * f.w * zoom + x) * 4);
+        }
+      }
+    });
+    return out;
+  });
+  return encodeGif({ width, height, frames, delay: 180, background: gifBackground() });
+}
+
+/** Columns of one animation: RPG Maker's 3-frame walk goes 0, 1, 2, 1; other grids loop. */
+const animationColumns = (cols) => (cols === 3 ? PATTERN : [...Array(cols).keys()]);
+
+$('gif-walk').addEventListener('click', () => {
+  const walk = state.composites.TV;
+  if (!walk) return toast('Nothing to export: no part has a walk sprite.');
+  const f = frameOf('TV', walk.image, walk.frame);
+  const rows = $('walk-all').checked ? [...Array(f.rows).keys()] : [Math.min(state.walkDir, f.rows - 1)];
+  const steps = animationColumns(f.cols).map((col) => rows.map((row) => [col, row]));
+  const name = `${safeFileName(state.character.name)}_walk${rows.length > 1 ? '' : `_${DIRECTIONS[rows[0]]?.toLowerCase() || rows[0]}`}.gif`;
+  downloadBlob(new Blob([gifOf(walk, steps, Number($('gif-zoom').value))], { type: 'image/gif' }), name);
+  toast(`Saved ${name}.`);
+});
+
+$('gif-sv').addEventListener('click', () => {
+  const sv = state.composites.SV;
+  if (!sv) return toast('Nothing to export: no part has a battler.');
+  const f = frameOf('SV', sv.image, sv.frame);
+  const m = state.svMotion;
+  // RPG Maker's battler: 18 motions of 3 frames, in 2 blocks of 9 columns.
+  const steps = f.cols === 9 && f.rows === 6
+    ? PATTERN.map((k) => [[Math.floor(m / 6) * 3 + k, m % 6]])
+    : animationColumns(f.cols).map((col) => [[col, m % f.rows]]);
+  const motion = (SV_MOTIONS[m] || String(m)).toLowerCase();
+  const name = `${safeFileName(state.character.name)}_battler_${motion}.gif`;
+  downloadBlob(new Blob([gifOf(sv, steps, Number($('gif-zoom').value))], { type: 'image/gif' }), name);
+  toast(`Saved ${name}.`);
 });
 
 $('save-character').addEventListener('click', () => {

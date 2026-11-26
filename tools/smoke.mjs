@@ -476,6 +476,13 @@ try {
     await sleep(900);
     check('make room gives bigger frames to an enlarged part', await evaluate(`document.getElementById('walk-canvas').width > 48`), await evaluate(`document.getElementById('walk-canvas').width`));
     await toggle('make-room', false);
+    await toggle('fit-frame', true);
+    await sleep(900);
+    check('fit into RPG Maker size keeps 48px frames and changes the picture', await evaluate(`document.getElementById('walk-canvas').width === 48`) && (await evaluate(walkSigOf('walk-canvas'))) !== roomless);
+    await toggle('fit-frame', false);
+    await click('#gif-walk');
+    await sleep(300);
+    check('a walk GIF is saved', await evaluate(`/_walk_down\.gif/.test(document.getElementById('toast').textContent)`), await evaluate(`document.getElementById('toast').textContent`));
     await toggle('smooth-pixels', true);
     await sleep(900);
     check('pixel-art smoothing redraws a turned part', (await evaluate(walkSigOf('walk-canvas'))) !== roomless);

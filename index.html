@@ -327,7 +327,13 @@
         <button data-export="SV">Battler</button>
         <button data-export="all" class="primary">All</button>
       </div>
-      <p class="muted small">"All" also saves a <code>_credits.txt</code> listing the packs used.</p>
+      <div class="export gif-export">
+        <button type="button" id="gif-walk" title="The walk animation: the direction shown, or all four side by side when All walk directions is ticked">Walk GIF</button>
+        <button type="button" id="gif-sv" title="The battler motion shown (Walk, Wait, Chant...)">Battler GIF</button>
+        <label class="lock" title="Each pixel becomes this many pixels: sprites are small">size
+          <select id="gif-zoom"><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
+      </div>
+      <p class="muted small">"All" also saves a <code>_credits.txt</code> listing the packs used. GIFs are transparent with Background on Checks or Transparent, else on that colour.</p>
       <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>. Battlers go in <code>img/sv_actors</code> and portraits (face pictures) in <code>img/faces</code>.</p>
     </section>
   </main>

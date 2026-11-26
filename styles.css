@@ -478,3 +478,4 @@ button.gallery-name { border: 0; background: transparent; padding: 0; text-align
 #assign-preview { display: block; max-width: 220px; max-height: 160px; object-fit: contain; image-rendering: pixelated; }
 #gallery-dialog { width: min(1000px, 94vw); }
 .set-list > .muted { grid-column: 1 / -1; }
+.gif-export { margin-top: 6px; align-items: center; }
