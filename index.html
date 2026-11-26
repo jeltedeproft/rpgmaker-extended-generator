@@ -611,6 +611,7 @@
         <select id="assign-sheet">
           <option value="FG">Portrait (FG, face picture)</option>
           <option value="TV">Walk (TV)</option>
+          <option value="XP">Walk, RPG Maker XP (4 × 4 frames, any size)</option>
           <option value="TVD">Damage (TVD)</option>
           <option value="SV">Battler (SV)</option>
           <option value="icon">Variation icon</option>
@@ -691,7 +692,7 @@
         <button value="close" class="small-button">Close</button>
       </div>
       <p class="muted small">Frame size (and grid) of each sheet. Leave empty for automatic: the body's size and RPG Maker's grid. Sprite parts with other frame sizes are placed frame by frame, centred and standing on the bottom; other parts are centred.</p>
-      <p class="muted small">Untick a sheet to leave it out of the preview and the export, rename it, or pick which parts it is made of. "Add a sheet" makes another one with a frame size and grid of its own (e.g. a 4 x 4 walk sheet next to RPG Maker's 3 x 4, or a face set of 4 x 2 portraits); it is exported as name_sheet.png. A portrait with columns and rows repeats the face in every cell.</p>
+      <p class="muted small">Untick a sheet to leave it out of the preview and the export, rename it, or pick which parts it is made of. "Add a sheet" makes another one with a frame size and grid of its own (e.g. a face set of 4 x 2 portraits, or "Walk, RPG Maker XP": the walk sheet as XP's 4 x 4 frames); it is exported as name_sheet.png. A portrait with columns and rows repeats the face in every cell.</p>
       <div id="template-grid" class="template-grid"></div>
       <div class="dialog-actions">
         <button type="button" id="restore-sheets" class="small-button" hidden>Bring back RPG Maker's sheets</button>

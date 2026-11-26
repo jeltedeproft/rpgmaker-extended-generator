@@ -3,6 +3,23 @@ import assert from 'node:assert/strict';
 import { createImage, matchSlot } from '../src/recolor.js';
 import { guessSheet, shapeProfile, shapeSimilarity, rankParts, sampleRegion, nameWords, partsInName, partsInPath, maskColourShare, rankWithName, NAME_BONUS, slotForPart } from '../src/suggest.js';
 
+test('an RPG Maker XP character sheet (4 x 4 frames, any size) is suggested as XP', async () => {
+  assert.equal(guessSheet(128, 192).sheet, 'XP');
+  assert.equal(guessSheet(256, 384).sheet, 'XP');
+  assert.equal(guessSheet(144, 192).sheet, 'TV');
+  const { xpToWalk, walkToXp } = await import('../src/xp.js');
+  const { createImage } = await import('../src/recolor.js');
+  // 4 x 4 frames of 1 x 1: frame (col, row) has red = col * 10 + row.
+  const xp = createImage(4, 4);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 4; c++) xp.data.set([c * 10 + r, 0, 0, 255], (r * 4 + c) * 4);
+  const walk = xpToWalk(xp);
+  assert.deepEqual([walk.width, walk.height], [3, 4]);
+  assert.deepEqual([0, 1, 2].map((c) => walk.data[(1 * 3 + c) * 4]), [11, 1, 31]); // step, stand, other step
+  const back = walkToXp(walk);
+  assert.deepEqual([back.width, back.height], [4, 4]);
+  assert.deepEqual([0, 1, 2, 3].map((c) => back.data[(2 * 4 + c) * 4]), [2, 12, 2, 32]); // stand, step, stand, other step
+});
+
 test('folder names suggest a part when the file name names none, as asset packs sort them', () => {
   const cases = {
     'Body/Face/Brows/Female Brows/Female Brow 10.png': 'Eyebrows',

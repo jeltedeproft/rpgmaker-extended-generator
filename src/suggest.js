@@ -3,6 +3,7 @@
 // parts already loaded (hair sits on top of the head, glasses over the eyes, a cloak behind it).
 
 import { DEFAULT_SIZE, SHEETS, PART_ORDER, MAIN_SLOT, SLOTS } from './format.js';
+import { fitsXp } from './xp.js';
 
 /** Side of the coarse grid a shape is compared on. */
 export const PROFILE_SIZE = 12;
@@ -26,6 +27,8 @@ export function guessSheet(width, height) {
     const fh = height / rows;
     if (fw === fh) return { sheet, why: `splits into ${cols}×${rows} square frames of ${fw}px, like a ${SHEETS[sheet].label.toLowerCase()} sheet` };
   }
+  // RPG Maker XP: 4 x 4 frames of any size, taller than wide (32 x 48 and the like).
+  if (height > width && fitsXp(width, height)) return { sheet: 'XP', why: `splits into 4×4 frames of ${width / 4}×${height / 4}px, like an RPG Maker XP character` };
   if (width === height) return { sheet: 'FG', why: 'square, like a face' };
   return { sheet: 'TV', why: 'size matches no image; walk is a guess' };
 }

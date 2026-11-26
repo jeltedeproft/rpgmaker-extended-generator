@@ -9,6 +9,7 @@ import {
   layersForSheet, drawId, itemOfKey, frameFor, clipOf, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
+import { xpToWalk, walkToXp } from './xp.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
 import { groupLayers, topRun, moveBlock, stepBlock } from './layers.js';
@@ -1852,6 +1853,11 @@ async function renderPreview() {
     state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame) } : null;
   }
   state.extraComposites = extraSheets().filter((x) => !x.off).map((x) => {
+    // RPG Maker XP: the walk sheet, as 4 x 4 frames.
+    if (x.base === 'XP') {
+      const { image } = composeSheet('TV', state.character, state.library, byId, extraSettings({ ...x, base: 'TV', cols: 3, rows: 4 }));
+      return { sheet: x, image: image && walkToXp(image) };
+    }
     const { image } = composeSheet(x.base, state.character, state.library, byId, extraSettings(x));
     return { sheet: x, image };
   });
@@ -2481,8 +2487,10 @@ $('import-sets').addEventListener('change', async (e) => {
 // ---------- assigning unrecognised files by hand ----------
 
 function assignFields() {
+  const sheet = $('assign-sheet').value;
   return {
-    sheet: $('assign-sheet').value,
+    sheet: sheet === 'XP' ? 'TV' : sheet,
+    xp: sheet === 'XP',
     part: $('assign-part').value.trim(),
     layer: $('assign-layer').value.replace(/\D+/g, ''),
     pid: $('assign-pid').value.trim(),
@@ -2709,8 +2717,9 @@ let suggestToken = 0;
 async function renderSuggestions(entry, fill = false) {
   const token = ++suggestToken;
   const box = $('assign-suggest');
-  const sheet = $('assign-sheet').value;
-  const pixels = assigningPixels;
+  const xp = $('assign-sheet').value === 'XP';
+  const sheet = xp ? 'TV' : $('assign-sheet').value;
+  const pixels = xp && assigningPixels ? xpToWalk(assigningPixels) : assigningPixels;
   box.replaceChildren();
   if (assigningGuess) box.append(el('span', { className: 'muted', textContent: `Suggested image: ${SHEET_NAMES[assigningGuess.sheet] || 'Variation icon'} (${assigningGuess.why}).` }));
   const fileName = entry.path.split('/').pop();
@@ -2903,7 +2912,18 @@ function applyRememberedAssignments(packName) {
     }
     if (now && now.readAs === a.readAs && now.bodyType === (a.bodyType || 'Default')) continue;
     const file = unassignFile(state.library, packName, path);
-    if (file) assignFile(state.library, packName, path, file.src, a.readAs, a.bodyType);
+    if (file && !assignFile(state.library, packName, path, file.src, a.readAs, a.bodyType) && a.xp) markXp(packName, path);
+  }
+}
+
+/** An RPG Maker XP sheet (4 x 4 frames): its picture is read as a 3 x 4 walk sheet. */
+function markXp(packName, path) {
+  for (const f of libraryFiles(state.library)) {
+    if (f.pack !== packName || f.path !== path) continue;
+    const ref = f.role === 'mask' ? f.layer.mask : f.role === 'icon' ? null : f.layer.base;
+    if (!ref) continue;
+    ref.xp = true;
+    ref.pixels = null;
   }
 }
 
@@ -3440,7 +3460,8 @@ $('assign-dialog').addEventListener('close', () => {
       toast(error);
       return;
     }
-    if ($('assign-remember').checked) remember(entry, { readAs, bodyType });
+    if (f.xp) markXp(entry.pack, entry.path);
+    if ($('assign-remember').checked) remember(entry, { readAs, bodyType, ...(f.xp ? { xp: true } : {}) });
     const parsed = parsePartPath(`${bodyType}/${readAs}`);
     if (mask && parsed.sheet && parsed.sheet !== 'FG' && !parsed.isMask) {
       const maskAs = readAs.replace(/\.png$/i, '_c.png');
@@ -3452,7 +3473,9 @@ $('assign-dialog').addEventListener('close', () => {
     }
     // Its colour mask (or, for a mask, its image) waiting in the list comes along.
     const counterpart = !mask && assignCounterpart(state.library, entry.pack, entry.path, readAs, bodyType);
-    if (counterpart && $('assign-remember').checked) remember({ pack: entry.pack, path: counterpart.path }, { readAs: counterpart.readAs, bodyType });
+    if (counterpart && f.xp) markXp(entry.pack, counterpart.path);
+    if (mask && f.xp) markXp(entry.pack, mask);
+    if (counterpart && $('assign-remember').checked) remember({ pack: entry.pack, path: counterpart.path }, { readAs: counterpart.readAs, bodyType, ...(f.xp ? { xp: true } : {}) });
     const along = mask || counterpart ? (parsed.isMask ? `, with its image ${counterpart.path.split('/').pop()}` : `, with its colour mask${counterpart ? ` ${counterpart.path.split('/').pop()}` : ''}`) : '';
     toast(`${entry.path.split('/').pop()}: ${bodyType} ${f.part}${along}.`);
     afterFilesChanged();
@@ -3801,7 +3824,9 @@ async function assignFolder(d, part, bodyType) {
       const size = await pngSize(f.src).catch(() => null);
       const stem = f.path.split('/').pop().replace(/\.png$/i, '');
       const mask = /_c$/i.test(stem);
-      const sheet = size ? guessSheet(size.w, size.h).sheet : 'TV';
+      const guessed = size ? guessSheet(size.w, size.h).sheet : 'TV';
+      const xp = guessed === 'XP';
+      const sheet = xp ? 'TV' : guessed;
       const readAs = buildPartName({ sheet, part, pid: stem.replace(/_c$/i, ''), mask, cell: 'c1', slotM: sheet === 'FG' ? slot : null });
       if (!parsePartPath(`${bodyType}/${readAs}`)) {
         failed.push(f.path);
@@ -3811,7 +3836,8 @@ async function assignFolder(d, part, bodyType) {
       const error = assignFile(lib, f.pack, f.path, file.src, readAs, bodyType);
       if (error) failed.push(f.path);
       else {
-        remember(f, { readAs, bodyType });
+        if (xp) markXp(f.pack, f.path);
+        remember(f, { readAs, bodyType, ...(xp ? { xp: true } : {}) });
         done++;
       }
     }
@@ -5917,7 +5943,7 @@ function showSheetOptions() {
   for (const b of document.querySelectorAll('#export-buttons [data-export^="extra:"]')) b.remove();
   const all = document.querySelector('#export-buttons [data-export="all"]');
   for (const x of extraSheets().filter((s) => !s.off)) {
-    const button = el('button', { textContent: x.name || 'Sheet', title: `Your sheet, from the ${SHEET_NAMES[x.base]} parts` });
+    const button = el('button', { textContent: x.name || 'Sheet', title: x.base === 'XP' ? 'Your walk sheet for RPG Maker XP (4 x 4 frames)' : `Your sheet, from the ${SHEET_NAMES[x.base]} parts` });
     button.dataset.export = `extra:${x.id}`;
     all.before(button);
   }
@@ -5927,7 +5953,7 @@ function showSheetOptions() {
 function renderExtraPreviews() {
   $('extra-previews').replaceChildren(...(state.extraComposites || []).filter((x) => x.image).map((x) => el('figure', { className: 'wide' }, [
     toCanvas(x.image),
-    el('figcaption', { textContent: `${x.sheet.name || 'Sheet'} (${x.image.width} x ${x.image.height}, from the ${SHEET_NAMES[x.sheet.base]} parts)` }),
+    el('figcaption', { textContent: `${x.sheet.name || 'Sheet'} (${x.image.width} x ${x.image.height}, ${x.sheet.base === 'XP' ? 'RPG Maker XP, 4 x 4 frames' : `from the ${SHEET_NAMES[x.sheet.base]} parts`})` }),
   ])));
 }
 
@@ -5944,20 +5970,23 @@ function renderTemplates() {
     i.addEventListener('change', () => save(Math.max(0, Math.min(1024, Math.round(Number(i.value) || 0))) || undefined));
     return i;
   };
-  const partsSelect = (value, onChange) => {
-    const select = el('select', { title: 'Which parts it is made of' }, SHEET_KEYS.map((s) => el('option', { value: s, textContent: `${SHEET_NAMES[s]} parts`, selected: s === value })));
+  const partsSelect = (value, onChange, xp = false) => {
+    const select = el('select', { title: 'Which parts it is made of. RPG Maker XP: the walk sheet as 4 x 4 frames (stand, step, stand, other step)' }, [
+      ...SHEET_KEYS.map((s) => el('option', { value: s, textContent: `${SHEET_NAMES[s]} parts`, selected: s === value })),
+      ...(xp ? [el('option', { value: 'XP', textContent: 'Walk, RPG Maker XP', selected: value === 'XP' })] : []),
+    ]);
     select.addEventListener('change', () => onChange(select.value));
     return select;
   };
   /** One row: on, name, parts, width, height, columns, rows, Remove. Every sheet alike. */
-  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove }) => {
+  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove, xp = false }) => {
     const tick = el('input', { type: 'checkbox', checked: on, title: 'Untick to leave it out of the preview and the export' });
     tick.addEventListener('change', () => onToggle(tick.checked));
     const nameBox = el('input', { type: 'text', className: 'tpl-name', value: name || '', placeholder, title: 'Its name in the preview and on the export button' });
     nameBox.addEventListener('change', () => onName(nameBox.value.trim()));
     const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Take this sheet out of the list' });
     remove.addEventListener('click', onRemove);
-    return [tick, nameBox, partsSelect(base, onBase),
+    return [tick, nameBox, partsSelect(base, onBase, xp),
       ...['fw', 'fh', 'cols', 'rows'].map((f, k) => number(size?.[f], ['width', 'height', 'columns', 'rows'][k], (v) => onSize(f, v))), remove];
   };
   const head = ['', 'Name', 'Made of', 'Width', 'Height', 'Columns', 'Rows', ''].map((text) => el('span', { className: 'tpl-head', textContent: text }));
@@ -5982,7 +6011,7 @@ function renderTemplates() {
       onRemove: () => { options().removed = true; sheetsChanged(); renderTemplates(); },
     });
   });
-  const extras = extraSheets().flatMap((x) => row({
+  const extras = extraSheets().flatMap((x) => row({ xp: true,
     on: !x.off,
     onToggle: (on) => { x.off = !on || undefined; sheetsChanged(); },
     name: x.name, placeholder: 'name',
