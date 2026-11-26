@@ -337,10 +337,12 @@
       <div class="export gif-export">
         <button type="button" id="gif-walk" title="The walk animation: the direction shown, or all four side by side when All walk directions is ticked">Walk GIF</button>
         <button type="button" id="gif-sv" title="The battler motion shown (Walk, Wait, Chant...)">Battler GIF</button>
+        <button type="button" id="unite-export" title="For RPG Maker Unite: one picture per animation, its frames side by side with 1 pixel around and 2 between. The walk in 4 directions (down, left, right, up), the battler in its 18 motions and the damage poses, in one zip">Unite (zip)</button>
         <label class="lock" title="Each pixel becomes this many pixels: sprites are small">size
           <select id="gif-zoom"><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
       </div>
       <p class="muted small">"All" also saves a <code>_credits.txt</code> listing the packs used. GIFs are transparent with Background on Checks or Transparent, else on that colour.</p>
+      <p class="muted small">"Unite (zip)": a folder per sheet with one picture per animation (walk_down.png, battler_wait.png...), frames side by side as RPG Maker Unite takes them; import them in Unite's asset manager.</p>
       <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>. Battlers go in <code>img/sv_actors</code> and portraits (face pictures) in <code>img/faces</code>.</p>
     </section>
   </main>

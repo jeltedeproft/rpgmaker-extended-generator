@@ -507,6 +507,9 @@ try {
     await click('#gif-walk');
     await sleep(300);
     check('a walk GIF is saved', await evaluate(`/_walk(_[a-z]+)?\.gif/.test(document.getElementById('toast').textContent)`), await evaluate(`document.getElementById('toast').textContent`));
+    await click('#unite-export');
+    await sleep(1500);
+    check('a Unite zip is saved, one picture per animation', await evaluate(`document.getElementById('toast').textContent.includes('_unite.zip: 24 pictures')`), await evaluate(`document.getElementById('toast').textContent`));
     await toggle('smooth-pixels', true);
     await sleep(900);
     check('pixel-art smoothing redraws a turned part', (await evaluate(walkSigOf('walk-canvas'))) !== roomless);

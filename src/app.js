@@ -10,6 +10,7 @@ import {
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { WALK_LAYOUTS } from './xp.js';
+import { uniteStrip, zipFiles } from './unite.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
 import { groupLayers, topRun, moveBlock, stepBlock } from './layers.js';
@@ -6181,6 +6182,45 @@ $('gif-sv').addEventListener('click', () => {
   const name = `${safeFileName(state.character.name)}_battler_${motion}.gif`;
   downloadBlob(new Blob([gifOf(sv, steps, Number($('gif-zoom').value))], { type: 'image/gif' }), name);
   toast(`Saved ${name}.`);
+});
+
+/** A picture as PNG bytes. */
+function pngBytes(image) {
+  return new Promise((resolve) => toCanvas(image).toBlob(async (blob) => resolve(new Uint8Array(await blob.arrayBuffer())), 'image/png'));
+}
+
+// RPG Maker Unite: every animation its own picture (frames side by side), all in one zip.
+$('unite-export').addEventListener('click', async () => {
+  const name = safeFileName(state.character.name);
+  const strips = [];
+  const walk = sheetOn('TV') && state.composites.TV;
+  if (walk) {
+    const f = frameOf('TV', walk.image, walk.frame);
+    for (let row = 0; row < f.rows; row++) {
+      strips.push([`${name}/walk_${(DIRECTIONS[row] || `row${row + 1}`).toLowerCase()}.png`, uniteStrip(walk.image, f, animationColumns(f.cols).map((col) => [col, row]))]);
+    }
+  }
+  const sv = sheetOn('SV') && state.composites.SV;
+  if (sv) {
+    const f = frameOf('SV', sv.image, sv.frame);
+    const motions = f.cols === 9 && f.rows === 6
+      ? SV_MOTIONS.map((motion, m) => [motion, [0, 1, 2].map((k) => [Math.floor(m / 6) * 3 + k, m % 6])])
+      : [...Array(f.rows).keys()].map((row) => [`row${row + 1}`, [...Array(f.cols).keys()].map((col) => [col, row])]);
+    for (const [motion, cells] of motions) strips.push([`${name}/battler_${motion.toLowerCase()}.png`, uniteStrip(sv.image, f, cells)]);
+  }
+  const damage = sheetOn('TVD') && state.composites.TVD;
+  if (damage) {
+    const f = frameOf('TVD', damage.image, damage.frame);
+    strips.push([`${name}/damage.png`, uniteStrip(damage.image, f, [...Array(f.rows).keys()].flatMap((row) => [...Array(f.cols).keys()].map((col) => [col, row])))]);
+  }
+  if (sheetOn('FG') && state.composites.FG) strips.push([`${name}/portrait.png`, state.composites.FG.image]);
+  if (!strips.length) return toast('Nothing to export: no sheet has parts.');
+  await withBusy('Making the Unite pictures', async () => {
+    const files = [];
+    for (const [file, image] of strips) files.push({ name: file, bytes: await pngBytes(image) });
+    downloadBlob(new Blob([zipFiles(files)], { type: 'application/zip' }), `${name}_unite.zip`);
+  });
+  toast(`Saved ${name}_unite.zip: ${strips.length} pictures for RPG Maker Unite.`);
 });
 
 $('save-character').addEventListener('click', () => {
