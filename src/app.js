@@ -5394,7 +5394,16 @@ const showPicBg = () => {
   if (state.settings.picBg) document.documentElement.dataset.picBg = state.settings.picBg;
   else delete document.documentElement.dataset.picBg;
   $('pic-bg').value = state.settings.picBg || '';
+  const colour = state.settings.picBgColour || '#3a6ea5';
+  document.documentElement.style.setProperty('--pic-bg-custom', colour);
+  $('pic-bg-colour').value = colour;
+  $('pic-bg-colour').hidden = state.settings.picBg !== 'custom';
 };
+$('pic-bg-colour').addEventListener('input', (e) => {
+  state.settings.picBgColour = e.target.value;
+  saveSettings();
+  showPicBg();
+});
 showPicBg();
 $('pic-bg').addEventListener('change', (e) => {
   state.settings.picBg = e.target.value || undefined;

@@ -33,6 +33,8 @@
 :root[data-pic-bg="grey"] { --checker-a: #8a8a8a; --checker-b: #8a8a8a; }
 :root[data-pic-bg="green"] { --checker-a: #3fbf5a; --checker-b: #3fbf5a; }
 :root[data-pic-bg="magenta"] { --checker-a: #e040c0; --checker-b: #e040c0; }
+:root[data-pic-bg="none"] { --checker-a: transparent; --checker-b: transparent; }
+:root[data-pic-bg="custom"] { --checker-a: var(--pic-bg-custom); --checker-b: var(--pic-bg-custom); }
 :root[data-pic-bg] .variant canvas, :root[data-pic-bg] .variant .placeholder { background: var(--checker-b); border-radius: 4px; }
 :root[data-pic-bg] .variant canvas, :root[data-pic-bg] .sheet-pick canvas, :root[data-pic-bg] .file-card canvas { filter: none; }
 
