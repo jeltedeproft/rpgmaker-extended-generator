@@ -484,3 +484,17 @@ button.gallery-name { border: 0; background: transparent; padding: 0; text-align
 #gallery-dialog { width: min(1000px, 94vw); }
 .set-list > .muted { grid-column: 1 / -1; }
 .gif-export { margin-top: 6px; align-items: center; }
+#face-canvas, #walk-canvas, #sv-canvas, #damage-canvas { cursor: zoom-in; }
+.focus-dialog { width: min(1180px, 96vw); }
+.focus-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 12px; align-items: start; }
+.focus-stage { display: grid; place-items: center; min-height: 420px; max-height: 76vh; overflow: auto; border-radius: 8px;
+  background: repeating-conic-gradient(var(--checker-a) 0 25%, var(--checker-b) 0 50%) 0 0 / 24px 24px; }
+#focus-canvas { image-rendering: pixelated; cursor: grab; outline: none; touch-action: none; }
+#focus-canvas.dragging { cursor: grabbing; }
+.focus-side { max-height: 76vh; overflow: auto; display: grid; gap: 6px; }
+.focus-side details > summary { cursor: pointer; font-weight: 600; font-size: 13px; padding: 4px 0; }
+.focus-side .layer-panel { border: 0; padding: 0; margin: 0; position: static; max-height: none; }
+.focus-side [data-tab] { display: block; }
+.focus-side [data-tab][hidden] { display: none; }
+@media (max-width: 800px) { .focus-body { grid-template-columns: 1fr; } }
+#focus-note.warn { color: var(--accent); }

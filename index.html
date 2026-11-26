@@ -433,6 +433,28 @@
     </form>
   </dialog>
 
+  <dialog id="focus-dialog" class="focus-dialog">
+    <form method="dialog">
+      <div class="files-head">
+        <h3 id="focus-title">Close up</h3>
+        <span id="focus-dirs" class="dir-buttons" hidden>
+          <button type="button" data-dir="0" title="Down">↓</button><button type="button" data-dir="1" title="Left">←</button><button type="button" data-dir="2" title="Right">→</button><button type="button" data-dir="3" title="Up">↑</button>
+        </span>
+        <label class="lock small" title="The grid of the frame, one square per pixel, when it is big enough"><input type="checkbox" id="focus-grid"> pixel grid</label>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility hides what sticks out of another part.</p>
+      <div class="focus-body">
+        <div class="focus-stage"><canvas id="focus-canvas" width="0" height="0" tabindex="0"></canvas></div>
+        <div class="focus-side">
+          <details open id="focus-layers"><summary>Layers</summary></details>
+          <details id="focus-colours"><summary>Colours</summary></details>
+          <details id="focus-visibility"><summary>Visibility: hide what sticks out</summary></details>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="set-view">
     <form method="dialog">
       <div class="files-head">

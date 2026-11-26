@@ -1947,6 +1947,7 @@ function layerPicture(layer, sheet) {
  * below others; tick parts to move them together with the selected one; the eye hides a part.
  */
 function renderLayers() {
+  scheduleFocus();
   const sheet = $('layer-sheet').value;
   // Hidden parts keep their place in the list (faded), so they can be shown again where they were.
   // Hidden on this image only ("hidden" under Per image) counts too.
@@ -5374,6 +5375,176 @@ $('copy-credits').addEventListener('click', async () => {
 });
 
 $('layer-sheet').addEventListener('change', renderLayers);
+
+// ---------- close up: one image big, the picked part glowing, moved by mouse or arrow keys ----------
+
+/** Panels of the part editor shown in the close up while it is open: [element, its place]. */
+const focusPanels = [['layers', 'focus-layers'], ['slots', 'focus-colours'], ['clip-box', 'focus-visibility']];
+const focusHomes = new Map();
+let focusZoom = 1;
+let focusTimer = 0;
+
+function openFocus(sheet) {
+  if (!state.character) return;
+  if ($('layer-sheet').value !== sheet) $('layer-sheet').value = sheet;
+  // Borrow the Layers, Colours and Visibility panels; they go back on close.
+  for (const [id, place] of focusPanels) {
+    const node = $(id);
+    if (!focusHomes.has(id)) focusHomes.set(id, { parent: node.parentElement, next: node.nextSibling });
+    $(place).append(node);
+  }
+  $('focus-dirs').hidden = sheet !== 'TV';
+  if (!$('focus-dialog').open) $('focus-dialog').showModal();
+  renderLayers();
+  drawFocus();
+  $('focus-canvas').focus();
+}
+
+$('focus-dialog').addEventListener('close', () => {
+  // Opened again before this (late) close event: the panels stay in it.
+  if ($('focus-dialog').open) return;
+  for (const [id] of focusPanels) {
+    const home = focusHomes.get(id);
+    if (home) home.parent.insertBefore($(id), home.next);
+  }
+  focusHomes.clear();
+});
+
+for (const [id, sheet] of [['face-canvas', 'FG'], ['walk-canvas', 'TV'], ['sv-canvas', 'SV'], ['damage-canvas', 'TVD']]) {
+  $(id).title = 'Click: a close up, to move parts with the mouse or the arrow keys';
+  $(id).addEventListener('click', () => openFocus(sheet));
+}
+$('focus-dirs').addEventListener('click', (e) => {
+  const dir = e.target.dataset?.dir;
+  if (dir == null) return;
+  state.walkDir = Number(dir);
+  for (const b of $('dir-buttons').children) b.classList.toggle('active', b.dataset.dir === dir);
+  drawFocus();
+});
+$('focus-grid').addEventListener('change', () => drawFocus());
+
+/** Redraws the close up soon (after the preview is drawn), once however often it is asked. */
+function scheduleFocus() {
+  if (!$('focus-dialog').open) return;
+  clearTimeout(focusTimer);
+  focusTimer = setTimeout(drawFocus, 30);
+}
+
+/** The part moved in the close up: the picked item or piece, when it is worn. */
+function focusKey() {
+  const key = state.selectedPart;
+  return key && key !== ALL_COLOURS && wornKeys().includes(key) ? key
+    : key && key !== ALL_COLOURS && state.character.parts[key] ? key : null;
+}
+
+/** The part of a sheet the close up shows: a portrait or damage strip whole, a sprite's standing frame. */
+function focusRect(sheet, image, frame) {
+  if (sheet === 'FG' || sheet === 'TVD' || !frame) return { x: 0, y: 0, w: image.width, h: image.height };
+  const f = frameOf(sheet, image, frame);
+  if (sheet === 'TV') return { x: (f.cols === 3 ? 1 : 0) * f.w, y: Math.min(state.walkDir, f.rows - 1) * f.h, w: f.w, h: f.h };
+  const m = state.svMotion;
+  const col = f.cols === 9 && f.rows === 6 ? Math.floor(m / 6) * 3 + 1 : 0;
+  return { x: col * f.w, y: (f.cols === 9 && f.rows === 6 ? m % 6 : m % f.rows) * f.h, w: f.w, h: f.h };
+}
+
+function drawFocus() {
+  if (!$('focus-dialog').open || !state.character) return;
+  const sheet = $('layer-sheet').value;
+  const c = state.composites[sheet];
+  const canvas = $('focus-canvas');
+  $('focus-title').textContent = `Close up: ${sheetLabel(sheet)}`;
+  if (!c) {
+    canvas.width = 0;
+    canvas.height = 0;
+    return;
+  }
+  const r = focusRect(sheet, c.image, c.frame);
+  focusZoom = Math.max(1, Math.min(16, Math.floor(Math.min(640 / r.w, 560 / r.h))));
+  canvas.width = r.w * focusZoom;
+  canvas.height = r.h * focusZoom;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(c.canvas, r.x, r.y, r.w, r.h, 0, 0, canvas.width, canvas.height);
+  if ($('focus-grid').checked && focusZoom >= 4) {
+    ctx.strokeStyle = 'rgba(128, 128, 128, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = 0; x <= r.w; x++) { ctx.moveTo(x * focusZoom + 0.5, 0); ctx.lineTo(x * focusZoom + 0.5, canvas.height); }
+    for (let y = 0; y <= r.h; y++) { ctx.moveTo(0, y * focusZoom + 0.5); ctx.lineTo(canvas.width, y * focusZoom + 0.5); }
+    ctx.stroke();
+  }
+  const key = focusKey();
+  $('focus-note').classList.toggle('warn', !key);
+  if (!key) return;
+  // The picked part alone: everything else hidden. Its outline glows.
+  const hidden = Object.fromEntries(wornKeys().filter((k) => k !== key && itemOfKey(k) !== key && k !== itemOfKey(key)).map((k) => [k, true]));
+  for (const k of Object.keys(state.character.parts)) if (k !== key && k !== itemOfKey(key) && !(k in hidden)) hidden[k] = true;
+  const alone = composeSheet(sheet, { ...state.character, hidden }, state.library, gradientsById(), state.settings).image;
+  if (!alone || alone.width !== c.image.width || alone.height !== c.image.height) return;
+  const edge = createImage(r.w, r.h);
+  const solid = (x, y) => x >= 0 && y >= 0 && x < r.w && y < r.h && alone.data[((r.y + y) * alone.width + r.x + x) * 4 + 3] > 40;
+  for (let y = 0; y < r.h; y++) {
+    for (let x = 0; x < r.w; x++) {
+      if (solid(x, y)) continue;
+      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) edge.data.set([255, 214, 64, 255], (y * r.w + x) * 4);
+    }
+  }
+  ctx.save();
+  ctx.shadowColor = 'rgba(255, 214, 64, 0.95)';
+  ctx.shadowBlur = Math.max(6, focusZoom * 2);
+  ctx.drawImage(toCanvas(edge), 0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
+
+/** Moves the picked part by (dx, dy) pixels on this image (portrait, or every sprite sheet). */
+function focusNudge(dx, dy) {
+  const key = focusKey();
+  if (!key || (!dx && !dy)) return;
+  if (state.selectedPart !== key) return;
+  const prefix = $('layer-sheet').value === 'FG' ? 'off-face' : 'off-sprite';
+  for (const [axis, d] of [['x', dx], ['y', dy]]) {
+    if (!d) continue;
+    const input = $(`${prefix}-${axis}`);
+    input.value = Math.max(-64, Math.min(64, (Number(input.value) || 0) + d));
+  }
+  updateOffset();
+}
+
+$('focus-canvas').addEventListener('keydown', (e) => {
+  const step = e.shiftKey ? 10 : 1;
+  const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+  if (!move) return;
+  e.preventDefault();
+  focusNudge(...move);
+});
+{
+  let drag = null;
+  const canvas = $('focus-canvas');
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!focusKey()) return;
+    canvas.focus();
+    canvas.setPointerCapture(e.pointerId);
+    canvas.classList.add('dragging');
+    drag = { x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    // Screen pixels to image pixels: the canvas may be shown smaller than it is.
+    const scale = focusZoom * (canvas.getBoundingClientRect().width / canvas.width || 1);
+    const dx = Math.round((e.clientX - drag.x) / scale);
+    const dy = Math.round((e.clientY - drag.y) / scale);
+    if (dx === drag.dx && dy === drag.dy) return;
+    focusNudge(dx - drag.dx, dy - drag.dy);
+    drag.dx = dx;
+    drag.dy = dy;
+  });
+  const end = () => {
+    drag = null;
+    canvas.classList.remove('dragging');
+  };
+  canvas.addEventListener('pointerup', end);
+  canvas.addEventListener('pointercancel', end);
+}
 $('layer-reset').addEventListener('click', () => {
   delete state.character.drawOrder?.[$('layer-sheet').value];
   renderPreview();

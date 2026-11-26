@@ -511,6 +511,26 @@ try {
     check('frames are back to 48px', await evaluate(`document.getElementById('walk-canvas').width === 48`));
   }
 
+  // Close up: click a preview image; the picked part glows and moves with the arrow keys.
+  {
+    await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
+    await sleep(500);
+    await click('#walk-canvas');
+    await sleep(900);
+    check('clicking a preview image opens the close up with the layers in it', await evaluate(`document.getElementById('focus-dialog').open && document.getElementById('focus-layers').contains(document.getElementById('layer-list')) && document.getElementById('focus-canvas').width > 48`));
+    const glow = await evaluate(`(() => { const c = document.getElementById('focus-canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 230 && d[i + 1] > 180 && d[i + 2] < 120) n++; return n; })()`);
+    check('the picked part glows', glow > 20, `${glow} glow pixels`);
+    const before = await evaluate(`document.getElementById('off-sprite-x').value`);
+    await evaluate(`document.getElementById('focus-canvas').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', shiftKey: true, bubbles: true }))`);
+    await sleep(900);
+    check('the arrow keys move the picked part', Number(await evaluate(`document.getElementById('off-sprite-x').value`)) === Number(before) + 10);
+    await evaluate(`document.getElementById('focus-canvas').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true }))`);
+    await sleep(600);
+    await evaluate(`document.getElementById('focus-dialog').close()`);
+    await sleep(300);
+    check('closing the close up puts the layers back', await evaluate(`document.getElementById('editor').contains(document.getElementById('layer-list')) && document.getElementById('editor').contains(document.getElementById('slots'))`));
+  }
+
   // Preview controls: pause, stand still, all directions, whole sheet.
   const walkSig = (id) => `[...document.getElementById('${id}').getContext('2d').getImageData(0,0,document.getElementById('${id}').width,document.getElementById('${id}').height).data].reduce((a, v, i) => (a + v * ((i % 251) + 1)) % 1000000007, 0)`;
   await click('#pause-anim');
