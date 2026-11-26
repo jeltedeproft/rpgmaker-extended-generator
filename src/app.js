@@ -416,6 +416,9 @@ function renderAll() {
   renderProblems();
 }
 
+/** Parts whose extra items and pieces are shown in the part list (folded by default). */
+const openPartGroups = new Set();
+
 function renderSidebar() {
   const lib = state.library;
   const select = $('body-type');
@@ -427,28 +430,56 @@ function renderSidebar() {
   select.value = state.character.bodyType;
   $('character-name').value = state.character.name;
 
-  const items = [[ALL_COLOURS, 'All colours', '']];
-  for (const part of partNames(lib, state.character.bodyType)) {
-    for (const key of [part, ...itemKeys(state.character, part)]) {
-      const variant = lib.variants.get(state.character.parts[key]);
-      items.push([key, key, variant ? variantLabel(lib, variant, state.character.bodyType) : 'none']);
-      for (const piece of pieceKeys(state.character, key)) items.push([piece, `↳ piece ${piece.split('#').pop()}${linkOf(piece) ? ' ⛓' : ''}`, '']);
-    }
-  }
-  $('part-list').replaceChildren(...items.map(([key, label, value]) => {
+  const button = (key, label, value, extra = '') => {
     const hiddenItem = state.character.hidden?.[key];
     const worn = key === ALL_COLOURS || key.includes(' #') || !!state.character.parts[key];
-    const button = el('button', { className: (key === state.selectedPart ? 'active' : '') + (key.includes(' #') ? ' piece' : '') + (hiddenItem ? ' hidden-item' : '') + (worn ? ' worn' : ''), title: (value ? `${label}: ${value}` : label) + (hiddenItem ? ' (hidden)' : '') }, [
+    const b = el('button', { className: (key === state.selectedPart ? 'active' : '') + (key.includes(' #') ? ' piece' : '') + (hiddenItem ? ' hidden-item' : '') + (worn ? ' worn' : '') + extra, title: (value ? `${label}: ${value}` : label) + (hiddenItem ? ' (hidden)' : '') }, [
       el('span', { textContent: label + (state.locked.has(key) ? ' 🔒' : '') }),
       el('span', { className: 'value', textContent: value }),
     ]);
-    button.addEventListener('click', () => {
+    b.addEventListener('click', () => {
       state.selectedPart = key;
       renderSidebar();
       renderEditor();
     });
-    return button;
-  }));
+    return b;
+  };
+  const valueOf = (key) => {
+    const variant = lib.variants.get(state.character.parts[key]);
+    return variant ? variantLabel(lib, variant, state.character.bodyType) : 'none';
+  };
+  const rows = [button(ALL_COLOURS, 'All colours', '')];
+  for (const part of partNames(lib, state.character.bodyType)) {
+    // A part's extra items (AccA 2) and pieces (Eyes · 1) are folded under it.
+    const inside = [];
+    for (const key of [part, ...itemKeys(state.character, part)]) {
+      if (key !== part) inside.push(button(key, key, valueOf(key)));
+      for (const piece of pieceKeys(state.character, key)) {
+        inside.push(button(piece, `${key} · ${piece.split('#').pop()}${linkOf(piece) ? ' ⛓' : ''}`, ''));
+      }
+    }
+    const selectedInside = state.selectedPart !== part && partOfKey(state.selectedPart) === part && state.selectedPart !== ALL_COLOURS;
+    const head = button(part, part, valueOf(part), selectedInside ? ' holds-active' : '');
+    if (!inside.length) {
+      rows.push(head);
+      continue;
+    }
+    const open = openPartGroups.has(part) || selectedInside;
+    const fold = el('span', { className: 'part-fold', role: 'button', textContent: `${open ? '▾' : '▸'} ${inside.length}`,
+      title: `${open ? 'Fold' : 'Show'} ${inside.length} more of ${part} (extra items and pieces)` });
+    fold.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (openPartGroups.has(part) || selectedInside) {
+        openPartGroups.delete(part);
+        if (selectedInside) state.selectedPart = part;
+      } else openPartGroups.add(part);
+      renderSidebar();
+      if (selectedInside) renderEditor();
+    });
+    head.append(fold);
+    rows.push(el('div', { className: 'part-group' }, [head, el('div', { className: 'part-inside', hidden: !open }, inside)]));
+  }
+  $('part-list').replaceChildren(...rows);
 
   renderSets();
   $('packs').replaceChildren(
@@ -499,7 +530,7 @@ async function renderEditor() {
   const isPiece = !isColours && itemOfKey(key) !== key;
   const isExtra = !isColours && !isPiece && key !== part;
   const worn = !isColours && !!state.character.parts[itemOfKey(key)];
-  $('editor-title').textContent = isColours ? 'All colours' : isPiece ? `${itemOfKey(key)}, piece ${key.split('#').pop()}` : key;
+  $('editor-title').textContent = isColours ? 'All colours' : isPiece ? `${itemOfKey(key)} · piece ${key.split('#').pop()}` : key;
   $('lock-part').checked = state.locked.has(key);
   $('lock-part').parentElement.hidden = isColours || isPiece;
   $('offsets').hidden = !worn;
