@@ -10,24 +10,31 @@ export function entriesFromFileList(fileList) {
 }
 
 /** Entries from a drag-and-drop of folders and/or files. */
-export async function entriesFromDrop(dataTransfer) {
+export async function entriesFromDrop(dataTransfer, onProgress = null) {
   const roots = [...dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
   const entries = [];
+  // Folders and files are read side by side (one at a time is slow for big packs).
   async function walk(entry, prefix) {
     if (entry.isFile) {
-      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
-      entries.push({ path: prefix + entry.name, src: file });
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject)).catch(() => null);
+      if (file) {
+        entries.push({ path: prefix + entry.name, src: file });
+        if (entries.length % 100 === 0) onProgress?.(entries.length);
+      }
       return;
     }
     const reader = entry.createReader();
+    const children = [];
     // readEntries returns results in batches; keep reading until empty.
     for (;;) {
-      const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+      const batch = await new Promise((resolve, reject) => reader.readEntries(resolve, reject)).catch(() => []);
       if (!batch.length) break;
-      for (const child of batch) await walk(child, `${prefix}${entry.name}/`);
+      children.push(...batch);
     }
+    await Promise.all(children.map((child) => walk(child, `${prefix}${entry.name}/`)));
   }
-  for (const root of roots) await walk(root, '');
+  await Promise.all(roots.map((root) => walk(root, '')));
+  entries.sort((a, b) => a.path.localeCompare(b.path));
   // Files without an entry (e.g. made by a script): take the plain file list.
   if (!roots.length) for (const file of dataTransfer.files || []) entries.push({ path: file.name, src: file });
   return entries;

@@ -468,6 +468,7 @@ button.gallery-name { border: 0; background: transparent; padding: 0; text-align
 .folder-row b, .folder-row .muted { display: block; }
 .folder-row .file-buttons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
 .folder-row .small-button { margin: 0; }
+.folder-row .folder-assign { grid-column: 1 / -1; }
 .folder-row select, .folder-row input { width: 11rem; max-width: 100%; min-width: 0; }
 .body-row select { width: 8rem; }
 .assign-row .field, .assign-row select { min-width: 0; max-width: 100%; }

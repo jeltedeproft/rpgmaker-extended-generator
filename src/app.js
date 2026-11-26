@@ -9,7 +9,7 @@ import {
   layersForSheet, drawId, itemOfKey, frameFor, clipOf, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
-import { guessSheet, shapeProfile, rankWithName, partsInName, maskColourShare, nameWords, slotForPart } from './suggest.js';
+import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
 import { groupLayers, topRun, moveBlock, stepBlock } from './layers.js';
 import { encodeGif } from './gif.js';
@@ -157,11 +157,11 @@ function busyDone() {
   }
 }
 
-function importEntries(entries, packName) {
-  return withBusy(`Opening "${packName}"`, () => importEntriesNow(entries, packName));
+function importEntries(entries, packName, options = {}) {
+  return withBusy(`Opening "${packName}"`, () => importEntriesNow(entries, packName, options));
 }
 
-async function importEntriesNow(entries, packName) {
+async function importEntriesNow(entries, packName, { loose = false } = {}) {
   state.lastPack = null;
   const pngs = entries.filter((e) => /\.png$/i.test(e.path));
   if (!pngs.length) {
@@ -170,7 +170,8 @@ async function importEntriesNow(entries, packName) {
   }
   // The same folder opened twice (or a copy of it) would add every part again.
   const keys = folderKeys(pngs);
-  const twin = sameFolder(state.library.packs, keys);
+  // Files dropped by hand are always read (an earlier "Skip" for a folder doesn't apply to them).
+  const twin = !loose && sameFolder(state.library.packs, keys);
   if (twin && !(await openAgainAnswer(packName, twin))) {
     toast(`Skipped "${packName}": it has the same files as "${twin.pack.name}".`);
     return 0;
@@ -2567,7 +2568,7 @@ async function openAssignDialog(entry, queue = null) {
   const fileName = entry.path.split('/').pop();
   const stem = fileName.replace(/\.png$/i, '');
   const bodies = bodyChoices();
-  const folderBody = suggestedBody(dirOf(entry.path), bodies);
+  const folderBody = suggestedBody(dirOf(entry.path), bodies, { words: true });
   const loaded = entry.variant ? entry : null;
   $('assign-title').textContent = loaded ? 'Reassign a file' : 'Assign a file';
   $('assign-ok').textContent = loaded ? 'Reassign' : 'Add';
@@ -2712,17 +2713,20 @@ async function renderSuggestions(entry, fill = false) {
   const pixels = assigningPixels;
   box.replaceChildren();
   if (assigningGuess) box.append(el('span', { className: 'muted', textContent: `Suggested image: ${SHEET_NAMES[assigningGuess.sheet] || 'Variation icon'} (${assigningGuess.why}).` }));
-  if (!pixels || sheet === 'icon') return;
-  const profile = shapeProfile(pixels, sheet);
-  if (!profile) return;
-  const waiting = el('span', { className: 'muted', textContent: 'Comparing with the loaded parts…' });
-  box.append(waiting);
-  const refs = (await shapeReferences(sheet)).filter((r) => !(r.pack === entry.pack && r.path === entry.path));
-  if (token !== suggestToken || assigning !== entry) return;
-  waiting.remove();
   const fileName = entry.path.split('/').pop();
-  const named = partsInName(fileName, [...new Set([...PART_ORDER, ...partNames(state.library, state.character?.bodyType)])]);
-  const ranked = rankWithName(profile, refs, named).filter((r) => r.score >= 0.15);
+  // The file name, or else its folders' names ("Female Brows/Female Brow 10.png" is eyebrows).
+  const named = partsInPath(entry.path, [...new Set([...PART_ORDER, ...partNames(state.library, state.character?.bodyType)])]);
+  const profile = pixels && sheet !== 'icon' ? shapeProfile(pixels, sheet) : null;
+  let refs = [];
+  if (profile) {
+    const waiting = el('span', { className: 'muted', textContent: 'Comparing with the loaded parts…' });
+    box.append(waiting);
+    refs = (await shapeReferences(sheet)).filter((r) => !(r.pack === entry.pack && r.path === entry.path));
+    if (token !== suggestToken || assigning !== entry) return;
+    waiting.remove();
+  } else if (!named.length) return;
+  const ranked = (profile ? rankWithName(profile, refs, named) : named.map((part) => ({ part, layer: '', score: NAME_BONUS, named: true })))
+    .filter((r) => r.score >= 0.15);
   assignRanked = ranked;
   renderPartChips();
   if (!ranked.length) {
@@ -2730,7 +2734,7 @@ async function renderSuggestions(entry, fill = false) {
     return;
   }
   box.append(el('span', { textContent: named.length ? 'By its name and where it sits:' : 'Sits where these parts sit:' }), ...ranked.map((r) => {
-    const why = r.named ? `"${fileName}" names this part, and its shape is compared with the loaded ${r.part} parts` : `Sits where the loaded ${r.part} parts sit`;
+    const why = r.named ? `"${fileName}" or its folder names this part${profile ? `, and its shape is compared with the loaded ${r.part} parts` : ''}` : `Sits where the loaded ${r.part} parts sit`;
     const b = el('button', { type: 'button', className: 'small-button', textContent: `${suggestionLabel(r, refs, sheet)}${r.named ? ' (name)' : ''} · ${Math.round(r.score * 100)}%`, title: `${why}. Click to use it.` });
     b.addEventListener('click', () => applySuggestion(r));
     return b;
@@ -3775,6 +3779,47 @@ function bodyTypeRow(destinations) {
   ]);
 }
 
+/**
+ * A folder of files still to assign (an asset pack sorted by folders, not named the RPG Maker
+ * way): assigns all of them at once as one part for one body type. The image of each comes from
+ * its size; part numbers from the file names. Remembered like assigning one by one.
+ */
+async function assignFolder(d, part, bodyType) {
+  const lib = state.library;
+  const waiting = [...d.files.values()].filter((f) => !f.variant && lib.unrecognized.includes(f));
+  // Images first, then the colour masks ("_c"), so these join their image.
+  waiting.sort((a, b) => Number(/_c\.png$/i.test(a.path)) - Number(/_c\.png$/i.test(b.path)));
+  const slot = SLOT_BY_ID.get(slotForPart(part)?.slotId)?.m || null;
+  let done = 0;
+  const failed = [];
+  await withBusy(`Assigning ${d.dir}`, async () => {
+    for (const [i, f] of waiting.entries()) {
+      if (i % 20 === 0) {
+        busyStep(`Assigning ${d.dir}`, i, waiting.length);
+        await nextFrame();
+      }
+      const size = await pngSize(f.src).catch(() => null);
+      const stem = f.path.split('/').pop().replace(/\.png$/i, '');
+      const mask = /_c$/i.test(stem);
+      const sheet = size ? guessSheet(size.w, size.h).sheet : 'TV';
+      const readAs = buildPartName({ sheet, part, pid: stem.replace(/_c$/i, ''), mask, cell: 'c1', slotM: sheet === 'FG' ? slot : null });
+      if (!parsePartPath(`${bodyType}/${readAs}`)) {
+        failed.push(f.path);
+        continue;
+      }
+      const file = unassignFile(lib, f.pack, f.path) || f;
+      const error = assignFile(lib, f.pack, f.path, file.src, readAs, bodyType);
+      if (error) failed.push(f.path);
+      else {
+        remember(f, { readAs, bodyType });
+        done++;
+      }
+    }
+  });
+  afterFilesChanged();
+  toast(`${d.dir}: ${done} file${done === 1 ? '' : 's'} assigned as ${bodyType} ${part}${failed.length ? `; ${failed.length} could not be (still in "To assign")` : ''}. Reassign one by one in "To assign" or "All files" if one is off.`, 9000);
+}
+
 function folderRow(d, bodies) {
   const target = el('select', { title: 'Body type to move the parts to' }, [el('option', { value: '', textContent: 'Choose folder…' }), ...bodyOptions(bodies)]);
   const now = [...d.bodyTypes].sort();
@@ -3792,9 +3837,33 @@ function folderRow(d, bodies) {
     now.length ? `parts for ${now.join(', ')}` : '',
     d.files.size > d.loaded.length ? `${d.files.size - d.loaded.length} to assign` : '',
   ].filter(Boolean).join(' · ');
+  const waiting = [...d.files.values()].filter((f) => !f.variant).length;
   return el('div', { className: 'folder-row' }, [
     el('div', {}, [el('b', { textContent: d.dir }), el('span', { className: 'muted small', textContent: `  ${d.pack} · ${what}` })]),
     el('div', { className: 'file-buttons' }, [move, target, remove]),
+    ...(waiting ? [folderAssignRow(d, waiting, bodies)] : []),
+  ]);
+}
+
+/** Under a folder with files to assign: "Assign its N files as [part] for [body type]". */
+function folderAssignRow(d, waiting, bodies) {
+  const names = [...new Set([...PART_ORDER, ...partNames(state.library, state.character?.bodyType)])];
+  const guess = partsInPath(`${d.dir}/`, names)[0] || '';
+  const part = el('select', { className: 'folder-part', title: 'The part every file of this folder is' }, [
+    el('option', { value: '', textContent: 'Choose part…' }), ...names.map((p) => el('option', { value: p, textContent: p })),
+  ]);
+  part.value = guess;
+  const body = el('select', { className: 'folder-body', title: 'The body type they are for' }, bodyOptions(bodies));
+  body.value = suggestedBody(d.dir, bodies, { words: true }) || state.character?.bodyType || bodies[0] || 'Male';
+  const go = el('button', { type: 'button', className: 'small-button primary', textContent: `Assign its ${waiting} file${waiting === 1 ? '' : 's'}` });
+  const update = () => { go.disabled = !part.value || !body.value; };
+  part.addEventListener('change', update);
+  body.addEventListener('change', update);
+  update();
+  go.addEventListener('click', () => assignFolder(d, part.value, body.value));
+  return el('div', { className: 'file-buttons folder-assign' }, [
+    go, el('span', { className: 'small', textContent: 'as' }), part, el('span', { className: 'small', textContent: 'for' }), body,
+    el('span', { className: 'muted small', textContent: guess ? `(suggested from the folder name)` : '' }),
   ]);
 }
 
@@ -5159,7 +5228,12 @@ document.addEventListener('drop', async (e) => {
   $('app').classList.remove('dragging');
   // Both reads must start before the first await: the drop data is gone after that.
   const handles = dropFolderHandles(e.dataTransfer);
-  const entries = await entriesFromDrop(e.dataTransfer);
+  // The bar shows at once: reading a big folder (or one synced from the cloud) takes a while.
+  const entries = await withBusy('Reading the dropped files', () => entriesFromDrop(e.dataTransfer, (n) => busyStep(`Reading the dropped files: ${n} so far`)));
+  if (!entries.length) {
+    toast('Nothing could be read from that drop. Try again, or use "Open folder".');
+    return;
+  }
   // Only JSON files: characters and sets, all at once.
   if (entries.length && entries.every((x) => /\.json$/i.test(x.path))) {
     await withBusy(`Reading ${entries.length} JSON file(s)`, async () => {
@@ -5171,7 +5245,7 @@ document.addEventListener('drop', async (e) => {
   // Dropped folders open like picked ones, so they are remembered for next time too.
   if (folders.length && entries.every((x) => folders.some((h) => x.path.startsWith(h.name + '/')))) {
     for (const h of folders) await importHandle(h);
-  } else await importEntries(entries, packNameFromEntries(entries, 'Dropped files'));
+  } else await importEntries(entries, packNameFromEntries(entries, 'Dropped files'), { loose: true });
 });
 
 // ---------- editor events ----------
