@@ -355,11 +355,17 @@ function unsupportedHint(gradientFiles) {
 /** The Files menu: how many files wait to be assigned, and how many look-alikes there are. */
 let toAssignCount = 0;
 let alikeCount = 0;
+let reportCount = 0;
+/** Every note of the import report, for "Export as text file". */
+let reportText = '';
 function setFilesLabel(toAssign = toAssignCount) {
   toAssignCount = toAssign;
   $('open-files').textContent = toAssign ? `Files… (${toAssign} to assign)` : 'Files…';
-  const notes = [toAssign && `${toAssign} to assign`, alikeCount && `${alikeCount} look-alike${alikeCount === 1 ? '' : 's'}`].filter(Boolean);
-  $('files-menu-button').textContent = `Files${notes.length ? ` (${notes.join(', ')})` : ''} ▾`;
+  // The menu button stays short: a badge with the files that wait to be assigned; the counts of
+  // look-alikes and notes are on their own menu items.
+  const notes = [toAssign && `${toAssign} to assign`, alikeCount && `${alikeCount} look-alike${alikeCount === 1 ? '' : 's'}`, reportCount && `${reportCount} note${reportCount === 1 ? '' : 's'} in the import report`].filter(Boolean);
+  $('files-menu-button').replaceChildren('Files', ...(toAssign ? [el('span', { className: 'count-badge', textContent: toAssign > 999 ? '999+' : String(toAssign) })] : []), ' ▾');
+  $('files-menu-button').title = notes.length ? notes.join(', ') : 'Files, look-alikes and the import report';
 }
 
 /** Buttons that need a folder open (the Load menu works before: sample kit, sets). */
@@ -416,6 +422,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeMenus();
 });
 $('open-problems').addEventListener('click', () => $('problems').showModal());
+$('export-problems').addEventListener('click', () => downloadBlob(new Blob([reportText], { type: 'text/plain' }), 'import-report.txt'));
 
 if (state.settings.sets?.length) {
   const fixed = state.settings.sets.map(withoutOwnParts);
@@ -2122,9 +2129,15 @@ function renderProblems() {
     ...state.renderProblems,
   ];
   const total = lib.unrecognized.length + lines.length;
+  reportCount = total;
+  reportText = [
+    `Import report: ${total} note(s)`, '',
+    ...lib.unrecognized.map((u) => `Skipped ${u.path} (${u.reason})`),
+    ...lines,
+  ].join('\r\n');
   setFilesLabel(lib.unrecognized.length);
   $('open-problems').hidden = !total;
-  $('open-problems').textContent = `Import report (${total})`;
+  $('open-problems').textContent = `Import report… (${total})`;
   $('problem-list').replaceChildren(
     el('p', { className: 'muted small', textContent: `${total} note(s). Skipped files don't stop the rest from loading; "Assign…" adds one by hand.` }),
     ...(lib.unrecognized.length ? [queue] : []),
@@ -2237,7 +2250,8 @@ async function openSetView(set) {
   $('set-view-parts').textContent = `Parts: ${Object.keys(set.parts).join(', ')}`;
   const pics = $('set-view-pics');
   pics.replaceChildren(el('p', { className: 'muted small', textContent: 'Drawing...' }));
-  viewedSet = set;
+  viewedAction = () => putOnSet(set);
+  $('set-view-use').textContent = 'Put on';
   if (!$('set-view').open) $('set-view').showModal();
   const [icon, { face, sprite }] = await Promise.all([setIcon(set), characterPicture(setCharacter(set), set.customGradients || [])]);
   const figure = (pixels, label, className) => el('figure', { className: 'set-view-pic' }, [
@@ -2249,8 +2263,35 @@ async function openSetView(set) {
     ...(sprite ? [figure(sprite, 'Walk (only the set)', 'set-view-sprite')] : []),
   );
 }
-let viewedSet = null;
-$('set-view-use').addEventListener('click', () => viewedSet && putOnSet(viewedSet));
+/** What the view window's button does: put the set on, or use the character. */
+let viewedAction = null;
+$('set-view-use').addEventListener('click', () => viewedAction?.());
+
+/** The same window for a gallery character: its portrait, walk sprite and parts, big. */
+async function openCharacterView(item, use) {
+  $('set-view-title').textContent = item.name;
+  $('set-view-parts').textContent = '';
+  const pics = $('set-view-pics');
+  pics.replaceChildren(el('p', { className: 'muted small', textContent: 'Drawing...' }));
+  viewedAction = use;
+  $('set-view-use').textContent = 'Use';
+  if (!$('set-view').open) $('set-view').showModal();
+  try {
+    const { character, missing } = deserializeCharacter(item.text, state.library, allGradients(), item.fileName || '');
+    $('set-view-parts').textContent = `Parts: ${Object.keys(character.parts).filter((k) => character.parts[k]).join(', ')}`
+      + (missing.length ? ` (not in the open folders: ${missing.join(', ')})` : '');
+    const { face, sprite } = await galleryPicture(item.text, item.fileName || '');
+    const figure = (pixels, label, className) => el('figure', { className: 'set-view-pic' }, [
+      Object.assign(toCanvas(pixels), { className }), el('figcaption', { className: 'muted small', textContent: label }),
+    ]);
+    pics.replaceChildren(
+      ...(face ? [figure(face, 'Portrait', 'set-view-face')] : []),
+      ...(sprite ? [figure(sprite, 'Walk', 'set-view-sprite')] : []),
+    );
+  } catch (err) {
+    pics.replaceChildren(el('p', { className: 'muted small', textContent: `Can't be drawn: ${err.message}` }));
+  }
+}
 
 function putOnSet(set) {
   for (const g of set.customGradients || []) {
@@ -4363,7 +4404,7 @@ function galleryCard(item, observer) {
   const face = el('canvas', { width: 0, height: 0, className: 'gallery-face' });
   const sprite = el('canvas', { width: 0, height: 0, className: 'gallery-sprite' });
   const note = el('span', { className: 'gallery-note muted small' });
-  const pics = el('button', { type: 'button', className: 'gallery-pics', title: `Use ${item.name}` }, [face, sprite]);
+  const pics = el('button', { type: 'button', className: 'gallery-pics', title: `See ${item.name} bigger` }, [face, sprite]);
   pics.item = item;
   pics.draw = () => galleryPicture(item.text, item.fileName || '').then(({ face: f, sprite: s, missing }) => {
     putPixels(face, f);
@@ -4382,7 +4423,7 @@ function galleryCard(item, observer) {
     $('gallery-dialog').close();
   };
   use.addEventListener('click', load);
-  pics.addEventListener('click', load);
+  pics.addEventListener('click', () => openCharacterView(item, load));
   const exportOne = el('button', { type: 'button', className: 'small-button', textContent: 'Export', title: 'Download this character as a file' });
   exportOne.addEventListener('click', () => downloadBlob(new Blob([item.text], { type: 'application/json' }), `${safeFileName(item.name)}.json`));
   const buttons = [use];

@@ -83,6 +83,7 @@ button:disabled { opacity: .45; cursor: default; }
 .menu-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 40; display: flex; flex-direction: column; gap: 2px; min-width: 190px;
   padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 6px 20px rgb(0 0 0 / .18); }
 .menu-item { text-align: left; border-color: transparent; width: 100%; white-space: nowrap; }
+.count-badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 9px; background: var(--accent); color: var(--accent-text); font-size: 11px; line-height: 17px; font-variant-numeric: tabular-nums; }
 .menu-item:has(input:disabled) { opacity: .45; cursor: default; pointer-events: none; }
 .menu-button[aria-expanded="true"] { background: var(--hover); }
 
@@ -423,7 +424,7 @@ button.gallery-name { border: 0; background: transparent; padding: 0; text-align
 .gallery-face { width: 96px; height: 96px; }
 .gallery-sprite { height: 72px; }
 .gallery-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.gallery-buttons { display: flex; gap: 4px; margin-top: auto; }
+.gallery-buttons { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
 .gallery-buttons .small-button { margin-top: 0; }
 .alike-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px; display: grid; gap: 6px; font-size: 13px; }
 .alike-card.hidden-part { opacity: 0.6; }
@@ -431,8 +432,8 @@ button.gallery-name { border: 0; background: transparent; padding: 0; text-align
 .alike-pics figure { gap: 2px; font-size: 11px; color: var(--muted); }
 .alike-pics canvas { width: 96px; height: 96px; object-fit: contain; }
 .alike-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
-.files-head { display: flex; justify-content: space-between; align-items: center; }
-.files-head h3 { margin: 0; }
+.files-head { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.files-head h3 { margin: 0 auto 0 0; }
 .files-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
 /* Part editor tabs: only the chosen tab's boxes show ("All": every box). */
 .editor-tabs { margin: -2px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }

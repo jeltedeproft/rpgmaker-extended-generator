@@ -635,7 +635,8 @@ try {
     await sleep(1500);
     check('real pack imported', await evaluate(`document.querySelectorAll('#packs div').length >= 3`));
     // Assign an unrecognised file by hand, as a brand-new part.
-    check('the import report is at the top', await evaluate(`!document.getElementById('open-problems').hidden && /Import report \\(\\d+\\)/.test(document.getElementById('open-problems').textContent)`));
+    check('the import report is under Files', await evaluate(`!document.getElementById('open-problems').hidden && document.querySelector('#files-menu .menu-list').contains(document.getElementById('open-problems')) && /Import report… \\(\\d+\\)/.test(document.getElementById('open-problems').textContent)`));
+    check('the Files button stays short', await evaluate(`document.getElementById('files-menu-button').textContent.length < 16`), await evaluate(`document.getElementById('files-menu-button').textContent`));
     await click('#open-problems');
     await sleep(300);
     const assignable = await evaluate(`document.querySelectorAll('#problem-list .assign').length`);
