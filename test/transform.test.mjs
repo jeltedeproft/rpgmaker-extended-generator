@@ -168,6 +168,20 @@ test('a portrait with columns and rows repeats the face in every cell', async ()
   assert.equal(alpha(image, 8, 4), 255); // the face's corner pixel in the last cell
 });
 
+test('taller sprites keep the head and stretch the body below the neck, frame by frame', async () => {
+  const { tallerFrames } = await import('../src/compose.js');
+  // 2 x 2 frames of 2 x 4: row y of each frame is coloured y * 10 (+ 100 in the second row of frames).
+  const frame = { w: 2, h: 4, cols: 2, rows: 2 };
+  const image = createImage(4, 8);
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) image.data.set([(y % 4) * 10 + (y >= 4 ? 100 : 0), 0, 0, 255], (y * 4 + x) * 4);
+  const { image: out, frame: f } = tallerFrames(image, frame, 2, 200);
+  assert.deepEqual([f.w, f.h, f.cols, f.rows], [2, 6, 2, 2]);
+  assert.deepEqual([out.width, out.height], [4, 12]);
+  const red = (x, y) => out.data[(y * out.width + x) * 4];
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((y) => red(0, y)), [0, 10, 20, 20, 30, 30]); // head kept, body doubled
+  assert.deepEqual([6, 11].map((y) => red(3, y)), [100, 130]); // second row of frames, feet at the bottom
+});
+
 test('a whole image can be stretched: width and height sizes of their own', () => {
   const img = createImage(8, 8);
   dot(img, 5, 5);

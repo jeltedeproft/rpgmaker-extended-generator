@@ -523,6 +523,7 @@ export function deserializeCharacter(json, library, gradients = [], fileName = '
     hidden: { ...saved.hidden },
     sheetParts: {},
     sheetTransform: structuredClone(saved.sheetTransform || {}),
+    taller: structuredClone(saved.taller || {}),
   };
   // Per-image choices: "hidden", or a variant id resolved like the parts themselves.
   for (const [key, choices] of Object.entries(saved.sheetParts || {})) {

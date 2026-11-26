@@ -412,6 +412,13 @@ for (const menu of document.querySelectorAll('.menu')) {
     closeMenus(menu);
     list.hidden = !list.hidden;
     button.setAttribute('aria-expanded', String(!list.hidden));
+    // Near the right edge of the window, the list opens to the left instead of running off it.
+    list.style.left = '';
+    list.style.right = '';
+    if (!list.hidden && list.getBoundingClientRect().right > document.documentElement.clientWidth - 4) {
+      list.style.left = 'auto';
+      list.style.right = '0';
+    }
   });
   // Picking an item closes the menu (file pickers too: their input still gets the file).
   list.addEventListener('click', (e) => {
@@ -829,7 +836,7 @@ function partThumbnail(key, variant, sheets = ['FG', 'TV', 'SV', 'TVD'], source 
   // library: another view of the parts (see ownPicture).
   const alone = {
     ...state.character, parts: { [key]: variant.id }, offsets: {}, split: {}, clip: {}, drawOrder: {},
-    sheetParts: {}, hidden: {}, sheetTransform: {}, ...(source ? { colors: {}, itemColors: {} } : {}),
+    sheetParts: {}, hidden: {}, sheetTransform: {}, taller: {}, ...(source ? { colors: {}, itemColors: {} } : {}),
   };
   const colours = source ? 'source' : JSON.stringify([state.character.colors, state.character.itemColors?.[key], state.settings.templates]);
   const cacheKey = `${key}|${variant.id}|${sheets}|${colours}`;
@@ -1860,6 +1867,7 @@ async function renderPreview() {
   renderSheetView();
   renderCredits();
   renderProblems();
+  if (!$('taller').contains(document.activeElement)) renderTaller();
 }
 
 /** Credits: every pack the character uses, the parts taken from it, and the pack's readme. */
@@ -4552,7 +4560,12 @@ function renderGallery() {
     ['Your characters', stored.filter(match), 'Characters you save, or load from a file, show up here.'],
     ['Presets in your folders', presets.filter(match), 'No presets found in the open folders.'],
   ]) {
+    // Presets: character files that came with a folder. None: the section isn't shown.
+    if (title.startsWith('Presets') && !presets.length) continue;
     sections.push(el('h4', { textContent: `${title} (${items.length})` }));
+    if (title.startsWith('Presets')) {
+      sections.push(el('p', { className: 'muted small', textContent: 'Character files (.json) that came inside the folders you opened, e.g. RPG Maker MZ\'s own generator presets or characters a pack maker included. Click one to see it, Use to load it.' }));
+    }
     sections.push(items.length
       ? el('div', { className: 'gallery-grid' }, items.map((i) => galleryCard(i, observer)))
       : el('p', { className: 'muted small', textContent: query ? 'Nothing matches.' : empty }));
@@ -5353,7 +5366,7 @@ $('clear-all').addEventListener('click', () => {
   }
   // Parts cut off by a part that is gone show whole again.
   for (const [k, clip] of Object.entries(ch.clip || {})) if (!ch.parts[clip.by]) delete ch.clip[k];
-  for (const field of ['drawOrder', 'sheetTransform']) {
+  for (const field of ['drawOrder', 'sheetTransform', 'taller']) {
     if (Object.keys(ch[field] || {}).length) changes++;
     ch[field] = {};
   }
@@ -5402,6 +5415,55 @@ $('copy-credits').addEventListener('click', async () => {
 
 $('layer-sheet').addEventListener('change', renderLayers);
 
+// ---------- taller sprites ----------
+
+const TALLER_SHEETS = ['TV', 'TVD', 'SV'];
+/** Where the head ends by default, as a share of the frame's height (MV/MZ chibi sprites). */
+const NECK_SHARE = { TV: 0.58, TVD: 0.58, SV: 0.53 };
+
+/** The frame height of a sprite sheet before it is made taller. */
+function plainFrameHeight(sheet) {
+  const c = state.composites[sheet];
+  const t = state.character.taller?.[sheet];
+  if (!c?.frame) return sheet === 'SV' ? 64 : 48;
+  if (!(t?.stretch > 100)) return c.frame.h;
+  const below = Math.round(((c.frame.h - t.neck) * 100) / t.stretch);
+  return t.neck + below;
+}
+
+function renderTaller() {
+  if (!state.character) return;
+  const all = state.character.taller || {};
+  const on = TALLER_SHEETS.filter((s) => all[s]?.stretch > 100);
+  $('taller-mark').textContent = on.length ? `(${on.map((s) => SHEET_NAMES[s]).join(', ')})` : '';
+  $('taller-grid').replaceChildren(...TALLER_SHEETS.flatMap((sheet) => {
+    const t = all[sheet];
+    const tick = el('input', { type: 'checkbox', checked: t?.stretch > 100 });
+    const neck = el('input', { type: 'number', min: 0, max: 512, value: t?.neck ?? '', title: 'Pixels from the top of the frame: the head above it stays as it is' });
+    const stretch = el('input', { type: 'number', min: 105, max: 400, step: 5, value: t?.stretch ?? 150, title: 'How long the body below the neck gets: 150 = half again as long' });
+    neck.disabled = stretch.disabled = !tick.checked;
+    const save = () => {
+      const taller = (state.character.taller ||= {});
+      if (!tick.checked) delete taller[sheet];
+      else {
+        const h = plainFrameHeight(sheet);
+        taller[sheet] = {
+          neck: Math.max(0, Math.min(h - 1, Math.round(Number(neck.value) || Math.round(h * NECK_SHARE[sheet])))),
+          stretch: Math.max(105, Math.min(400, Math.round(Number(stretch.value) || 150))),
+        };
+      }
+      renderTaller();
+      renderPreview();
+    };
+    for (const i of [tick, neck, stretch]) i.addEventListener('change', save);
+    return [
+      el('label', { className: 'lock' }, [tick, ` ${SHEET_NAMES[sheet]}`]),
+      el('label', {}, ['neck at ', neck, ' px']),
+      el('label', {}, ['body ', stretch, ' %']),
+    ];
+  }));
+}
+
 // ---------- close up: one image big, the picked part glowing, moved by mouse or arrow keys ----------
 
 /** Panels of the part editor shown in the close up while it is open: [element, its place]. */
@@ -5413,6 +5475,8 @@ let focusUserZoom = null;
 /** Transparent room shown around the frame, so an outline at its edge isn't cut off. */
 const FOCUS_PAD = 2;
 let focusTimer = 0;
+/** The taller-sprites neck line in the close up: {y (canvas pixels), sheet}, or null. */
+let focusNeck = null;
 
 function openFocus(sheet) {
   if (!state.character) return;
@@ -5425,6 +5489,8 @@ function openFocus(sheet) {
   }
   $('focus-dirs').hidden = sheet !== 'TV';
   focusUserZoom = null;
+  $('focus-outline').checked = state.settings.focusOutline !== false;
+  $('focus-outline-colour').value = state.settings.focusOutlineColour || '#ffd640';
   if (!$('focus-dialog').open) $('focus-dialog').showModal();
   renderLayers();
   drawFocus();
@@ -5453,6 +5519,16 @@ $('focus-dirs').addEventListener('click', (e) => {
   drawFocus();
 });
 $('focus-grid').addEventListener('change', () => drawFocus());
+$('focus-outline').addEventListener('change', () => {
+  state.settings.focusOutline = $('focus-outline').checked ? undefined : false;
+  saveSettings();
+  drawFocus();
+});
+$('focus-outline-colour').addEventListener('input', () => {
+  state.settings.focusOutlineColour = $('focus-outline-colour').value;
+  saveSettings();
+  drawFocus();
+});
 
 /** Redraws the close up soon (after the preview is drawn), once however often it is asked. */
 function scheduleFocus() {
@@ -5512,29 +5588,54 @@ function drawFocus() {
     for (let y = 0; y <= r.h; y++) { ctx.moveTo(P * focusZoom, (y + P) * focusZoom + 0.5); ctx.lineTo((r.w + P) * focusZoom, (y + P) * focusZoom + 0.5); }
     ctx.stroke();
   }
+  // Taller sprites: the neck line (drag it to move it).
+  const tall = state.character.taller?.[sheet];
+  focusNeck = tall?.stretch > 100 && sheet !== 'FG' ? { y: (P + tall.neck) * focusZoom, sheet } : null;
+  if (focusNeck) {
+    ctx.save();
+    ctx.strokeStyle = '#4fc3ff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, focusNeck.y);
+    ctx.lineTo(canvas.width, focusNeck.y);
+    ctx.stroke();
+    ctx.restore();
+  }
   const key = focusKey();
   $('focus-note').classList.toggle('warn', !key);
-  if (!key) return;
+  if (!key || state.settings.focusOutline === false) return;
   // The picked part alone: everything else hidden. Its outline glows.
   const hidden = Object.fromEntries(wornKeys().filter((k) => k !== key && itemOfKey(k) !== key && k !== itemOfKey(key)).map((k) => [k, true]));
   for (const k of Object.keys(state.character.parts)) if (k !== key && k !== itemOfKey(key) && !(k in hidden)) hidden[k] = true;
   const alone = composeSheet(sheet, { ...state.character, hidden }, state.library, gradientsById(), state.settings).image;
   if (!alone || alone.width !== c.image.width || alone.height !== c.image.height) return;
-  // The outline goes around the part, also outside the frame (the room around it).
-  const ew = r.w + 2 * P;
-  const eh = r.h + 2 * P;
-  const edge = createImage(ew, eh);
+  // The outline follows the part's pixel edges at any zoom: a thin line, the same on screen however
+  // big the pixels are, with a soft glow.
   const solid = (x, y) => x >= 0 && y >= 0 && x < r.w && y < r.h && alone.data[((r.y + y) * alone.width + r.x + x) * 4 + 3] > 40;
-  for (let y = -P; y < r.h + P; y++) {
-    for (let x = -P; x < r.w + P; x++) {
-      if (solid(x, y)) continue;
-      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) edge.data.set([255, 214, 64, 255], ((y + P) * ew + x + P) * 4);
+  const z = focusZoom;
+  const path = new Path2D();
+  for (let y = 0; y < r.h; y++) {
+    for (let x = 0; x < r.w; x++) {
+      if (!solid(x, y)) continue;
+      const sx = (x + P) * z;
+      const sy = (y + P) * z;
+      if (!solid(x, y - 1)) { path.moveTo(sx, sy); path.lineTo(sx + z, sy); }
+      if (!solid(x, y + 1)) { path.moveTo(sx, sy + z); path.lineTo(sx + z, sy + z); }
+      if (!solid(x - 1, y)) { path.moveTo(sx, sy); path.lineTo(sx, sy + z); }
+      if (!solid(x + 1, y)) { path.moveTo(sx + z, sy); path.lineTo(sx + z, sy + z); }
     }
   }
+  const colour = state.settings.focusOutlineColour || '#ffd640';
+  // Scaled down on screen (a big canvas in a small window): keep the line about 2 screen pixels.
+  const shown = canvas.getBoundingClientRect().width / canvas.width || 1;
   ctx.save();
-  ctx.shadowColor = 'rgba(255, 214, 64, 0.95)';
-  ctx.shadowBlur = Math.max(6, focusZoom * 2);
-  ctx.drawImage(toCanvas(edge), 0, 0, canvas.width, canvas.height);
+  ctx.lineCap = 'square';
+  ctx.strokeStyle = colour;
+  ctx.shadowColor = colour;
+  ctx.shadowBlur = 6;
+  ctx.lineWidth = Math.max(1, 2 / shown);
+  ctx.stroke(path);
   ctx.restore();
 }
 
@@ -5617,8 +5718,38 @@ $('focus-dialog').addEventListener('keydown', (e) => {
     const fy = (e.clientY - rect.top) / (rect.height || 1);
     setFocusZoom(focusZoom + (e.deltaY < 0 ? 1 : -1), fx, fy, e.clientX, e.clientY);
   }, { passive: false });
+  // The neck line of taller sprites: drag it up or down.
+  let neckDrag = null;
+  const nearNeck = (e) => {
+    if (!focusNeck) return false;
+    const rect = canvas.getBoundingClientRect();
+    const y = ((e.clientY - rect.top) * canvas.height) / (rect.height || 1);
+    return Math.abs(y - focusNeck.y) <= 6 * (canvas.height / (rect.height || 1));
+  };
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) canvas.style.cursor = nearNeck(e) || neckDrag ? 'ns-resize' : '';
+    if (!neckDrag) return;
+    const rect = canvas.getBoundingClientRect();
+    const y = ((e.clientY - rect.top) * canvas.height) / (rect.height || 1);
+    const neck = Math.max(0, Math.round(y / focusZoom) - FOCUS_PAD);
+    const t = state.character.taller?.[neckDrag];
+    if (!t || t.neck === neck) return;
+    t.neck = Math.min(plainFrameHeight(neckDrag) - 1, neck);
+    renderPreview();
+  });
   canvas.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || !focusKey()) return;
+    if (e.button === 0 && nearNeck(e)) {
+      canvas.setPointerCapture(e.pointerId);
+      neckDrag = focusNeck.sheet;
+      e.stopImmediatePropagation();
+    }
+  });
+  canvas.addEventListener('pointerup', () => {
+    if (neckDrag) renderTaller();
+    neckDrag = null;
+  });
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || neckDrag || !focusKey()) return;
     canvas.focus();
     canvas.setPointerCapture(e.pointerId);
     canvas.classList.add('dragging');

@@ -488,6 +488,8 @@ button.gallery-name { border: 0; background: transparent; padding: 0; text-align
 #gallery-dialog { width: min(1000px, 94vw); }
 .set-list > .muted { grid-column: 1 / -1; }
 .gif-export { margin-top: 6px; align-items: center; }
+.taller-grid { display: grid; grid-template-columns: auto auto auto; gap: 4px 10px; align-items: center; font-size: 12px; justify-content: start; }
+.taller-grid input[type="number"] { width: 60px; }
 #face-canvas, #walk-canvas, #sv-canvas, #damage-canvas { cursor: zoom-in; }
 .focus-dialog { width: min(1180px, 96vw); }
 .focus-body { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 12px; align-items: start; }

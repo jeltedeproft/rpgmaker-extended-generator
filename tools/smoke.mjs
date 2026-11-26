@@ -498,6 +498,12 @@ try {
     await sleep(900);
     check('fit into RPG Maker size keeps 48px frames and changes the picture', await evaluate(`document.getElementById('walk-canvas').width === 48`) && (await evaluate(walkSigOf('walk-canvas'))) !== roomless);
     await toggle('fit-frame', false);
+    // Taller sprites: the walk frames grow, the head stays.
+    await evaluate(`(() => { const t = document.querySelector('#taller-grid input[type=checkbox]'); t.checked = true; t.dispatchEvent(new Event('change')); })()`);
+    await sleep(900);
+    check('taller sprites make the walk frames taller', await evaluate(`document.getElementById('walk-canvas').height > 48 && document.getElementById('walk-canvas').width === 48`), await evaluate(`document.getElementById('walk-canvas').height`));
+    await evaluate(`(() => { const t = document.querySelector('#taller-grid input[type=checkbox]'); t.checked = false; t.dispatchEvent(new Event('change')); })()`);
+    await sleep(900);
     await click('#gif-walk');
     await sleep(300);
     check('a walk GIF is saved', await evaluate(`/_walk(_[a-z]+)?\.gif/.test(document.getElementById('toast').textContent)`), await evaluate(`document.getElementById('toast').textContent`));

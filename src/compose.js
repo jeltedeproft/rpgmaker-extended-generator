@@ -450,6 +450,14 @@ export function countPieces(character, library, key, gap, settings = null) {
  * @returns {{image:object|null, problems:string[]}}
  */
 export function composeSheet(sheet, character, library, gradientsById, settings) {
+  // Taller sprites: drawn as usual, then the body below the neck is stretched down (tallerFrames).
+  const tall = sheet !== 'FG' && character.taller?.[sheet];
+  if (tall?.stretch > 100) {
+    const plain = composeSheet(sheet, { ...character, taller: null }, library, gradientsById, settings);
+    if (!plain.image || !plain.frame) return plain;
+    const result = tallerFrames(plain.image, plain.frame, tall.neck, tall.stretch);
+    return { ...plain, ...result };
+  }
   // A portrait with columns and rows (a face set): the face repeated in every cell.
   const faceGrid = sheet === 'FG' && settings?.templates?.FG;
   if (faceGrid && (faceGrid.cols > 1 || faceGrid.rows > 1)) {
@@ -628,6 +636,32 @@ export function fitRoom(image, frame, room, inner) {
     }
   }
   return { image: out, frame: fitted };
+}
+
+/**
+ * Taller sprites (the "bigger MV sprites" trick): in every frame the head stays as it is and
+ * everything below the neck is stretched downwards, pixel for pixel (nearest neighbour), so the
+ * character gets a longer body instead of a bigger head. Frames grow taller by as much; the sheet
+ * keeps its grid and the feet stay on the bottom.
+ * @param {number} neck rows from the top of each frame that are kept as they are
+ * @param {number} stretch percent of the height below the neck (150 = half again as long)
+ * @returns {{image:object, frame:object}}
+ */
+export function tallerFrames(image, frame, neck, stretch) {
+  const keep = Math.max(0, Math.min(frame.h, Math.round(neck)));
+  const below = frame.h - keep;
+  const grown = Math.round((below * stretch) / 100);
+  const h = keep + grown;
+  const out = createImage(frame.w * frame.cols, h * frame.rows);
+  const rowBytes = frame.w * frame.cols * 4;
+  for (let row = 0; row < frame.rows; row++) {
+    for (let y = 0; y < h; y++) {
+      const sy = y < keep ? y : keep + Math.min(below - 1, Math.floor(((y - keep) * below) / Math.max(1, grown)));
+      const from = ((row * frame.h + sy) * image.width) * 4;
+      out.data.set(image.data.subarray(from, from + rowBytes), ((row * h + y) * out.width) * 4);
+    }
+  }
+  return { image: out, frame: { ...frame, h } };
 }
 
 /**
