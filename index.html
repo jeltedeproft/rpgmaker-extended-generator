@@ -44,11 +44,21 @@
       <span class="divider"></span>
       <button id="randomize" disabled>Randomize</button>
       <button id="clear-all" disabled title="Take off every part, Body and Face too (locked parts stay), set every colour back to Source, and undo moves, pieces, per-image pictures, hiding, cut-off parts, draw order and whole-image changes">Clear all</button>
-      <button id="random-rules" disabled title="Rules for Randomize">Rules…</button>
-      <button id="open-alikes" hidden title="Copies and alternates that look the same as another part: compare them and hide the ones you don't need">Look-alikes…</button>
-      <button id="open-files" disabled title="Every file the generator read, and the ones it couldn't: assign, reassign or unassign them">Files…</button>
+      <div class="menu" id="rules-menu">
+        <button type="button" class="menu-button" id="rules-menu-button" aria-haspopup="menu" aria-expanded="false" disabled>Rules ▾</button>
+        <div class="menu-list" role="menu" hidden>
+          <button type="button" class="menu-item" id="random-rules" disabled title="How often each part is worn, colour links, parts that never go together">Randomize rules…</button>
+          <button type="button" class="menu-item" id="open-templates" disabled title="Frame size and grid of each sheet">Sheet templates…</button>
+        </div>
+      </div>
       <span class="divider"></span>
-      <button id="open-templates" disabled title="Frame size and grid of each sheet">Sheet templates…</button>
+      <div class="menu" id="files-menu">
+        <button type="button" class="menu-button" id="files-menu-button" aria-haspopup="menu" aria-expanded="false" disabled>Files ▾</button>
+        <div class="menu-list" role="menu" hidden>
+          <button type="button" class="menu-item" id="open-files" disabled title="Every file the generator read, and the ones it couldn't: assign, reassign or unassign them">Files…</button>
+          <button type="button" class="menu-item" id="open-alikes" hidden title="Copies and alternates that look the same as another part: compare them and hide the ones you don't need">Look-alikes…</button>
+        </div>
+      </div>
       <button id="open-problems" hidden title="Notes from opening your folders: skipped files, files read by guessing, missing colours">Import report</button>
     </div>
   </header>

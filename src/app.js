@@ -352,9 +352,20 @@ function unsupportedHint(gradientFiles) {
     + 'Generator folders from XP and older are not supported.';
 }
 
+/** The Files menu: how many files wait to be assigned, and how many look-alikes there are. */
+let toAssignCount = 0;
+let alikeCount = 0;
+function setFilesLabel(toAssign = toAssignCount) {
+  toAssignCount = toAssign;
+  $('open-files').textContent = toAssign ? `Files… (${toAssign} to assign)` : 'Files…';
+  const notes = [toAssign && `${toAssign} to assign`, alikeCount && `${alikeCount} look-alike${alikeCount === 1 ? '' : 's'}`].filter(Boolean);
+  $('files-menu-button').textContent = `Files${notes.length ? ` (${notes.join(', ')})` : ''} ▾`;
+}
+
 /** Buttons that need a folder open (the Load menu works before: sample kit, sets). */
 const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'save-character', 'export-setup', 'save-set',
-  'load-character', 'import-setup', 'open-files', 'gallery-menu-button', 'open-gallery', 'open-sets', 'open-templates'];
+  'load-character', 'import-setup', 'open-files', 'gallery-menu-button', 'open-gallery', 'open-sets', 'open-templates',
+  'rules-menu-button', 'files-menu-button'];
 
 /** Back to the start screen: nothing is loaded. */
 function showWelcome() {
@@ -364,7 +375,7 @@ function showWelcome() {
   $('welcome').hidden = false;
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = true;
   for (const id of APP_BUTTONS) $(id).disabled = true;
-  $('open-files').textContent = 'Files…';
+  setFilesLabel(0);
   $('open-problems').hidden = true;
   $('packs').replaceChildren();
 }
@@ -2103,7 +2114,7 @@ function renderProblems() {
     ...state.renderProblems,
   ];
   const total = lib.unrecognized.length + lines.length;
-  $('open-files').textContent = lib.unrecognized.length ? `Files… (${lib.unrecognized.length} to assign)` : 'Files…';
+  setFilesLabel(lib.unrecognized.length);
   $('open-problems').hidden = !total;
   $('open-problems').textContent = `Import report (${total})`;
   $('problem-list').replaceChildren(
@@ -3921,6 +3932,8 @@ function updateAlikesButton() {
   const listed = state.lookalikes.filter((f) => f.result.identical || f.result.ratio <= LOOKALIKE_RATIO);
   $('open-alikes').hidden = !state.lookalikes.length;
   $('open-alikes').textContent = listed.length ? `Look-alikes… (${listed.length})` : 'Look-alikes…';
+  alikeCount = listed.length;
+  setFilesLabel();
 }
 
 function putPixels(canvas, pixels) {

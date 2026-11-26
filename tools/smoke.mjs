@@ -176,6 +176,7 @@ try {
   await sleep(300);
   check('Save setup opens from the Save menu, and the menu closes', await evaluate(`document.getElementById('setup-dialog').open && document.querySelector('#save-menu .menu-list').hidden`));
   await evaluate(`document.getElementById('setup-dialog').close()`);
+  check('Rules holds the sheet templates, Files the look-alikes', await evaluate(`document.querySelector('#rules-menu .menu-list').contains(document.getElementById('open-templates')) && document.querySelector('#files-menu .menu-list').contains(document.getElementById('open-alikes'))`));
   check('the Load menu holds files, character, set, setup and sample kit', await evaluate(`['files-input', 'load-character', 'import-sets', 'import-setup', 'sample-kit'].every(id => document.querySelector('#load-menu .menu-list').contains(document.getElementById(id)))`));
   await click('#open-sets');
   await sleep(300);
