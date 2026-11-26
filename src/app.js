@@ -397,6 +397,33 @@ function showApp() {
 }
 $('open-templates').addEventListener('click', () => $('templates-dialog').showModal());
 
+/**
+ * Puts a menu's list under its button, inside the window: placed against the window (fixed), so a
+ * list near the right edge opens to the left and never makes the page scroll sideways.
+ */
+function placeMenu(button, list) {
+  const b = button.getBoundingClientRect();
+  const width = document.documentElement.clientWidth;
+  list.style.top = `${b.bottom + 4}px`;
+  list.style.left = '0px';
+  const w = list.getBoundingClientRect().width;
+  list.style.left = `${Math.max(8, Math.min(b.left, width - w - 8))}px`;
+}
+// An open menu follows its button when the window changes size or the page scrolls.
+for (const event of ['resize', 'scroll']) {
+  addEventListener(event, () => {
+    for (const menu of document.querySelectorAll('.menu')) {
+      const list = menu.querySelector('.menu-list');
+      if (!list.hidden) placeMenu(menu.querySelector('.menu-button'), list);
+    }
+  }, { passive: true });
+}
+
+// Enter in a search box filters (as typing already does); it doesn't close the window it is in.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && e.target.matches?.('input[type="search"]')) e.preventDefault();
+});
+
 // Menus in the top bar (Load, Save, Gallery): a click opens the list, a pick or a click elsewhere closes it.
 function closeMenus(except = null) {
   for (const menu of document.querySelectorAll('.menu')) {
@@ -412,13 +439,7 @@ for (const menu of document.querySelectorAll('.menu')) {
     closeMenus(menu);
     list.hidden = !list.hidden;
     button.setAttribute('aria-expanded', String(!list.hidden));
-    // Near the right edge of the window, the list opens to the left instead of running off it.
-    list.style.left = '';
-    list.style.right = '';
-    if (!list.hidden && list.getBoundingClientRect().right > document.documentElement.clientWidth - 4) {
-      list.style.left = 'auto';
-      list.style.right = '0';
-    }
+    if (!list.hidden) placeMenu(button, list);
   });
   // Picking an item closes the menu (file pickers too: their input still gets the file).
   list.addEventListener('click', (e) => {

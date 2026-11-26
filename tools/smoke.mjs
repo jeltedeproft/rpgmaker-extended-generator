@@ -686,6 +686,8 @@ try {
     await sleep(1500);
     check('real pack imported', await evaluate(`document.querySelectorAll('#packs div').length >= 3`));
     // Assign an unrecognised file by hand, as a brand-new part.
+    check('the Files menu stays inside the window', await evaluate(`(() => { document.getElementById('files-menu-button').click(); const r = document.querySelector('#files-menu .menu-list').getBoundingClientRect(); const ok = r.right <= document.documentElement.clientWidth && document.documentElement.scrollWidth <= document.documentElement.clientWidth; document.getElementById('files-menu-button').click(); return ok; })()`));
+    check('Enter in a search box keeps the window open', await evaluate(`(() => { document.getElementById('gallery-dialog').showModal(); const i = document.getElementById('gallery-search'); i.focus(); const e = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }); i.dispatchEvent(e); const ok = e.defaultPrevented && document.getElementById('gallery-dialog').open; document.getElementById('gallery-dialog').close(); return ok; })()`));
     check('the import report is under Files', await evaluate(`!document.getElementById('open-problems').hidden && document.querySelector('#files-menu .menu-list').contains(document.getElementById('open-problems')) && /Import report… \\(\\d+\\)/.test(document.getElementById('open-problems').textContent)`));
     check('the Files button stays short', await evaluate(`document.getElementById('files-menu-button').textContent.length < 16`), await evaluate(`document.getElementById('files-menu-button').textContent`));
     await click('#open-problems');
