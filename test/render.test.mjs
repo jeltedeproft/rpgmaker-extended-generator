@@ -409,6 +409,25 @@ test('character sets: save some items with their colours, put them on another ch
   assert.equal(applySet({ ...target, parts: {} }, withSkin, lib).character.colors.skin, 'pale');
 });
 
+test('a set keeps its hair colour when the eyebrows underneath share the slot', () => {
+  const lib = { variants: new Map(), bodyTypes: new Map() };
+  const mk = (id, part, slots) => {
+    const v = { id, part, pid: 'p01', basePid: 'p01', bodyType: 'Male', pack: 'k', layers: [{ part, sheet: 'FG', mask: { slots } }] };
+    lib.variants.set(id, v);
+    if (!lib.bodyTypes.has('Male')) lib.bodyTypes.set('Male', { parts: new Map() });
+    lib.bodyTypes.get('Male').parts.set(part, new Map([[id, v]]));
+  };
+  mk('hair', 'FrontHair', ['hair']);
+  mk('brows', 'Eyebrows', ['hair']);
+  mk('coat', 'Clothing', ['cloth1']);
+  const character = { bodyType: 'Male', parts: { Eyebrows: 'brows', FrontHair: null, Clothing: null }, colors: { hair: 'random-brown' }, itemColors: {} };
+  const set = { name: 'S', parts: { FrontHair: 'hair', Clothing: 'coat' }, colors: { hair: 'set-red', cloth1: 'set-blue' } };
+  const worn = applySet(character, set, lib).character;
+  assert.equal(worn.colors.hair, 'random-brown'); // the eyebrows keep theirs
+  assert.equal(worn.itemColors.FrontHair.hair, 'set-red'); // the set's hair is the set's colour
+  assert.equal(worn.colors.cloth1, 'set-blue');
+});
+
 test('a set made from a whole character loses the body, face, eyes...; trimming keeps some items', () => {
   const set = { name: 'Knight', parts: { Body: 'b', Face: 'f', Eyes: 'e', Clothing: 'c', FrontHair: 'h' },
     offsets: { Eyes: {}, Clothing: { face: { x: 1 } } }, itemColors: {}, split: {}, clip: { FrontHair: { mode: 'inside', by: 'Clothing' } }, colors: { skin: 's' } };

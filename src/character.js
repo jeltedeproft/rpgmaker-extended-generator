@@ -337,8 +337,24 @@ export function applySet(character, set, library) {
     }
   }
   for (const field of ['offsets', 'itemColors', 'split', 'clip']) Object.assign(next[field], structuredClone(set[field] || {}));
+  // A colour slot only the set uses becomes the character's colour. One the parts underneath use
+  // too (hair colour: the eyebrows) stays theirs, and the set's items get the set's colour as
+  // their own, so the set looks the same on every character, after Randomize too.
   const underneath = new Set(usedSlots({ parts: Object.fromEntries(Object.entries(next.parts).filter(([k]) => !(k in (set.parts || {})))) }, library).map((s) => s.id));
-  for (const [slot, colour] of Object.entries(set.colors || {})) if (!underneath.has(slot)) next.colors[slot] = colour;
+  for (const [slot, colour] of Object.entries(set.colors || {})) {
+    if (!underneath.has(slot)) {
+      next.colors[slot] = colour;
+      continue;
+    }
+    for (const key of Object.keys(set.parts || {})) {
+      if (!next.parts[key]) continue;
+      const own = usedSlots({ parts: { [key]: next.parts[key] } }, library).map((s) => s.id);
+      // Slots not known yet (masks not read): give it the colour anyway, unused it does nothing.
+      if (own.length && !own.includes(slot)) continue;
+      const colours = (next.itemColors[key] ||= {});
+      if (!(slot in colours)) colours[slot] = colour;
+    }
+  }
   return { character: next, missing };
 }
 

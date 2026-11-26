@@ -2304,10 +2304,12 @@ async function openCharacterView(item, use) {
   }
 }
 
-function putOnSet(set) {
+async function putOnSet(set) {
   for (const g of set.customGradients || []) {
     if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(customGradientFromJson(g));
   }
+  // Read the set's colour masks first: which colours its parts use decides where its colours go.
+  await ensureVariants(variantsToDecode(applySet(state.character, set, state.library).character, state.library));
   const { character, missing } = applySet(state.character, set, state.library);
   state.character = character;
   renderAll();
@@ -4285,7 +4287,7 @@ async function importJsonFiles(files) {
 }
 
 function importSetsFrom(items) {
-  const sets = items.filter((i) => i.kind === 'sets').flatMap((i) => i.sets);
+  const sets = items.filter((i) => i.kind === 'sets').flatMap((i) => i.sets).map(withoutOwnParts);
   if (!sets.length) return 0;
   (state.settings.sets ||= []).push(...sets);
   saveSettings();
@@ -4340,13 +4342,14 @@ function openJsonDialog(items) {
       ]);
     };
     const asCharacter = galleryPicture(item.text, item.name);
-    const onYours = characterPicture(applySet(state.character, asSet.set, state.library).character, asSet.customGradients);
+    // Only the set, in its own colours: not drawn over your character's other parts.
+    const onYours = characterPicture(setCharacter(asSet.set), asSet.customGradients);
     return el('div', { className: 'json-row' }, [
       el('h4', { textContent: item.name }),
       el('div', { className: 'json-options' }, [
         option('character', 'As a character', 'Replaces the current character (with several, they go to the Gallery).', picture(asCharacter)),
         option('both', 'As a character and a set', 'Loads it like "As a character", and also saves its parts under Sets, to put on other characters later.', picture(asCharacter)),
-        option('set', 'As a set on your character', `${(n2 => `Its ${n2} part${n2 === 1 ? '' : 's'}`)(Object.keys(asSet.set.parts).length)} go${Object.keys(asSet.set.parts).length === 1 ? 'es' : ''} on your character; body type and name stay. Also saved under Sets.`, picture(onYours)),
+        option('set', 'As a set on your character', `${(n2 => `Its ${n2} part${n2 === 1 ? '' : 's'}`)(Object.keys(asSet.set.parts).length)} (pictured on their own) go${Object.keys(asSet.set.parts).length === 1 ? 'es' : ''} on your character; body type and name stay. Also saved under Sets.`, picture(onYours)),
         option('skip', 'Skip'),
       ]),
     ]);
