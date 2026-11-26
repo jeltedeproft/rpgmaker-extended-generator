@@ -129,7 +129,8 @@ function mirrorRows(sheet, image, frame) {
 /** The whole-image transform of a sheet (character.sheetTransform), applied before exporting. */
 export function sheetTransformOf(character, sheet) {
   const t = character.sheetTransform?.[sheet];
-  return { x: t?.x || 0, y: t?.y || 0, rot: t?.rot || 0, scale: t?.scale || 100, flipX: !!t?.flipX, flipY: !!t?.flipY };
+  const scale = t?.scale || 100;
+  return { x: t?.x || 0, y: t?.y || 0, rot: t?.rot || 0, scale, scaleY: t?.scaleY || scale, flipX: !!t?.flipX, flipY: !!t?.flipY };
 }
 
 /**
@@ -326,7 +327,12 @@ export function sheetLayout(sheet, draws, settings, character = null) {
     const frame = t.cols * t.rows > 1 ? { w: t.fw, h: t.fh, cols: t.cols, rows: t.rows } : null;
     layout = { size, frame };
   }
-  return settings?.makeRoom && character ? withRoom(layout, sheet, roomNeeded(character, draws, sheet, layout.frame)) : layout;
+  if (!character || !(settings?.makeRoom || settings?.fitFrame)) return layout;
+  // Fit into RPG Maker's size: make room for the portrait too, then shrink it all back (fitInto).
+  const frame = layout.frame || (settings.fitFrame && sheet === 'FG' ? { w: layout.size.w, h: layout.size.h, cols: 1, rows: 1 } : null);
+  const room = frame ? roomNeeded(character, draws, sheet, frame) : 0;
+  const result = withRoom({ ...layout, frame }, sheet, room);
+  return room ? { ...result, fit: !!settings.fitFrame } : layout;
 }
 
 /**
@@ -334,12 +340,12 @@ export function sheetLayout(sheet, draws, settings, character = null) {
  * turned parts are not cut off at the frame's edge (0 = they fit). Portraits keep their size.
  */
 export function roomNeeded(character, draws, sheet, frame) {
-  const grid = SHEETS[sheet].frame;
-  if (sheet === 'FG' || !frame || !grid || frame.cols !== grid.cols || frame.rows !== grid.rows) return 0;
+  const grid = SHEETS[sheet].frame || { cols: 1, rows: 1 };
+  if (!frame || frame.cols !== grid.cols || frame.rows !== grid.rows) return 0;
   const side = Math.max(frame.w, frame.h);
   const grown = (t, rot = t.rot) => {
     const r = ((rot || 0) * Math.PI) / 180;
-    const f = ((t.scale ?? 100) / 100) * (Math.abs(Math.cos(r)) + Math.abs(Math.sin(r)));
+    const f = (Math.max(t.scale ?? 100, t.scaleY ?? 0) / 100) * (Math.abs(Math.cos(r)) + Math.abs(Math.sin(r)));
     return (side * Math.max(0, f - 1)) / 2;
   };
   let room = 0;
@@ -560,6 +566,10 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
   const image = transformSheet(out, sheet, frame, whole);
   if (layout.room) {
     const fitted = fitRoom(image, frame, layout.room, layout.inner);
+    if (layout.fit) {
+      const inner = { ...frame, w: layout.inner.w, h: layout.inner.h };
+      return { image: fitInto(fitted.image, fitted.frame, inner), problems, frame: sheet === 'FG' ? null : inner };
+    }
     return { image: fitted.image, problems, frame: fitted.frame };
   }
   return { image, problems, frame };
@@ -602,6 +612,56 @@ export function fitRoom(image, frame, room, inner) {
     }
   }
   return { image: out, frame: fitted };
+}
+
+/**
+ * "Fit into RPG Maker's size": every frame shrunk (keeping its proportions, all by the same
+ * amount) into frames of the inner size, standing on the bottom and centred, so a sheet with parts
+ * that stick out still has RPG Maker's frame size (portrait 144px, walk 48px, battler 64px).
+ * Each pixel becomes the average of the pixels it covers. Frames that already fit stay as they are.
+ */
+export function fitInto(image, frame, inner) {
+  const s = Math.min(1, inner.w / frame.w, inner.h / frame.h);
+  const out = createImage(inner.w * frame.cols, inner.h * frame.rows);
+  const w = Math.max(1, Math.round(frame.w * s));
+  const h = Math.max(1, Math.round(frame.h * s));
+  const ox = Math.floor((inner.w - w) / 2);
+  const oy = inner.h - h;
+  const src = image.data;
+  for (let row = 0; row < frame.rows; row++) {
+    for (let col = 0; col < frame.cols; col++) {
+      for (let y = 0; y < h; y++) {
+        const y0 = (y * frame.h) / h;
+        const y1 = ((y + 1) * frame.h) / h;
+        for (let x = 0; x < w; x++) {
+          const x0 = (x * frame.w) / w;
+          const x1 = ((x + 1) * frame.w) / w;
+          // Area average, with colours weighted by how solid they are.
+          let r = 0; let g = 0; let b = 0; let a = 0; let area = 0;
+          for (let sy = Math.floor(y0); sy < Math.ceil(y1); sy++) {
+            const wy = Math.min(sy + 1, y1) - Math.max(sy, y0);
+            for (let sx = Math.floor(x0); sx < Math.ceil(x1); sx++) {
+              const wgt = wy * (Math.min(sx + 1, x1) - Math.max(sx, x0));
+              const i = ((row * frame.h + sy) * image.width + col * frame.w + sx) * 4;
+              const al = src[i + 3] * wgt;
+              r += src[i] * al;
+              g += src[i + 1] * al;
+              b += src[i + 2] * al;
+              a += al;
+              area += wgt;
+            }
+          }
+          if (!a) continue;
+          const o = ((row * inner.h + oy + y) * out.width + col * inner.w + ox + x) * 4;
+          out.data[o] = Math.round(r / a);
+          out.data[o + 1] = Math.round(g / a);
+          out.data[o + 2] = Math.round(b / a);
+          out.data[o + 3] = Math.round(a / area);
+        }
+      }
+    }
+  }
+  return out;
 }
 
 /**

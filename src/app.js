@@ -301,6 +301,7 @@ function useSetup(data, packs) {
   }
   $('flip-gradient').checked = !!state.settings.flipGradient;
   $('make-room').checked = !!state.settings.makeRoom;
+  $('fit-frame').checked = !!state.settings.fitFrame;
   $('smooth-pixels').checked = !!state.settings.smoothPixels;
   renderTemplates();
   renderSets();
@@ -1311,6 +1312,9 @@ function renderImageTransform() {
   $('image-y').value = t.y || 0;
   $('image-rot').value = t.rot || 0;
   $('image-scale').value = t.scale || 100;
+  $('image-keep').checked = !t.scaleY;
+  $('image-scaley').value = t.scaleY || t.scale || 100;
+  $('image-scaley').disabled = !t.scaleY;
   $('image-flipx').checked = !!t.flipX;
   $('image-flipy').checked = !!t.flipY;
   markImageTransform();
@@ -1324,13 +1328,20 @@ function markImageTransform() {
 function updateImageTransform() {
   const sheet = $('image-sheet').value;
   const t = readShape('image', 400);
+  const keep = $('image-keep').checked;
+  $('image-scaley').disabled = keep;
+  if (keep) $('image-scaley').value = t.scale;
+  else {
+    const h = Math.max(10, Math.min(400, Number($('image-scaley').value) || 100));
+    if (h !== t.scale) t.scaleY = h;
+  }
   const all = (state.character.sheetTransform ||= {});
-  if (t.x || t.y || t.rot || t.scale !== 100 || t.flipX || t.flipY) all[sheet] = t;
+  if (t.x || t.y || t.rot || t.scale !== 100 || t.scaleY || t.flipX || t.flipY) all[sheet] = t;
   else delete all[sheet];
   markImageTransform();
   renderPreview();
 }
-for (const f of SHAPE_FIELDS) $(`image-${f}`).addEventListener('input', updateImageTransform);
+for (const f of [...SHAPE_FIELDS, 'scaley', 'keep']) $(`image-${f}`).addEventListener('input', updateImageTransform);
 $('image-sheet').addEventListener('change', renderImageTransform);
 $('image-reset').addEventListener('click', () => {
   delete state.character.sheetTransform?.[$('image-sheet').value];
@@ -5414,7 +5425,7 @@ $('pic-bg').addEventListener('change', (e) => {
   showPicBg();
 });
 
-for (const [id, setting] of [['make-room', 'makeRoom'], ['smooth-pixels', 'smoothPixels']]) {
+for (const [id, setting] of [['make-room', 'makeRoom'], ['fit-frame', 'fitFrame'], ['smooth-pixels', 'smoothPixels']]) {
   $(id).checked = !!state.settings[setting];
   $(id).addEventListener('change', (e) => {
     state.settings[setting] = e.target.checked;

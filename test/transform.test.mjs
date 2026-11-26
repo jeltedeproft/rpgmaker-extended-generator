@@ -130,8 +130,40 @@ test('make room grows sprite frames so an enlarged part is not cut off', async (
   assert.equal(roomNeeded({ offsets: {} }, draws, 'TV', frame), 0);
   assert.equal(roomNeeded({ offsets: { FrontHair: { sprite: { scale: 150 } } } }, draws, 'TV', frame), 12);
   assert.equal(roomNeeded({ offsets: { FrontHair: { sprite: { y: 5 } } } }, draws, 'TV', frame), 5);
-  // Portraits keep their size.
-  assert.equal(roomNeeded({ offsets: { FrontHair: { face: { scale: 200 } } } }, draws, 'FG', { w: 144, h: 144, cols: 1, rows: 1 }), 0);
+  // Portraits have no frame grid: only "Fit into RPG Maker's size" gives them one (and room).
+  assert.equal(roomNeeded({ offsets: { FrontHair: { face: { scale: 200 } } } }, draws, 'FG', null), 0);
+  assert.ok(roomNeeded({ offsets: { FrontHair: { face: { y: 20 } } } }, draws, 'FG', { w: 144, h: 144, cols: 1, rows: 1 }) >= 20);
+});
+
+test('fit into RPG Maker size shrinks frames that stick out back to the frame size, feet on the bottom', async () => {
+  const { fitInto } = await import('../src/compose.js');
+  // 2 x 1 frames of 8x8 (grown from 4x4), into 4x4 frames: halved.
+  const image = createImage(16, 8);
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 16; x++) image.data.set([100, 50, 0, 255], (y * 16 + x) * 4);
+  const out = fitInto(image, { w: 8, h: 8, cols: 2, rows: 1 }, { w: 4, h: 4 });
+  assert.equal(out.width, 8);
+  assert.equal(out.height, 4);
+  assert.deepEqual([...out.data.subarray(0, 4)], [100, 50, 0, 255]);
+  // A frame only too tall keeps its proportions: centred, standing on the bottom.
+  const tall = createImage(4, 8);
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) tall.data.set([9, 9, 9, 255], (y * 4 + x) * 4);
+  const fitted = fitInto(tall, { w: 4, h: 8, cols: 1, rows: 1 }, { w: 4, h: 4 });
+  assert.equal(alpha(fitted, 0, 3), 0); // 2 px wide in the middle
+  assert.equal(alpha(fitted, 1, 3), 255);
+  assert.equal(alpha(fitted, 1, 0), 255);
+});
+
+test('a whole image can be stretched: width and height sizes of their own', () => {
+  const img = createImage(8, 8);
+  dot(img, 5, 5);
+  dot(img, 2, 2); // the drawing's middle is the frame's middle
+  const wide = transformFrames(img, { scale: 100, scaleY: 50 });
+  assert.ok(isTransformed({ scale: 100, scaleY: 50 }));
+  assert.ok(!isTransformed({ scale: 100, scaleY: 100 }));
+  // Half as tall: the dots move towards the middle row, and stay in their columns.
+  const found = [];
+  for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) if (alpha(wide, x, y)) found.push([x, y]);
+  assert.ok(found.some(([x, y]) => x === 5 && y === 4) && found.every(([x]) => x === 2 || x === 5), JSON.stringify(found));
 });
 
 test('make room keeps the feet on the frame bottom and only the room the drawing needs', async () => {

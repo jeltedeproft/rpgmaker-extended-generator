@@ -270,7 +270,7 @@ export const NO_TRANSFORM = Object.freeze({ rot: 0, scale: 100, flipX: false, fl
 
 /** True when a transform ({rot, scale (%), flipX, flipY}) changes the picture. */
 export function isTransformed(t) {
-  return !!t && (!!t.rot || (t.scale ?? 100) !== 100 || !!t.flipX || !!t.flipY);
+  return !!t && (!!t.rot || (t.scale ?? 100) !== 100 || (t.scaleY ?? t.scale ?? 100) !== (t.scale ?? 100) || !!t.flipX || !!t.flipY);
 }
 
 /**
@@ -320,12 +320,14 @@ export function transformFrames(image, transform, frame = null, centres = frameC
       const rad = ((t.rot || 0) * Math.PI) / 180;
       const cos = Math.cos(rad);
       const sin = Math.sin(rad);
+      // scaleY: the height on its own (stretched or squashed); else the same as the width.
       const k = 100 / Math.max(1, t.scale ?? 100);
+      const ky = 100 / Math.max(1, t.scaleY ?? t.scale ?? 100);
       const mx = t.flipX ? -1 : 1;
       const my = t.flipY ? -1 : 1;
       // Smooth: turned (not by a quarter) or enlarged pixel art is sampled from its 4x Scale2x
       // picture (like RotSprite), so edges stay clean lines instead of jagged blocks.
-      const smooth = t.smooth && ((t.rot || 0) % 90 !== 0 || (t.scale ?? 100) > 100);
+      const smooth = t.smooth && ((t.rot || 0) % 90 !== 0 || (t.scale ?? 100) > 100 || (t.scaleY ?? 100) > 100);
       if (smooth) up ||= smoothed(image);
       for (let y = fy; y < fy + fh; y++) {
         for (let x = fx; x < fx + fw; x++) {
@@ -333,7 +335,7 @@ export function transformFrames(image, transform, frame = null, centres = frameC
           const dx = x - cx;
           const dy = y - cy;
           const u = cx + (dx * cos + dy * sin) * k * mx;
-          const v = cy + (-dx * sin + dy * cos) * k * my;
+          const v = cy + (-dx * sin + dy * cos) * ky * my;
           const sx = Math.round(u);
           const sy = Math.round(v);
           if (sx < fx || sx >= fx + fw || sy < fy || sy >= fy + fh) continue;
