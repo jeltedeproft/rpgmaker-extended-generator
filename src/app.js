@@ -534,7 +534,7 @@ async function renderEditor() {
   $('lock-part').checked = state.locked.has(key);
   $('lock-part').parentElement.hidden = isColours || isPiece;
   $('offsets').hidden = !worn;
-  $('add-item').hidden = isColours || isExtra || isPiece || !worn;
+  $('add-item').hidden = isColours || isExtra || isPiece || !worn || REQUIRED_PARTS.has(part);
   $('add-item').textContent = `+ Another ${part}`;
   $('remove-item').hidden = !isExtra;
   $('remove-part').hidden = isColours || isPiece || !worn;
@@ -3037,11 +3037,28 @@ function applyRemovedParts(packName) {
   }
 }
 
-/** Takes the part the selected item wears out of the generator (only that part). */
-function removePartByUser() {
+/** Asks before doing something that is hard to see undone: resolves true for the ok button. */
+function askFirst(title, text, okLabel) {
+  $('confirm-title').textContent = title;
+  $('confirm-text').textContent = text;
+  $('confirm-ok').textContent = okLabel;
+  $('confirm-dialog').returnValue = '';
+  $('confirm-dialog').showModal();
+  return new Promise((resolve) => {
+    $('confirm-dialog').addEventListener('close', () => resolve($('confirm-dialog').returnValue === 'ok'), { once: true });
+  });
+}
+
+/** Takes the part the selected item wears out of the generator (only that part), after asking. */
+async function removePartByUser() {
   const key = state.selectedPart;
   const variant = state.library.variants.get(state.character.parts[key]);
   if (!variant) return;
+  const ok = await askFirst(`Remove ${variant.part} ${variant.pid} from the generator?`,
+    `It is taken out of the lists of parts and stops being worn: only this one (${variant.pack}), not its folder, and the file on your computer stays as it is. `
+    + 'It stays out when you open the folder again. To bring it back: Files… → Removed. '
+    + `(To take off just this extra one, e.g. a second accessory, use "Take off this extra" instead.)`, 'Remove from generator');
+  if (!ok) return;
   const before = structuredClone(state.character);
   variant.hidden = variant.removed = true;
   (state.settings.removedParts ||= {})[variant.id] = true;

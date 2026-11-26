@@ -86,8 +86,8 @@
         <h2 id="editor-title"></h2>
         <div class="head-actions">
           <button id="add-item" class="small-button" hidden title="Wear a second one of this part, e.g. two accessories">+ Another</button>
-          <button id="remove-item" class="small-button" hidden>Remove this item</button>
-          <button id="remove-part" class="small-button" hidden title="Take this part out of the generator (only this one, not its folder). Put it back in Files… → Removed">Remove part</button>
+          <button id="remove-item" class="small-button" hidden title="Take off this extra one (e.g. the second accessory). The part stays in the generator">Take off this extra</button>
+          <button id="remove-part" class="small-button" hidden title="Take this part out of the generator's lists (only this one, not its folder; the file on your computer stays). You're asked first">Remove from generator…</button>
           <label class="lock"><input type="checkbox" id="lock-part"> Lock when randomizing</label>
         </div>
       </div>
@@ -426,6 +426,17 @@
       <div class="dialog-actions">
         <button value="cancel">Cancel</button>
         <button value="ok" class="primary">Save file</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirm-dialog">
+    <form method="dialog" class="gradient-form">
+      <h3 id="confirm-title"></h3>
+      <p id="confirm-text"></p>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button value="ok" id="confirm-ok" class="primary"></button>
       </div>
     </form>
   </dialog>

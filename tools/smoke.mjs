@@ -319,6 +319,9 @@ try {
     await sleep(400);
     const tiles = await evaluate(`document.querySelectorAll('#variants .variant').length`);
     await click('#remove-part');
+    await sleep(300);
+    check('removing a part from the generator asks first', await evaluate(`document.getElementById('confirm-dialog').open && /Files… → Removed/.test(document.getElementById('confirm-text').textContent)`));
+    await click('#confirm-ok');
     await sleep(900);
     check('a single part can be removed', (await evaluate(`document.querySelectorAll('#variants .variant').length`)) === tiles - 1
       && (await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).querySelector('.value').textContent`)) === 'none');
