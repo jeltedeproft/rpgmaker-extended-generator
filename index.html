@@ -230,31 +230,32 @@
 
     <section id="preview" class="panel" hidden>
       <div class="preview-grid">
-        <figure>
+        <figure data-sheet="FG">
           <canvas id="face-canvas" width="144" height="144"></canvas>
-          <figcaption title="The face picture (img/faces)">Portrait</figcaption>
+          <figcaption title="The face picture (img/faces)"><span class="sheet-label">Portrait</span></figcaption>
         </figure>
-        <figure>
+        <figure data-sheet="TV">
           <canvas id="walk-canvas" width="48" height="48"></canvas>
-          <figcaption>Walk
+          <figcaption><span class="sheet-label">Walk</span>
             <span class="dir-buttons" id="dir-buttons">
               <button data-dir="0" title="Down">↓</button><button data-dir="1" title="Left">←</button><button data-dir="2" title="Right">→</button><button data-dir="3" title="Up">↑</button>
             </span>
           </figcaption>
         </figure>
-        <figure>
+        <figure data-sheet="SV">
           <canvas id="sv-canvas" width="64" height="64"></canvas>
-          <figcaption>Battler <select id="sv-motion"></select></figcaption>
+          <figcaption><span class="sheet-label">Battler</span> <select id="sv-motion"></select></figcaption>
         </figure>
-        <figure class="wide">
+        <figure class="wide" data-sheet="TVD">
           <canvas id="damage-canvas" width="144" height="48"></canvas>
-          <figcaption>Damage</figcaption>
+          <figcaption><span class="sheet-label">Damage</span></figcaption>
         </figure>
         <figure class="wide" hidden>
           <canvas id="walk-all-canvas" width="192" height="48"></canvas>
           <figcaption>Walk: down, left, right, up</figcaption>
         </figure>
       </div>
+      <div id="extra-previews" class="preview-grid extra-previews"></div>
       <div class="preview-controls">
         <button id="pause-anim" class="small-button" title="Stop the walk and battler animations">⏸ Pause</button>
         <button id="stand-anim" class="small-button" title="Show the standing pose (the middle frame) instead of animating">Stand still</button>
@@ -320,7 +321,7 @@
         <button id="copy-credits" class="small-button">Copy credits</button>
       </details>
       <h3>Export</h3>
-      <div class="export">
+      <div class="export" id="export-buttons">
         <button data-export="FG" title="The face picture, for img/faces">Portrait</button>
         <button data-export="TV">Walk</button>
         <button data-export="TVD">Damage</button>
@@ -655,7 +656,9 @@
         <button value="close" class="small-button">Close</button>
       </div>
       <p class="muted small">Frame size (and grid) of each sheet. Leave empty for automatic: the body's size and RPG Maker's grid. Sprite parts with other frame sizes are placed frame by frame, centred and standing on the bottom; other parts are centred.</p>
+      <p class="muted small">Untick a sheet to leave it out of the preview and the export, or give it a name of your own. "Add a sheet" makes another one from the parts of a portrait, walk, damage or battler sheet, with a frame size and grid of its own (e.g. a 4 x 4 walk sheet next to RPG Maker's 3 x 4); it is exported as name_sheet.png.</p>
       <div id="template-grid" class="template-grid"></div>
+      <div class="dialog-actions"><button type="button" id="add-sheet" class="small-button">+ Add a sheet</button></div>
     </form>
   </dialog>
 

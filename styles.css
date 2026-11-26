@@ -369,7 +369,12 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .assign-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 10px; }
 .assign-form .field input, .assign-form .field select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .problems .assign { margin: 0 0 0 4px; padding: 0 6px; font-size: 11px; }
-.template-grid { display: grid; grid-template-columns: auto repeat(4, 64px); gap: 4px 6px; align-items: center; font-size: 12px; }
+.template-grid { display: grid; grid-template-columns: auto 130px 96px repeat(4, 64px) auto; gap: 4px 6px; align-items: center; font-size: 12px; }
+.template-grid .tpl-name { width: 130px; }
+.template-grid select { font: inherit; padding: 2px 4px; }
+.extra-previews:empty { display: none; }
+.extra-previews { margin-top: 10px; }
+.extra-previews canvas { max-width: 100%; width: auto; max-height: 200px; }
 .template-grid input { width: 64px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 5px; }
 .template-grid input[hidden] { display: block !important; visibility: hidden; }
 .set-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; overflow: auto; max-height: 64vh; margin-top: 8px; }

@@ -454,14 +454,32 @@ try {
   check('credits list the pack and its credits file', await evaluate(`(() => { const t = document.getElementById('credit-list').textContent; return t.includes('Sample kit') && t.includes('credits.txt'); })()`));
 
   // Sheet template: 64px walk frames.
-  await evaluate(`(() => { const i = document.querySelectorAll('#template-grid input')[4]; i.value = 64; i.dispatchEvent(new Event('change')); const j = document.querySelectorAll('#template-grid input')[5]; j.value = 64; j.dispatchEvent(new Event('change')); })()`);
+  await evaluate(`(() => { const i = document.querySelectorAll('#template-grid input.tpl-num')[4]; i.value = 64; i.dispatchEvent(new Event('change')); const j = document.querySelectorAll('#template-grid input.tpl-num')[5]; j.value = 64; j.dispatchEvent(new Event('change')); })()`);
   await sleep(1200);
   check('walk template changes the frame size', await evaluate(`document.getElementById('walk-canvas').width === 64 && document.getElementById('walk-canvas').height === 64`));
   await evaluate(`document.querySelector('.settings').open = true`);
   await shot('3b-template.png');
-  await evaluate(`(() => { for (const i of [...document.querySelectorAll('#template-grid input')].slice(4, 6)) { i.value = ''; i.dispatchEvent(new Event('change')); } })()`);
+  await evaluate(`(() => { for (const i of [...document.querySelectorAll('#template-grid input.tpl-num')].slice(4, 6)) { i.value = ''; i.dispatchEvent(new Event('change')); } })()`);
   await sleep(1200);
   check('template can be cleared', await evaluate(`document.getElementById('walk-canvas').width === 48`));
+  // Sheets: one turned off and renamed, one added.
+  {
+    const rowInputs = `[...document.querySelectorAll('#template-grid > *')]`;
+    await evaluate(`(() => { const c = ${rowInputs}[0].querySelector('input'); c.checked = false; c.dispatchEvent(new Event('change')); })()`);
+    await evaluate(`(() => { const n = document.querySelectorAll('#template-grid .tpl-name')[1]; n.value = 'Overworld'; n.dispatchEvent(new Event('change')); })()`);
+    await sleep(900);
+    check('a sheet can be turned off and renamed', await evaluate(`document.querySelector('#preview figure[data-sheet="FG"]').hidden && document.querySelector('#export-buttons [data-export="FG"]').hidden && document.querySelector('#preview figure[data-sheet="TV"] .sheet-label').textContent === 'Overworld' && document.querySelector('#export-buttons [data-export="TV"]').textContent === 'Overworld'`));
+    await click('#add-sheet');
+    await sleep(300);
+    await evaluate(`(() => { const nums = [...document.querySelectorAll('#template-grid input.tpl-num')].slice(-4); [32, 32, 4, 4].forEach((v, k) => { nums[k].value = v; nums[k].dispatchEvent(new Event('change')); }); })()`);
+    await sleep(1200);
+    check('an added sheet is drawn with its own grid and can be exported', await evaluate(`(() => { const c = document.querySelector('#extra-previews canvas'); return !!c && c.width === 128 && c.height === 128 && !!document.querySelector('#export-buttons [data-export^="extra:"]'); })()`),
+      await evaluate(`document.getElementById('extra-previews').textContent`));
+    await evaluate(`[...document.querySelectorAll('#template-grid button')].find(b => b.textContent === 'Remove').click()`);
+    await evaluate(`(() => { const c = ${rowInputs}[0].querySelector('input'); c.checked = true; c.dispatchEvent(new Event('change')); const n = document.querySelectorAll('#template-grid .tpl-name')[1]; n.value = ''; n.dispatchEvent(new Event('change')); })()`);
+    await sleep(900);
+    check('sheets back to normal', await evaluate(`!document.querySelector('#preview figure[data-sheet="FG"]').hidden && !document.querySelector('#extra-previews canvas') && document.querySelector('#export-buttons [data-export="TV"]').textContent === 'Walk'`));
+  }
   // Make room: a part made bigger gets bigger frames instead of being cut off; smoothing redraws it.
   {
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('FrontHair')).click()`);
@@ -482,7 +500,7 @@ try {
     await toggle('fit-frame', false);
     await click('#gif-walk');
     await sleep(300);
-    check('a walk GIF is saved', await evaluate(`/_walk_down\.gif/.test(document.getElementById('toast').textContent)`), await evaluate(`document.getElementById('toast').textContent`));
+    check('a walk GIF is saved', await evaluate(`/_walk(_[a-z]+)?\.gif/.test(document.getElementById('toast').textContent)`), await evaluate(`document.getElementById('toast').textContent`));
     await toggle('smooth-pixels', true);
     await sleep(900);
     check('pixel-art smoothing redraws a turned part', (await evaluate(walkSigOf('walk-canvas'))) !== roomless);

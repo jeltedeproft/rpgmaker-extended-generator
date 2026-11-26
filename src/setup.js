@@ -5,7 +5,7 @@
 export const SETUP_FORMAT = 'rpgmaker-xgen-setup';
 
 /** Option settings a setup carries as they are. */
-const OPTIONS = ['flipGradient', 'syncColours', 'splitEverything', 'recolourAll', 'makeRoom', 'smoothPixels', 'partStyle'];
+const OPTIONS = ['sheetOptions', 'extraSheets', 'fitFrame', 'flipGradient', 'syncColours', 'splitEverything', 'recolourAll', 'makeRoom', 'smoothPixels', 'partStyle'];
 
 /** Settings keyed "<folder>|<file path>": stored per file path, so they fit any folder name. */
 const BY_FILE = ['assignments', 'organizedFiles'];

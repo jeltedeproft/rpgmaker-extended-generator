@@ -305,6 +305,7 @@ function useSetup(data, packs) {
   $('fit-frame').checked = !!state.settings.fitFrame;
   $('smooth-pixels').checked = !!state.settings.smoothPixels;
   renderTemplates();
+  showSheetOptions();
   renderSets();
   afterFilesChanged();
   toast(`Using the setup "${data.name || 'setup'}": ${counts.files} file(s) read as set, ${counts.parts} colour mask(s), ${counts.sets} set(s).`, 8000);
@@ -1804,10 +1805,19 @@ async function renderPreview() {
   const byId = gradientsById();
   const problems = [...errors, ...unknownMaskColours()];
   for (const sheet of SHEET_KEYS) {
+    if (!sheetOn(sheet)) {
+      state.composites[sheet] = null;
+      continue;
+    }
     const { image, problems: pr, ...p } = composeSheet(sheet, state.character, state.library, byId, state.settings);
     problems.push(...pr);
     state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(sheet, image, p.frame) } : null;
   }
+  state.extraComposites = extraSheets().filter((x) => !x.off).map((x) => {
+    const { image } = composeSheet(x.base, state.character, state.library, byId, extraSettings(x));
+    return { sheet: x, image };
+  });
+  renderExtraPreviews();
   state.renderProblems = problems;
 
   const face = state.composites.FG;
@@ -5381,28 +5391,132 @@ $('sv-motion').replaceChildren(...SV_MOTIONS.map((m, i) => el('option', { value:
 $('sv-motion').addEventListener('change', (e) => (state.svMotion = Number(e.target.value)));
 
 // Sheet templates: frame size and grid per sheet; blank = automatic.
+/** A built-in sheet's own options: {off, name}. */
+const sheetOption = (sheet) => state.settings.sheetOptions?.[sheet] || {};
+const sheetOn = (sheet) => !sheetOption(sheet).off;
+const sheetLabel = (sheet) => sheetOption(sheet).name || SHEET_NAMES[sheet];
+/** Sheets added in Sheet templates: {id, base, name, off, fw, fh, cols, rows}. */
+const extraSheets = () => state.settings.extraSheets || [];
+/** The settings an extra sheet is drawn with: its base sheet, with the extra sheet's template. */
+function extraSettings(x) {
+  const template = x.fw > 0 && x.fh > 0 ? { fw: x.fw, fh: x.fh, cols: x.cols, rows: x.rows } : undefined;
+  return { ...state.settings, templates: { ...(state.settings.templates || {}), [x.base]: template } };
+}
+
+/** Shows the sheets' names, and hides the ones turned off, in the preview and the export. */
+function showSheetOptions() {
+  for (const sheet of SHEET_KEYS) {
+    const on = sheetOn(sheet);
+    const figure = document.querySelector(`#preview figure[data-sheet="${sheet}"]`);
+    if (figure) {
+      figure.hidden = !on;
+      figure.querySelector('.sheet-label').textContent = sheetLabel(sheet);
+    }
+    const button = document.querySelector(`#export-buttons [data-export="${sheet}"]`);
+    button.hidden = !on;
+    button.textContent = sheetLabel(sheet);
+  }
+  $('gif-walk').hidden = !sheetOn('TV');
+  $('gif-sv').hidden = !sheetOn('SV');
+  for (const b of document.querySelectorAll('#export-buttons [data-export^="extra:"]')) b.remove();
+  const all = document.querySelector('#export-buttons [data-export="all"]');
+  for (const x of extraSheets().filter((s) => !s.off)) {
+    const button = el('button', { textContent: x.name || 'Sheet', title: `Your sheet, from the ${SHEET_NAMES[x.base]} parts` });
+    button.dataset.export = `extra:${x.id}`;
+    all.before(button);
+  }
+}
+
+/** The extra sheets in the preview: the whole sheet. */
+function renderExtraPreviews() {
+  $('extra-previews').replaceChildren(...(state.extraComposites || []).filter((x) => x.image).map((x) => el('figure', { className: 'wide' }, [
+    toCanvas(x.image),
+    el('figcaption', { textContent: `${x.sheet.name || 'Sheet'} (${x.image.width} x ${x.image.height}, from the ${SHEET_NAMES[x.sheet.base]} parts)` }),
+  ])));
+}
+
+function sheetsChanged() {
+  saveSettings();
+  showSheetOptions();
+  if (state.character) renderPreview();
+}
+
 function renderTemplates() {
-  const rows = [['FG', 'Portrait'], ['TV', 'Walk'], ['TVD', 'Damage'], ['SV', 'Battler']];
   const t = state.settings.templates || {};
-  $('template-grid').replaceChildren(...rows.flatMap(([sheet, label]) => {
-    const input = (field, placeholder, hidden = false) => {
-      const i = el('input', { type: 'number', min: 1, max: 1024, value: t[sheet]?.[field] || '', placeholder, title: placeholder });
-      i.hidden = hidden;
-      i.addEventListener('change', () => {
-        const templates = (state.settings.templates ||= {});
-        const entry = (templates[sheet] ||= {});
-        entry[field] = Math.max(0, Math.min(1024, Math.round(Number(i.value) || 0))) || undefined;
-        if (!Object.values(entry).some(Boolean)) delete templates[sheet];
-        saveSettings();
-        if (state.character) renderPreview();
-      });
-      return i;
+  const number = (value, placeholder, hidden, save) => {
+    const i = el('input', { type: 'number', min: 1, max: 1024, value: value || '', placeholder, title: placeholder, className: 'tpl-num' });
+    i.hidden = hidden;
+    i.addEventListener('change', () => save(Math.max(0, Math.min(1024, Math.round(Number(i.value) || 0))) || undefined));
+    return i;
+  };
+  const builtIn = SHEET_KEYS.flatMap((sheet) => {
+    const options = () => ((state.settings.sheetOptions ||= {})[sheet] ||= {});
+    const on = el('input', { type: 'checkbox', checked: sheetOn(sheet), title: 'Untick to leave it out of the preview and the export' });
+    on.addEventListener('change', () => {
+      options().off = !on.checked || undefined;
+      sheetsChanged();
+    });
+    const name = el('input', { type: 'text', className: 'tpl-name', value: sheetOption(sheet).name || '', placeholder: SHEET_NAMES[sheet], title: 'Its name in the preview and on the export button' });
+    name.addEventListener('change', () => {
+      options().name = name.value.trim() || undefined;
+      sheetsChanged();
+    });
+    const save = (field) => (v) => {
+      const templates = (state.settings.templates ||= {});
+      const entry = (templates[sheet] ||= {});
+      entry[field] = v;
+      if (!Object.values(entry).some(Boolean)) delete templates[sheet];
+      saveSettings();
+      if (state.character) renderPreview();
     };
     const grid = sheet !== 'FG';
-    return [el('span', { textContent: label }), input('fw', 'width'), input('fh', 'height'), input('cols', 'columns', !grid), input('rows', 'rows', !grid)];
-  }));
+    return [el('label', { className: 'lock' }, [on, ` ${SHEET_NAMES[sheet]}`]), name, el('span'),
+      number(t[sheet]?.fw, 'width', false, save('fw')), number(t[sheet]?.fh, 'height', false, save('fh')),
+      number(t[sheet]?.cols, 'columns', !grid, save('cols')), number(t[sheet]?.rows, 'rows', !grid, save('rows')), el('span')];
+  });
+  const extras = extraSheets().flatMap((x) => {
+    const change = () => sheetsChanged();
+    const on = el('input', { type: 'checkbox', checked: !x.off, title: 'Untick to leave it out of the preview and the export' });
+    on.addEventListener('change', () => {
+      x.off = !on.checked || undefined;
+      change();
+    });
+    const name = el('input', { type: 'text', className: 'tpl-name', value: x.name || '', placeholder: 'name', title: 'Its name; the file is saved as character_name.png' });
+    name.addEventListener('change', () => {
+      x.name = name.value.trim() || 'Sheet';
+      change();
+    });
+    const base = el('select', { title: 'Which parts it is made of' }, SHEET_KEYS.map((s) => el('option', { value: s, textContent: `${SHEET_NAMES[s]} parts`, selected: s === x.base })));
+    base.addEventListener('change', () => {
+      x.base = base.value;
+      change();
+      renderTemplates();
+    });
+    const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Delete this sheet' });
+    remove.addEventListener('click', () => {
+      state.settings.extraSheets = extraSheets().filter((s) => s !== x);
+      change();
+      renderTemplates();
+    });
+    const save = (field) => (v) => {
+      x[field] = v;
+      change();
+    };
+    const grid = x.base !== 'FG';
+    return [el('label', { className: 'lock' }, [on, ' Your sheet']), name, base,
+      number(x.fw, 'width', false, save('fw')), number(x.fh, 'height', false, save('fh')),
+      number(x.cols, 'columns', !grid, save('cols')), number(x.rows, 'rows', !grid, save('rows')), remove];
+  });
+  $('template-grid').replaceChildren(...builtIn, ...extras);
 }
+$('add-sheet').addEventListener('click', () => {
+  const list = (state.settings.extraSheets ||= []);
+  list.push({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, base: 'TV', name: `Sheet ${list.length + 1}` });
+  sheetsChanged();
+  renderTemplates();
+});
 renderTemplates();
+showSheetOptions();
 
 // What pictures are drawn on: a light or plain background shows small, dark parts.
 const showPicBg = () => {
@@ -5452,12 +5566,17 @@ document.querySelector('.export').addEventListener('click', async (e) => {
   const sheet = e.target.dataset?.export;
   if (!sheet) return;
   const name = safeFileName(state.character.name);
-  const sheets = sheet === 'all' ? SHEET_KEYS : [sheet];
+  const sheets = sheet === 'all' ? SHEET_KEYS.filter(sheetOn) : SHEET_KEYS.includes(sheet) ? [sheet] : [];
   let count = 0;
   for (const key of sheets) {
     const c = state.composites[key];
     if (!c) continue;
     await downloadImage(c.image, SHEET_FILE_NAMES[key](name));
+    count++;
+  }
+  for (const x of state.extraComposites || []) {
+    if (!x.image || (sheet !== 'all' && sheet !== `extra:${x.sheet.id}`)) continue;
+    await downloadImage(x.image, `${name}_${safeFileName(x.sheet.name || 'sheet')}.png`);
     count++;
   }
   if (sheet === 'all') {
