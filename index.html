@@ -107,13 +107,13 @@
       <div class="editor-body">
       <div class="editor-main">
       <div id="variant-tabs" class="files-tabs variant-tabs" data-tab="parts" hidden></div>
-      <label id="tile-pictures-box" class="small muted tile-pictures" data-tab="parts" hidden title="Variation icons are small pictures of their own: recoloured, their colours are only guessed. The part as drawn is the same picture as the preview">Pictures
-        <select id="tile-pictures">
-          <option value="auto">Icons, the part as drawn once recoloured</option>
-          <option value="icons">Always the Variation icons</option>
-          <option value="parts">Always the part as drawn</option>
-        </select>
-      </label>
+      <div id="tile-pictures-box" class="small muted tile-pictures" data-tab="parts" hidden title="Variation icons are small pictures of their own: recoloured, their colours are only guessed. The part as drawn is the same picture as the preview">Pictures
+        <span id="tile-pictures" class="segmented" role="radiogroup">
+          <button type="button" data-value="auto" role="radio" title="The Variation icon; the part as drawn once it has colours other than Source">Icon or Part (Recoloured)</button>
+          <button type="button" data-value="icons" role="radio" title="Always the Variation icon">Icon (Always)</button>
+          <button type="button" data-value="parts" role="radio" title="Always the part as drawn, like the preview">Part (Always)</button>
+        </span>
+      </div>
       <div id="variants" class="variants" data-tab="parts"></div>
       <details id="other-bodies" class="other-bodies" data-tab="parts" hidden>
         <summary id="other-bodies-label">Parts from other body types</summary>

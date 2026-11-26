@@ -432,11 +432,22 @@ if (state.settings.sets?.length) {
   }
 }
 
-$('tile-pictures').addEventListener('change', () => {
-  state.settings.tilePictures = $('tile-pictures').value;
-  saveSettings();
-  renderEditor();
-});
+/** Shows which of the three Pictures buttons is on. */
+function showTilePictures() {
+  const value = state.settings.tilePictures || 'auto';
+  for (const b of $('tile-pictures').querySelectorAll('button')) {
+    b.classList.toggle('active', b.dataset.value === value);
+    b.setAttribute('aria-checked', String(b.dataset.value === value));
+  }
+}
+for (const b of $('tile-pictures').querySelectorAll('button')) {
+  b.addEventListener('click', () => {
+    state.settings.tilePictures = b.dataset.value;
+    saveSettings();
+    showTilePictures();
+    renderEditor();
+  });
+}
 
 // ---------- rendering ----------
 
@@ -624,7 +635,7 @@ async function renderEditor() {
     }));
     const sheets = tab ? [tab] : undefined;
     $('tile-pictures-box').hidden = !!tab || ![...own, ...others].some((v) => v.icon);
-    $('tile-pictures').value = state.settings.tilePictures || 'auto';
+    showTilePictures();
     for (const variant of own.filter(shown)) $('variants').append(variantTile(key, variant, sheets));
     if (!$('variants').children.length) $('variants').append(el('p', { className: 'muted small', textContent: `No ${part} parts here${others.some(shown) ? ': see the other body types below' : ''}.` }));
     if (others.some(shown)) {
