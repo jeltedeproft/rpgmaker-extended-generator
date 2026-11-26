@@ -5192,7 +5192,7 @@ const PREVIEWED = '.variant canvas, .sheet-pick canvas, .file-card canvas, .alik
 document.addEventListener('mouseover', (e) => {
   const small = e.target.closest?.(PREVIEWED);
   if (!small || !small.width || !small.height) return;
-  const scale = Math.max(1, Math.min(8, Math.floor(240 / Math.max(small.width, small.height))));
+  const scale = Math.max(1, Math.min(8, Math.floor(288 / Math.max(small.width, small.height))));
   const big = el('canvas', { width: small.width, height: small.height });
   big.getContext('2d').drawImage(small, 0, 0);
   big.style.width = `${small.width * scale}px`;
