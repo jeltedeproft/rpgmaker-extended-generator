@@ -327,12 +327,12 @@ export function frameHints(sizes, frames, covered = new Set()) {
  */
 /** Which engine's standard a frame size is: 'MV/MZ', 'VX Ace', '2000/2003'... or ''. */
 export function standardOf(use, fw, fh) {
-  if (use === 'FG') return fw === 144 && fh === 144 ? 'MV/MZ' : fw === 96 && fh === 96 ? 'VX Ace' : '';
+  if (use === 'FG') return fw === 144 && fh === 144 ? 'MV/MZ' : fw === 96 && fh === 96 ? 'VX / VX Ace' : '';
   if (use === 'SV') return fw === 64 && fh === 64 ? 'MV/MZ' : '';
   if (use === 'XP') return 'XP';
   if (use === 'RM2K') return fw === 24 && fh === 32 ? '2000/2003' : '';
   if (fw === 48 && fh === 48) return 'MV/MZ';
-  if (fw === 32 && fh === 32) return 'VX Ace';
+  if (fw === 32 && fh === 32) return 'VX / VX Ace';
   if (fw === 24 && fh === 32) return '2000/2003';
   return '';
 }
