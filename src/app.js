@@ -5471,26 +5471,29 @@ async function renderRecentInto(box, note) {
     }
   }
   const forgetAll = el('button', { className: 'forget', textContent: folders.length > 1 ? 'Forget all' : 'Forget',
-    title: 'Forget these folders, what you assigned, removed or decided about look-alikes in them, and your saved characters (Gallery) and sets' });
+    title: 'Forget these folders, what you assigned, removed or decided about look-alikes in them, your saved characters (Gallery), sets and randomize rules' });
   forgetAll.addEventListener('click', async () => {
     let removed = 0;
     for (const f of folders) removed += await forgetAndUnload(f.key);
-    // Everything goes: saved characters and sets too. Undo brings those two back.
+    // Everything goes: saved characters, sets and randomize rules too. Undo brings those back.
     const gallery = galleryEntries();
     const sets = state.settings.sets || [];
+    const savedRules = state.settings.randomRules;
     saveGallery([]);
     state.settings.sets = [];
+    delete state.settings.randomRules;
     saveSettings();
     renderSets();
     renderRecentFolders();
-    const kept = gallery.length || sets.length;
-    toast(`Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and what you assigned in them${removed ? ', and took their parts out' : ''}${kept ? `, and your ${gallery.length} saved character${gallery.length === 1 ? '' : 's'} and ${sets.length} set${sets.length === 1 ? '' : 's'}` : ''}.`,
+    const kept = gallery.length || sets.length || savedRules;
+    toast(`Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and what you assigned in them${removed ? ', and took their parts out' : ''}${gallery.length || sets.length ? `, your ${gallery.length} saved character${gallery.length === 1 ? '' : 's'} and ${sets.length} set${sets.length === 1 ? '' : 's'}` : ''}${savedRules ? ', and your randomize rules' : ''}.`,
       10000, kept ? { label: 'Undo', run: () => {
         saveGallery(gallery);
         state.settings.sets = sets;
+        if (savedRules) state.settings.randomRules = savedRules;
         saveSettings();
         renderSets();
-        toast('Your saved characters and sets are back.');
+        toast('Your saved characters, sets and rules are back.');
       } } : undefined);
   });
   box.append(forgetAll);
