@@ -669,3 +669,12 @@ test('the source colours can be shifted in hue, saturation and brightness withou
   const back = customGradientFromJson(JSON.parse(JSON.stringify(customGradientToJson(shift))));
   assert.ok(back.shiftSource && back.adjust.hue === 120 && back.colors.length === 1024);
 });
+
+test('any part can have more items, each a copy of the item it was added from', async () => {
+  const { addItem } = await import('../src/character.js');
+  const character = { parts: { Body: 'a/Male/Body/p01', 'Body 2': 'a/Male/Body/p02' } };
+  assert.equal(addItem(character, 'Body'), 'Body 3');
+  assert.equal(character.parts['Body 3'], 'a/Male/Body/p01');
+  assert.equal(addItem(character, 'Body', character.parts['Body 2']), 'Body 4');
+  assert.equal(character.parts['Body 4'], 'a/Male/Body/p02');
+});

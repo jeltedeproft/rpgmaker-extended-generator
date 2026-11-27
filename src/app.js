@@ -788,7 +788,8 @@ async function renderEditor() {
   $('lock-part').checked = state.locked.has(key);
   $('lock-part').parentElement.hidden = isColours || isPiece;
   $('offsets').hidden = !worn;
-  $('add-item').hidden = isColours || isExtra || isPiece || !worn || REQUIRED_PARTS.has(part);
+  // Any part can have more items, as many as you like (a second body or face too).
+  $('add-item').hidden = isColours || isPiece || !worn;
   $('add-item').textContent = `+ Another ${part}`;
   $('remove-item').hidden = !isExtra;
   $('remove-part').hidden = isColours || isPiece || !worn;
@@ -5670,7 +5671,8 @@ $('character-name').addEventListener('input', (e) => {
 });
 
 $('add-item').addEventListener('click', () => {
-  state.selectedPart = addItem(state.character, partOfKey(state.selectedPart));
+  // A copy of the item picked (an extra one too).
+  state.selectedPart = addItem(state.character, partOfKey(state.selectedPart), state.character.parts[itemOfKey(state.selectedPart)] || null);
   renderAll();
 });
 $('remove-item').addEventListener('click', () => {

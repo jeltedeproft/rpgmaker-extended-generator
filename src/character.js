@@ -24,12 +24,15 @@ export function itemKeys(character, part) {
     .sort((a, b) => Number(a.split(' ').pop()) - Number(b.split(' ').pop()));
 }
 
-/** Adds another item of a part (a copy of the first one) and returns its key. */
-export function addItem(character, part) {
+/**
+ * Adds another item of a part (any part, as many as you like) and returns its key.
+ * @param {string|null} id the variant it wears: a copy of the first one unless given
+ */
+export function addItem(character, part, id = character.parts[part] || null) {
   let n = 2;
   while (`${part} ${n}` in character.parts) n++;
   const key = `${part} ${n}`;
-  character.parts[key] = character.parts[part] || null;
+  character.parts[key] = id;
   return key;
 }
 
