@@ -460,14 +460,14 @@
         <input type="color" id="focus-outline-colour" value="#ffd640" title="The outline's colour">
         <button value="close" class="small-button">Close</button>
       </div>
-      <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Mouse wheel: zoom; right- or middle-drag: pan. Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility does Clip Content; Taller sprites shows a neck line to drag.</p>
+      <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Mouse wheel: zoom; right- or middle-drag: pan. Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility does Clip Content; Squash and stretch shows its lines to drag.</p>
       <div class="focus-body">
         <div class="focus-stage"><canvas id="focus-canvas" width="0" height="0" tabindex="0"></canvas></div>
         <div class="focus-side">
           <details open id="focus-layers"><summary>Layers</summary></details>
           <details id="focus-colours"><summary>Colours</summary></details>
           <details id="focus-visibility"><summary>Visibility: Clip Content</summary></details>
-          <details id="focus-taller" title="Less chibi: the head stays, the body below the neck gets longer (frames grow taller, feet on the bottom)"><summary>Taller sprites</summary><div id="taller-panel" class="taller-panel"></div></details>
+          <details id="focus-taller" title="Less chibi, or more: lines cut the frames into bands, each made longer, shorter, wider or narrower"><summary>Squash and stretch</summary><div id="taller-panel" class="taller-panel"></div></details>
         </div>
       </div>
     </form>

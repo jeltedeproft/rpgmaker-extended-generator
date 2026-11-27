@@ -386,6 +386,10 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .taller-panel { display: grid; gap: 6px; font-size: 12px; margin-top: 6px; }
 .taller-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .taller-row input.tpl-num { width: 58px; }
+.stretch-head { font-weight: 600; margin-top: 4px; }
+.stretch-item { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.stretch-item input.tpl-num { width: 50px; }
+.stretch-item .small-button.active { background: var(--accent); color: #10141c; }
 .use-dialog { width: min(780px, calc(100vw - 32px)); }
 .use-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
 .use-option { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; font: inherit; font-size: 12px; text-align: center; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }

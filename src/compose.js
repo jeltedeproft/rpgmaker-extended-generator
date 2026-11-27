@@ -1,5 +1,6 @@
 // Composites a character's selected parts into one sheet image.
 
+import { normalizeStretch, isStretched, stretchFrames } from './stretch.js';
 import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
 import { createImage, recolorLayer, blendOver, blendFrames, transformFrames, frameCentres, gridCentres, isTransformed, swapFrameRows } from './recolor.js';
 import { islandLabels, keepIsland } from './islands.js';
@@ -451,12 +452,12 @@ export function countPieces(character, library, key, gap, settings = null) {
  */
 export function composeSheet(sheet, character, library, gradientsById, settings) {
   // Taller sprites: drawn as usual, then the body below the neck is stretched down (tallerFrames).
-  const tall = sheet !== 'FG' && character.taller?.[sheet];
-  if (tall?.stretch > 100 || (tall && tall.width && tall.width !== 100)) {
+  const tall = sheet !== 'FG' && normalizeStretch(character.taller?.[sheet]);
+  if (isStretched(tall)) {
     const plain = composeSheet(sheet, { ...character, taller: null }, library, gradientsById, settings);
     if (!plain.image || !plain.frame) return plain;
-    const result = tallerFrames(plain.image, plain.frame, tall.neck, tall.stretch, { width: tall.width, necks: tall.necks });
-    return { ...plain, ...result, plainFrame: plain.frame };
+    const result = stretchFrames(plain.image, plain.frame, tall);
+    return { ...plain, ...result, plainFrame: plain.frame, plainImage: plain.image };
   }
   // A portrait with columns and rows (a face set): the face repeated in every cell.
   const faceGrid = sheet === 'FG' && settings?.templates?.FG;
@@ -639,56 +640,12 @@ export function fitRoom(image, frame, room, inner) {
 }
 
 /**
- * Taller sprites (the "bigger MV sprites" trick): in every frame the head stays as it is and
- * everything below the neck is stretched downwards, pixel for pixel (nearest neighbour), so the
- * character gets a longer body instead of a bigger head. Frames grow taller by as much; the sheet
- * keeps its grid and the feet stay on the bottom.
- * Each frame is done on its own and put back: a frame can have a neck line of its own (a bowing or
- * crouching pose), and the body below the neck can be made wider or narrower around the middle.
- * @param {number} neck rows from the top of each frame that are kept as they are
- * @param {number} stretch percent of the height below the neck (150 = half again as long)
- * @param {{width?:number, necks?:Object<string, number>}} more width: percent of the body's width
- *   (100 = as it is); necks: "column,row" -> that frame's own neck line
- * @returns {{image:object, frame:object}}
+ * Taller sprites (the "bigger MV sprites" trick), the simple form: the head above the neck stays,
+ * the body below is stretched (stretch percent), each frame on its own (necks: "col,row" -> its
+ * own neck), the body made wider or narrower (width percent). See stretch.js for the rest.
  */
 export function tallerFrames(image, frame, neck, stretch, { width = 100, necks = {} } = {}) {
-  const neckOf = (col, row) => Math.max(0, Math.min(frame.h, Math.round(necks[`${col},${row}`] ?? neck)));
-  const grownOf = (keep) => Math.round(((frame.h - keep) * stretch) / 100);
-  // Frames all get the height of the tallest one; shorter ones stand on its bottom.
-  let h = 0;
-  for (let row = 0; row < frame.rows; row++) {
-    for (let col = 0; col < frame.cols; col++) {
-      const keep = neckOf(col, row);
-      h = Math.max(h, keep + grownOf(keep));
-    }
-  }
-  const out = createImage(frame.w * frame.cols, h * frame.rows);
-  const wide = Math.max(10, width) / 100;
-  const mid = frame.w / 2;
-  for (let row = 0; row < frame.rows; row++) {
-    for (let col = 0; col < frame.cols; col++) {
-      const keep = neckOf(col, row);
-      const below = frame.h - keep;
-      const grown = grownOf(keep);
-      const top = h - keep - grown;
-      for (let y = 0; y < keep + grown; y++) {
-        const body = y >= keep;
-        const sy = body ? keep + Math.min(below - 1, Math.floor(((y - keep) * below) / Math.max(1, grown))) : y;
-        const srcRow = ((row * frame.h + sy) * image.width + col * frame.w) * 4;
-        const dstRow = ((row * h + top + y) * out.width + col * frame.w) * 4;
-        if (!body || wide === 1) {
-          out.data.set(image.data.subarray(srcRow, srcRow + frame.w * 4), dstRow);
-          continue;
-        }
-        for (let x = 0; x < frame.w; x++) {
-          const sx = Math.floor(mid + (x + 0.5 - mid) / wide);
-          if (sx < 0 || sx >= frame.w) continue;
-          out.data.set(image.data.subarray(srcRow + sx * 4, srcRow + sx * 4 + 4), dstRow + x * 4);
-        }
-      }
-    }
-  }
-  return { image: out, frame: { ...frame, h } };
+  return stretchFrames(image, frame, normalizeStretch({ neck, stretch, width, necks }));
 }
 
 /**

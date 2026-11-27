@@ -2,16 +2,17 @@
 
 import { makeSetup, applySetup, isSetup } from './setup.js';
 import { SHEET_KEYS, SLOTS, DEFAULT_SETTINGS, PART_ORDER, SHEETS, SLOT_BY_ID, REQUIRED_PARTS, ALL_BODIES } from './format.js';
-import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignCounterpart, isPairedMask, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
+import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLabel, variantsForPart, TEXT_FILE_RE, assignFile, buildPartName, parsePartPath, unassignFile, libraryFiles, addFilesToPack, maskPairs, fitMasks, fixWrongSheets, attachWaitingMasks, imageOfMask, restoreToAssign, assignCounterpart, isPairedMask, assignmentBodies, suggestedBody, newBodyName } from './parse.js';
 import { colourMean, matchAdjust, createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
 import {
-  composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOfKey, itemColor,
+  composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOffset, partOfKey, itemColor,
   layersForSheet, drawId, itemOfKey, frameFor, clipOf, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { WALK_LAYOUTS } from './xp.js';
 import { cropBox, cropScale } from './crop.js';
 import { diagonalFallback, join8 } from './dir8.js';
+import { normalizeStretch, isStretched, stretchFrames, lineY } from './stretch.js';
 import { packCharacters, MULTI_COLS, MULTI_ROWS } from './multi.js';
 import { uniteStrip } from './unite.js';
 import { zipFiles, unzip } from './zip.js';
@@ -2026,7 +2027,11 @@ async function renderPreview() {
     const { image, problems: pr, ...p } = crop ? croppedPortrait(crop, state.settings.templates?.[sheet], byId)
       : composeSheet(base, state.character, state.library, byId, settings);
     problems.push(...pr);
-    state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame), plainH: p.plainFrame?.h } : null;
+    state.composites[sheet] = image ? {
+      image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame),
+      // Squash and stretch: the picture before it, where the lines are drawn in the close up.
+      plain: p.plainImage ? { image: p.plainImage, canvas: toCanvas(p.plainImage), frame: frameOf(base, p.plainImage, p.plainFrame) } : null,
+    } : null;
   }
   state.extraComposites = extraSheets().filter((x) => !x.off).map((x) => {
     // One sheet that can't be drawn doesn't stop the others (it says why in its preview).
@@ -5844,113 +5849,424 @@ $('copy-credits').addEventListener('click', async () => {
 });
 
 $('layer-sheet').addEventListener('change', () => {
+  stretchPick = null;
   renderLayers();
   renderTaller();
 });
+$('focus-taller').addEventListener('toggle', () => {
+  renderTaller();
+  drawFocus();
+});
 
-// ---------- taller sprites ----------
+// ---------- squash and stretch (taller sprites), in the close up ----------
 
 const TALLER_SHEETS = ['TV', 'TVD', 'SV'];
 /** Where the head ends by default, as a share of the frame's height (MV/MZ chibi sprites). */
 const NECK_SHARE = { TV: 0.58, TVD: 0.58, SV: 0.53 };
+const LISTS = { row: 'rows', col: 'cols', box: 'boxes' };
+const within = (v, lo, hi, fallback = lo) => Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : fallback));
 
-/** The frame the close up shows, as "column,row" of its sheet's grid (a frame's own neck line). */
+/** The squash and stretch of a sheet (see stretch.js), or null. */
+const stretchOf = (sheet) => normalizeStretch(state.character?.taller?.[sheet]);
+
+/** A sheet's picture before squash and stretch: {image, canvas, frame}. */
+const plainOf = (sheet) => state.composites[sheet]?.plain || state.composites[sheet];
+const plainFrameOf = (sheet) => plainOf(sheet)?.frame || SHEETS[sheet]?.frame || { w: 48, h: 48 };
+
+/** The frame the close up shows, as "column,row" of its sheet's grid (a line's own place there). */
 function focusFrameKey(sheet) {
-  const c = state.composites[sheet];
-  if (!c?.frame) return '0,0';
-  const r = focusRect(sheet, c.image, c.frame);
-  return `${Math.round(r.x / c.frame.w)},${Math.round(r.y / c.frame.h)}`;
+  const p = plainOf(sheet);
+  if (!p?.frame) return '0,0';
+  const r = focusRect(sheet, p.image, p.frame);
+  return `${Math.round(r.x / p.frame.w)},${Math.round(r.y / p.frame.h)}`;
 }
 
-/** Where the neck line of a frame is in the drawn (taller) frame: its own top room plus its neck. */
-function drawnNeck(sheet, key) {
-  const t = state.character.taller?.[sheet];
-  const c = state.composites[sheet];
-  if (!t || !c?.frame) return null;
-  const plainH = c.plainH || c.frame.h;
-  const neck = t.necks?.[key] ?? t.neck;
-  const grown = Math.round(((plainH - neck) * (t.stretch || 100)) / 100);
-  return { neck, y: c.frame.h - (neck + grown) + neck, own: t.necks?.[key] != null };
-}
+/** The line or box picked in the close up: {kind: 'row' | 'col' | 'box', i}. Arrow keys move it. */
+let stretchPick = null;
 
-/** The neck line was clicked in the close up: the arrow keys move it (not the part). */
-let neckPicked = false;
-
-/** Sets the neck line of the sheet shown in the close up: of every frame, or of this one. */
-function setNeck(sheet, value, thisFrame) {
-  const t = state.character.taller?.[sheet];
-  if (!t) return;
-  const plainH = state.composites[sheet]?.plainH || state.composites[sheet]?.frame?.h || 48;
-  const neck = Math.max(0, Math.min(plainH - 1, Math.round(value)));
-  if (thisFrame) (t.necks ||= {})[focusFrameKey(sheet)] = neck;
-  else t.neck = neck;
+/**
+ * Changes the squash and stretch of a sheet: fn changes its spec (and may return {kind, item} to
+ * pick). Lines stay in order, the picked one stays picked.
+ */
+function editStretch(sheet, fn, { panel = true } = {}) {
+  const spec = stretchOf(sheet);
+  if (!spec) return;
+  let picked = stretchPick && { kind: stretchPick.kind, item: spec[LISTS[stretchPick.kind]]?.[stretchPick.i] };
+  const made = fn(spec);
+  if (made) picked = made;
+  spec.rows.sort((p, q) => p.y - q.y);
+  spec.cols.sort((p, q) => p.x - q.x);
+  const i = picked?.item ? spec[LISTS[picked.kind]].indexOf(picked.item) : -1;
+  stretchPick = i >= 0 ? { kind: picked.kind, i } : null;
+  (state.character.taller ||= {})[sheet] = spec;
+  if (panel) renderTaller();
   renderPreview();
 }
 
-/** Taller sprites, in the close up: for the picture shown there (walk, damage or battler). */
+/** Where a line across is in the frame shown: its own place there, or where it is in every frame. */
+const rowPlace = (row, key) => row.at[key] ?? row.y;
+function setRowPlace(row, key, y) {
+  if (row.at[key] != null) row.at[key] = y;
+  else row.y = y;
+}
+
+function pickStretch(kind, i) {
+  stretchPick = { kind, i };
+  renderTaller();
+  drawFocus();
+  $('focus-canvas').focus();
+}
+
 function renderTaller() {
   if (!state.character) return;
   const box = $('taller-panel');
   const sheet = $('layer-sheet').value;
   if (!TALLER_SHEETS.includes(sheet)) {
-    box.replaceChildren(el('p', { className: 'muted small', textContent: 'For the walk, damage and battler pictures.' }));
+    box.replaceChildren(el('p', { className: 'muted small', textContent: 'For the walk, damage and battler pictures: pick one under Layers.' }));
     return;
   }
-  const t = state.character.taller?.[sheet];
+  const spec = stretchOf(sheet);
   const key = focusFrameKey(sheet);
-  const at = t ? drawnNeck(sheet, key) : null;
-  const on = el('input', { type: 'checkbox', checked: !!t });
+  const pf = plainFrameOf(sheet);
+  const on = el('input', { type: 'checkbox', checked: !!spec });
   on.addEventListener('change', () => {
     const taller = (state.character.taller ||= {});
     if (!on.checked) delete taller[sheet];
-    else {
-      const h = state.composites[sheet]?.frame?.h || 48;
-      taller[sheet] = { neck: Math.round(h * NECK_SHARE[sheet]), stretch: 150, width: 100 };
-    }
+    else taller[sheet] = { top: 100, rows: [{ y: Math.round(pf.h * NECK_SHARE[sheet]), scale: 150 }], left: 100, cols: [], boxes: [], width: 100 };
+    stretchPick = on.checked ? { kind: 'row', i: 0 } : null;
     renderTaller();
     renderPreview();
   });
-  const rows = [el('label', { className: 'lock' }, [on, ` Make the ${sheetLabel(sheet).toLowerCase()} taller`])];
-  if (t) {
-    const thisFrame = el('input', { type: 'checkbox', checked: !!at?.own, title: 'This frame (the one shown) gets a neck line of its own, e.g. a bowing or crouching pose' });
-    const neck = el('input', { type: 'number', className: 'tpl-num', min: 0, max: 512, value: at?.neck ?? t.neck, title: 'Pixels from the top of the frame: the head above it stays as it is' });
-    neck.addEventListener('change', () => setNeck(sheet, Number(neck.value) || 0, thisFrame.checked));
-    const nudge = (d, label) => {
-      const b = el('button', { type: 'button', className: 'small-button', textContent: label, title: d < 0 ? 'Neck line up' : 'Neck line down' });
-      b.addEventListener('click', () => setNeck(sheet, (Number(neck.value) || 0) + d, thisFrame.checked));
-      return b;
-    };
-    thisFrame.addEventListener('change', () => {
-      if (thisFrame.checked) (t.necks ||= {})[key] = t.neck;
-      else delete t.necks?.[key];
-      renderTaller();
-      renderPreview();
-    });
-    const percent = (field, min, max, title) => {
-      const i = el('input', { type: 'number', className: 'tpl-num', min, max, step: 5, value: t[field] ?? 100, title });
-      i.addEventListener('change', () => {
-        t[field] = Math.max(min, Math.min(max, Math.round(Number(i.value) || 100)));
-        renderPreview();
-      });
-      return i;
-    };
-    const own = Object.keys(t.necks || {}).length;
-    const resetFrames = el('button', { type: 'button', className: 'small-button', textContent: `One neck line for all (${own} frame${own === 1 ? ' has its' : 's have their'} own)` });
-    resetFrames.addEventListener('click', () => {
-      delete t.necks;
-      renderTaller();
-      renderPreview();
-    });
-    rows.push(
-      el('div', { className: 'taller-row' }, ['Neck at ', neck, ' px ', nudge(-1, '↑'), nudge(1, '↓')]),
-      el('label', { className: 'lock' }, [thisFrame, ' Only this frame']),
-      el('div', { className: 'taller-row' }, ['Body length ', percent('stretch', 100, 400, 'How long the body below the neck gets: 150 = half again as long'), ' %']),
-      el('div', { className: 'taller-row' }, ['Body width ', percent('width', 50, 200, 'How wide the body below the neck is: 100 = as it is'), ' %']),
-      ...(own ? [resetFrames] : []),
-      el('p', { className: 'muted small', textContent: 'Drag the blue neck line, or click it and use ↑ ↓. The head above it stays; the body below is stretched.' }),
-    );
+  const head = [el('label', { className: 'lock' }, [on, ` Squash and stretch the ${sheetLabel(sheet).toLowerCase()}`])];
+  if (!spec) {
+    box.replaceChildren(...head, el('p', { className: 'muted small', textContent: 'Less chibi, or more: cut the frames along lines and make each band longer or shorter, wider or narrower. Works for generator parts and finished characters alike.' }));
+    return;
   }
-  box.replaceChildren(...rows);
+  const num = (value, min, max, title, set, step = 1) => {
+    const i = el('input', { type: 'number', className: 'tpl-num', min, max, step, value, title });
+    i.addEventListener('change', () => editStretch(sheet, (s) => { set(s, within(Math.round(Number(i.value)), min, max, value)); }));
+    return i;
+  };
+  const button = (label, title, fn) => {
+    const b = el('button', { type: 'button', className: 'small-button', textContent: label, title });
+    b.addEventListener('click', fn);
+    return b;
+  };
+  const pick = (kind, i, colour) => {
+    const b = button(String(i + 1), 'Pick it: the arrow keys move it', () => pickStretch(kind, i));
+    b.style.borderColor = colour;
+    b.classList.toggle('active', stretchPick?.kind === kind && stretchPick.i === i);
+    return b;
+  };
+  const remove = (kind, i) => button('✕', 'Remove', () => {
+    stretchPick = null;
+    editStretch(sheet, (s) => { s[LISTS[kind]].splice(i, 1); });
+  });
+  const pct = (value, title, set) => num(value, 10, 400, title, set, 5);
+  // The biggest band, for a new line: it goes in its middle and gets its size, so nothing changes yet.
+  const newCut = (cuts, size, first, scales) => {
+    const edges = [0, ...cuts, size];
+    let best = 0;
+    for (let i = 1; i < edges.length - 1; i++) if (edges[i + 1] - edges[i] > edges[best + 1] - edges[best]) best = i;
+    return { at: Math.round((edges[best] + edges[best + 1]) / 2), scale: best === 0 ? first : scales[best - 1] };
+  };
+
+  const across = spec.rows.map((r, i) => {
+    const own = r.at[key] != null;
+    const thisFrame = el('input', { type: 'checkbox', checked: own, title: 'This frame (the one shown) gets its own place for this line, e.g. a bowing or crouching pose' });
+    thisFrame.addEventListener('change', () => editStretch(sheet, (s) => {
+      if (thisFrame.checked) s.rows[i].at[key] = s.rows[i].y;
+      else delete s.rows[i].at[key];
+    }));
+    return el('div', { className: 'stretch-item' }, [
+      pick('row', i, '#4fc3ff'), ' at ', num(rowPlace(r, key), 0, pf.h, 'Pixels from the top of the frame', (s, v) => setRowPlace(s.rows[i], key, v)), ' px, below it ',
+      pct(r.scale, 'How long the band below this line gets: 150 = half again as long, 50 = half as long', (s, v) => { s.rows[i].scale = v; }), ' % ',
+      el('label', { className: 'lock' }, [thisFrame, ' this frame']),
+      ...(r.bend.length ? [button('Straighten', 'Make the line straight again', () => editStretch(sheet, (s) => { s.rows[i].bend = []; }))] : []),
+      remove('row', i),
+    ]);
+  });
+  const down = spec.cols.map((c, i) => el('div', { className: 'stretch-item' }, [
+    pick('col', i, '#ffa94f'), ' at ', num(c.x, 0, pf.w, 'Pixels from the left of the frame', (s, v) => { s.cols[i].x = v; }), ' px, right of it ',
+    pct(c.scale, 'How wide the band right of this line gets: 150 = half again as wide', (s, v) => { s.cols[i].scale = v; }), ' % ', remove('col', i),
+  ]));
+  const boxes = spec.boxes.map((b, i) => el('div', { className: 'stretch-item' }, [
+    pick('box', i, '#ff6fb5'),
+    ' ', num(b.x, -pf.w, pf.w * 2, 'Left', (s, v) => { s.boxes[i].x = v; }), ',', num(b.y, -pf.h, pf.h * 2, 'Top', (s, v) => { s.boxes[i].y = v; }),
+    ' ', num(b.w, 1, pf.w * 2, 'Width', (s, v) => { s.boxes[i].w = v; }), '×', num(b.h, 1, pf.h * 2, 'Height', (s, v) => { s.boxes[i].h = v; }),
+    ' wide ', pct(b.sx, 'How wide what is in the box gets (around its middle)', (s, v) => { s.boxes[i].sx = v; }), '% tall ',
+    pct(b.sy, 'How tall what is in the box gets (around its middle)', (s, v) => { s.boxes[i].sy = v; }), '% ', remove('box', i),
+  ]));
+  box.replaceChildren(
+    ...head,
+    el('div', { className: 'stretch-head' }, ['Lines across ', el('span', { className: 'muted', textContent: '(blue, top to bottom)' })]),
+    el('div', { className: 'stretch-item' }, ['Above the first line (the head) ', pct(spec.top, 'How tall the head gets: 100 = as it is', (s, v) => { s.top = v; }), ' %']),
+    ...across,
+    button('+ Line across', 'A new line in the middle of the biggest band. Lines keep a band (a belt) as it is between stretched ones', () => editStretch(sheet, (s) => {
+      const n = newCut(s.rows.map((r) => r.y), pf.h, s.top, s.rows.map((r) => r.scale));
+      const item = { y: n.at, scale: n.scale, bend: [], at: {} };
+      s.rows.push(item);
+      return { kind: 'row', item };
+    })),
+    el('div', { className: 'stretch-head' }, ['Lines down ', el('span', { className: 'muted', textContent: '(orange, left to right)' })]),
+    ...(spec.cols.length ? [el('div', { className: 'stretch-item' }, ['Left of the first line ', pct(spec.left, 'How wide the band left of the first line down gets', (s, v) => { s.left = v; }), ' %'])] : []),
+    ...down,
+    button('+ Line down', 'A line down the frame: the bands left and right of it get widths of their own (the frames get wider or narrower)', () => editStretch(sheet, (s) => {
+      const n = newCut(s.cols.map((c) => c.x), pf.w, s.left, s.cols.map((c) => c.scale));
+      const item = { x: n.at, scale: n.scale };
+      s.cols.push(item);
+      return { kind: 'col', item };
+    })),
+    el('div', { className: 'stretch-head' }, ['Boxes ', el('span', { className: 'muted', textContent: '(pink: what is inside gets bigger or smaller, e.g. the eyes)' })]),
+    ...boxes,
+    button('+ Box', 'An area made bigger or smaller around its middle. Drag it, or its corner to size it', () => editStretch(sheet, (s) => {
+      const w = Math.max(2, Math.round(pf.w / 3));
+      const h = Math.max(2, Math.round(pf.h / 6));
+      const item = { x: Math.round((pf.w - w) / 2), y: Math.round(pf.h * 0.3), w, h, sx: 150, sy: 150 };
+      s.boxes.push(item);
+      return { kind: 'box', item };
+    })),
+    el('div', { className: 'stretch-item' }, ['Body width ', num(spec.width, 50, 200, 'How wide everything below the first line across is, around the middle: 100 = as it is', (s, v) => { s.width = v; }, 5), ' %']),
+    el('div', { className: 'stretch-item' }, [
+      button('Add as alternate parts', 'Stretched copies of the worn parts (and their colour masks) join the part lists, e.g. Clothing "p11 (stretched)"', () => addStretchedParts().catch((err) => toast(`Could not add them: ${err.message}`))),
+      button('Save them (zip)', 'The stretched copies of the worn parts as files, to keep in your parts folder', () => saveStretchedParts().catch((err) => toast(`Could not save them: ${err.message}`))),
+    ]),
+    el('p', { className: 'muted small', textContent: 'Left: the frame with its lines, right: the result. Drag a line; Shift-drag bends it at that point (shoulders above the neck); click one and use the arrow keys (Shift: 10). Drag a box, or its corner to size it. Colour masks are stretched along.' }),
+  );
+}
+
+/** Whether the close up shows the lines (the Squash and stretch panel is open and on). */
+function stretchEditing(sheet) {
+  return $('focus-taller').open && TALLER_SHEETS.includes(sheet) && !!stretchOf(sheet) && !!state.composites[sheet];
+}
+
+/** Where the frame with the lines is drawn in the close up: canvas px = (o + frame px) * zoom. */
+let stretchView = null;
+
+function drawStretchEdit(sheet, c, canvas) {
+  const spec = stretchOf(sheet);
+  const plain = c.plain || c;
+  const r = focusRect(sheet, plain.image, plain.frame);
+  const r2 = focusRect(sheet, c.image, c.frame);
+  const P = FOCUS_PAD + 2;
+  const GAP = 6;
+  const H = Math.max(r.h, r2.h);
+  const W = r.w + GAP + r2.w;
+  const stage = canvas.parentElement;
+  const fit = Math.max(1, Math.min(16, Math.floor(Math.min((stage.clientWidth - 16) / (W + 2 * P), (stage.clientHeight - 16) / (H + 2 * P)))));
+  focusZoom = focusUserZoom || fit;
+  const z = focusZoom;
+  canvas.width = (W + 2 * P) * z;
+  canvas.height = (H + 2 * P) * z;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  const ox = P;
+  const oy = P + H - r.h;
+  const ox2 = P + r.w + GAP;
+  const oy2 = P + H - r2.h;
+  ctx.drawImage(plain.canvas, r.x, r.y, r.w, r.h, ox * z, oy * z, r.w * z, r.h * z);
+  ctx.drawImage(c.canvas, r2.x, r2.y, r2.w, r2.h, ox2 * z, oy2 * z, r2.w * z, r2.h * z);
+  ctx.strokeStyle = 'rgba(128, 128, 128, 0.6)';
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(ox * z - 0.5, oy * z - 0.5, r.w * z + 1, r.h * z + 1);
+  ctx.strokeRect(ox2 * z - 0.5, oy2 * z - 0.5, r2.w * z + 1, r2.h * z + 1);
+  ctx.setLineDash([]);
+  stretchView = { ox, oy, w: r.w, h: r.h, sheet };
+  const key = focusFrameKey(sheet);
+  const X = (x) => (ox + x) * z;
+  const Y = (y) => (oy + y) * z;
+  const shown = canvas.getBoundingClientRect().width / canvas.width || 1;
+  const px = (n) => Math.max(1, n / shown);
+  ctx.font = `${Math.round(px(11))}px system-ui, sans-serif`;
+  const tag = (text, x, y, colour) => {
+    const w = ctx.measureText(text).width + px(8);
+    const h = px(15);
+    const tx = Math.max(0, Math.min(canvas.width - w, x));
+    const ty = Math.max(0, Math.min(canvas.height - h, y));
+    ctx.fillStyle = colour;
+    ctx.fillRect(tx, ty, w, h);
+    ctx.fillStyle = '#10141c';
+    ctx.fillText(text, tx + px(4), ty + px(11));
+  };
+  const isPicked = (kind, i) => stretchPick?.kind === kind && stretchPick.i === i;
+  const lineStyle = (colour, picked) => {
+    ctx.strokeStyle = colour;
+    ctx.lineWidth = px(picked ? 3 : 2);
+    ctx.setLineDash(picked ? [] : [px(6), px(3)]);
+  };
+  if (spec.top !== 100 && spec.rows.length) tag(`head ${spec.top}%`, X(0), Y(0), '#4fc3ff');
+  spec.rows.forEach((row, i) => {
+    lineStyle('#4fc3ff', isPicked('row', i));
+    ctx.beginPath();
+    ctx.moveTo(X(-2), Y(lineY(row, key, 0)));
+    for (let x = 0; x <= r.w; x++) ctx.lineTo(X(x), Y(lineY(row, key, x)));
+    ctx.lineTo(X(r.w + 2), Y(lineY(row, key, r.w)));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#4fc3ff';
+    for (const [bx] of row.bend) ctx.fillRect(X(bx) - px(3), Y(lineY(row, key, bx)) - px(3), px(6), px(6));
+    tag(`${i + 1}: ${row.scale}%${row.at[key] != null ? ' (this frame)' : ''}`, X(r.w) - px(70), Y(lineY(row, key, r.w)) + px(2), '#4fc3ff');
+  });
+  spec.cols.forEach((col, i) => {
+    lineStyle('#ffa94f', isPicked('col', i));
+    ctx.beginPath();
+    ctx.moveTo(X(col.x), Y(-2));
+    ctx.lineTo(X(col.x), Y(r.h + 2));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    tag(`${i + 1}: ${col.scale}%`, X(col.x) + px(2), Y(r.h) - px(17), '#ffa94f');
+  });
+  spec.boxes.forEach((b, i) => {
+    lineStyle('#ff6fb5', isPicked('box', i));
+    ctx.strokeRect(X(b.x), Y(b.y), b.w * z, b.h * z);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ff6fb5';
+    ctx.fillRect(X(b.x + b.w) - px(4), Y(b.y + b.h) - px(4), px(8), px(8));
+    tag(`${i + 1}: ${b.sx === b.sy ? b.sx : `${b.sx}×${b.sy}`}%`, X(b.x), Y(b.y) - px(16), '#ff6fb5');
+  });
+}
+
+/** The frame pixel under the pointer, and 6 screen pixels in frame pixels. */
+function stretchPoint(e) {
+  const canvas = $('focus-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const k = canvas.width / (rect.width || 1);
+  return {
+    x: ((e.clientX - rect.left) * k) / focusZoom - stretchView.ox,
+    y: ((e.clientY - rect.top) * k) / focusZoom - stretchView.oy,
+    tol: (6 * k) / focusZoom,
+  };
+}
+
+/** The line or box at a frame pixel: {kind, i, part}, or null. */
+function stretchHit(sheet, p) {
+  const spec = stretchOf(sheet);
+  if (!spec || !stretchView) return null;
+  const key = focusFrameKey(sheet);
+  const { w, h } = stretchView;
+  const inFrame = p.x >= -p.tol && p.x <= w + p.tol && p.y >= -p.tol && p.y <= h + p.tol;
+  if (!inFrame) return null;
+  for (let i = spec.boxes.length - 1; i >= 0; i--) {
+    const b = spec.boxes[i];
+    if (Math.abs(p.x - (b.x + b.w)) <= p.tol && Math.abs(p.y - (b.y + b.h)) <= p.tol) return { kind: 'box', i, part: 'corner' };
+  }
+  for (let i = 0; i < spec.rows.length; i++) if (Math.abs(lineY(spec.rows[i], key, p.x) - p.y) <= p.tol) return { kind: 'row', i };
+  for (let i = 0; i < spec.cols.length; i++) if (Math.abs(spec.cols[i].x - p.x) <= p.tol) return { kind: 'col', i };
+  for (let i = spec.boxes.length - 1; i >= 0; i--) {
+    const b = spec.boxes[i];
+    if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) return { kind: 'box', i, part: 'move' };
+  }
+  return null;
+}
+
+/** Moves the picked line or box by (dx, dy) frame pixels. */
+function nudgeStretch(sheet, dx, dy) {
+  if (!stretchPick) return false;
+  const key = focusFrameKey(sheet);
+  const pf = plainFrameOf(sheet);
+  editStretch(sheet, (s) => {
+    const item = s[LISTS[stretchPick.kind]][stretchPick.i];
+    if (!item) return;
+    if (stretchPick.kind === 'row') setRowPlace(item, key, within(rowPlace(item, key) + dy, 0, pf.h));
+    else if (stretchPick.kind === 'col') item.x = within(item.x + dx, 0, pf.w);
+    else {
+      item.x += dx;
+      item.y += dy;
+    }
+  });
+  return true;
+}
+
+/** Copies a picture into a PNG file. */
+async function pngBlob(image) {
+  const canvas = new OffscreenCanvas(image.width, image.height);
+  canvas.getContext('2d').putImageData(new ImageData(image.data, image.width, image.height), 0, 0);
+  return canvas.convertToBlob({ type: 'image/png' });
+}
+
+/**
+ * Stretched copies of the worn parts' walk, damage and battler pictures (and their colour masks),
+ * named like generator files in a group folder, so they read as alternates of their parts:
+ * [{path, src, pack}]. Sheets without squash and stretch are left out (borrowed from the part).
+ */
+async function stretchedPartFiles(group) {
+  const lib = state.library;
+  const sheets = TALLER_SHEETS.filter((s) => isStretched(stretchOf(s)));
+  const files = [];
+  for (const [key, id] of Object.entries(state.character.parts)) {
+    const variant = id && lib.variants.get(id);
+    if (!variant) continue;
+    const num = /^p(\d+)/.exec(variant.basePid || variant.pid)?.[1] || '01';
+    for (const sheet of sheets) {
+      const spec = stretchOf(sheet);
+      const own = variantForSheet(variant, sheet, lib);
+      if (!own) continue;
+      await ensureVariants([own]);
+      const pf = plainFrameOf(sheet);
+      const off = partOffset(state.character, key, sheet);
+      const { cols, rows } = SHEETS[sheet].frame;
+      for (const l of own.layers) {
+        if (l.sheet !== sheet || !l.base?.pixels || l.vxace || l.base.cells) continue;
+        const img = l.base.pixels;
+        const frame = { w: img.width / cols, h: img.height / rows, cols, rows };
+        if (!Number.isInteger(frame.w) || !Number.isInteger(frame.h)) continue;
+        // Where this picture's frame stands in the character's frame: centred, on the bottom, moved.
+        const shift = { x: Math.round((pf.w - frame.w) / 2) + off.x, y: pf.h - frame.h + off.y };
+        const dir = `Stretched parts/${group}/${variant.bodyType}/`;
+        const name = `${sheet}_${l.layer}_p${num}`;
+        files.push({ pack: variant.pack, path: `${dir}${name}.png`, src: await pngBlob(stretchFrames(img, frame, spec, shift).image) });
+        const mask = (l.paint || l.mask)?.pixels;
+        if (mask?.data && mask.width === img.width && mask.height === img.height) {
+          files.push({ pack: variant.pack, path: `${dir}${name}_c.png`, src: await pngBlob(stretchFrames(mask, frame, spec, shift).image) });
+        }
+      }
+    }
+  }
+  return files;
+}
+
+/** A group name not used yet: "stretched", "stretched 2", ... */
+function stretchGroup() {
+  const used = new Set(libraryFiles(state.library).map((f) => /^Stretched parts\/([^/]+)\//.exec(f.path)?.[1]).filter(Boolean));
+  let n = 1;
+  while (used.has(n === 1 ? 'stretched' : `stretched ${n}`)) n++;
+  return n === 1 ? 'stretched' : `stretched ${n}`;
+}
+
+async function addStretchedParts() {
+  if (!TALLER_SHEETS.some((s) => isStretched(stretchOf(s)))) {
+    toast('Nothing is stretched yet.');
+    return;
+  }
+  const group = stretchGroup();
+  const files = await withBusy('Stretching the parts', () => stretchedPartFiles(group));
+  if (!files.length) {
+    toast('None of the worn parts could be stretched (VX Ace parts can\'t).');
+    return;
+  }
+  for (const pack of new Set(files.map((f) => f.pack))) {
+    const mine = files.filter((f) => f.pack === pack);
+    addFilesToPack(state.library, pack, mine);
+    // Kept with the pack, so Save setup (zip) shares them too.
+    const p = state.library.packs.find((x) => x.name === pack);
+    if (p?.entries) p.entries.push(...mine.map(({ path, src }) => ({ path, src })));
+  }
+  afterFilesChanged();
+  toast(`Added ${files.length} stretched picture${files.length > 1 ? 's' : ''} as alternates: "(${group})" in the part lists, e.g. p01 (${group}). Wearing them, turn squash and stretch off, or they are stretched twice. They last until the page is closed; "Save them (zip)" keeps them as files.`, 14000);
+}
+
+async function saveStretchedParts() {
+  if (!TALLER_SHEETS.some((s) => isStretched(stretchOf(s)))) {
+    toast('Nothing is stretched yet.');
+    return;
+  }
+  const files = await withBusy('Stretching the parts', () => stretchedPartFiles('stretched'));
+  if (!files.length) {
+    toast('None of the worn parts could be stretched.');
+    return;
+  }
+  const zip = zipFiles(await Promise.all(files.map(async (f) => ({ name: f.path, bytes: await fileBytes(f.src) }))));
+  downloadBlob(new Blob([zip], { type: 'application/zip' }), `${safeFileName(state.character.name || 'character')}_stretched_parts.zip`);
 }
 
 // ---------- close up: one image big, the picked part glowing, moved by mouse or arrow keys ----------
@@ -5965,8 +6281,6 @@ let focusUserZoom = null;
 /** Transparent room shown around the frame, so an outline at its edge isn't cut off. */
 const FOCUS_PAD = 2;
 let focusTimer = 0;
-/** The taller-sprites neck line in the close up: {y (canvas pixels), sheet}, or null. */
-let focusNeck = null;
 
 function openFocus(sheet) {
   if (!state.character) return;
@@ -5979,7 +6293,7 @@ function openFocus(sheet) {
   }
   $('focus-dirs').hidden = sheet !== 'TV';
   focusUserZoom = null;
-  neckPicked = false;
+  stretchPick = null;
   renderTaller();
   $('focus-outline').checked = state.settings.focusOutline !== false;
   $('focus-outline-colour').value = state.settings.focusOutlineColour || '#ffd640';
@@ -6057,6 +6371,11 @@ function drawFocus() {
     canvas.height = 0;
     return;
   }
+  if (stretchEditing(sheet)) {
+    drawStretchEdit(sheet, c, canvas);
+    return;
+  }
+  stretchView = null;
   const r = focusRect(sheet, c.image, c.frame);
   const P = FOCUS_PAD;
   const stage = canvas.parentElement;
@@ -6079,29 +6398,6 @@ function drawFocus() {
     for (let x = 0; x <= r.w; x++) { ctx.moveTo((x + P) * focusZoom + 0.5, P * focusZoom); ctx.lineTo((x + P) * focusZoom + 0.5, (r.h + P) * focusZoom); }
     for (let y = 0; y <= r.h; y++) { ctx.moveTo(P * focusZoom, (y + P) * focusZoom + 0.5); ctx.lineTo((r.w + P) * focusZoom, (y + P) * focusZoom + 0.5); }
     ctx.stroke();
-  }
-  // Taller sprites: the neck line of the frame shown (drag it, or click it and use the arrow keys).
-  const at = TALLER_SHEETS.includes(sheet) ? drawnNeck(sheet, focusFrameKey(sheet)) : null;
-  focusNeck = at ? { y: (P + at.y) * focusZoom, sheet } : null;
-  if (focusNeck) {
-    ctx.save();
-    ctx.strokeStyle = '#4fc3ff';
-    ctx.lineWidth = neckPicked ? 3 : 2;
-    if (!neckPicked) ctx.setLineDash([8, 4]);
-    ctx.beginPath();
-    ctx.moveTo(0, focusNeck.y);
-    ctx.lineTo(canvas.width, focusNeck.y);
-    ctx.stroke();
-    // A handle with its value, at the right end.
-    const label = `neck ${at.neck}${at.own ? ' (this frame)' : ''}`;
-    ctx.setLineDash([]);
-    ctx.font = '12px system-ui, sans-serif';
-    const w = ctx.measureText(label).width + 10;
-    ctx.fillStyle = '#4fc3ff';
-    ctx.fillRect(canvas.width - w, focusNeck.y - 9, w, 18);
-    ctx.fillStyle = '#06202c';
-    ctx.fillText(label, canvas.width - w + 5, focusNeck.y + 4);
-    ctx.restore();
   }
   const key = focusKey();
   $('focus-note').classList.toggle('warn', !key);
@@ -6186,11 +6482,7 @@ $('focus-dialog').addEventListener('keydown', (e) => {
   if (!move) return;
   e.preventDefault();
   const sheet = $('layer-sheet').value;
-  if (neckPicked && focusNeck && move[1]) {
-    const at = drawnNeck(sheet, focusFrameKey(sheet));
-    if (at) setNeck(sheet, at.neck + move[1], at.own);
-    return;
-  }
+  if (stretchEditing(sheet) && nudgeStretch(sheet, ...move)) return;
   focusNudge(...move);
 });
 {
@@ -6225,44 +6517,83 @@ $('focus-dialog').addEventListener('keydown', (e) => {
     const fy = (e.clientY - rect.top) / (rect.height || 1);
     setFocusZoom(focusZoom + (e.deltaY < 0 ? 1 : -1), fx, fy, e.clientX, e.clientY);
   }, { passive: false });
-  // The neck line of taller sprites: drag it up or down.
-  let neckDrag = null;
-  const nearNeck = (e) => {
-    if (!focusNeck) return false;
-    const rect = canvas.getBoundingClientRect();
-    const y = ((e.clientY - rect.top) * canvas.height) / (rect.height || 1);
-    return Math.abs(y - focusNeck.y) <= 6 * (canvas.height / (rect.height || 1));
-  };
+  // Squash and stretch: lines and boxes are dragged on the frame at the left; Shift-drag bends a line.
+  let stretchDrag = null;
+  const cursors = { row: 'ns-resize', col: 'ew-resize', corner: 'nwse-resize', move: 'move' };
   canvas.addEventListener('pointermove', (e) => {
-    if (!drag) canvas.style.cursor = nearNeck(e) || neckDrag ? 'ns-resize' : '';
-    if (!neckDrag) return;
-    const rect = canvas.getBoundingClientRect();
-    const y = ((e.clientY - rect.top) * canvas.height) / (rect.height || 1);
-    const at = drawnNeck(neckDrag, focusFrameKey(neckDrag));
-    if (!at) return;
-    // The line follows the pointer: the same move for the neck (the room above it stays).
-    const neck = at.neck + Math.round(y / focusZoom) - FOCUS_PAD - at.y;
-    if (neck !== at.neck) setNeck(neckDrag, neck, at.own);
-  });
-  canvas.addEventListener('pointerdown', (e) => {
-    if (e.button === 0 && nearNeck(e)) {
-      canvas.setPointerCapture(e.pointerId);
-      neckDrag = focusNeck.sheet;
-      neckPicked = true;
-      canvas.focus();
-      drawFocus();
-      e.stopImmediatePropagation();
-    } else if (e.button === 0 && neckPicked) {
-      neckPicked = false;
-      drawFocus();
+    const sheet = $('layer-sheet').value;
+    if (!stretchView || !stretchEditing(sheet)) {
+      if (!drag) canvas.style.cursor = '';
+      return;
     }
-  });
-  canvas.addEventListener('pointerup', () => {
-    if (neckDrag) renderTaller();
-    neckDrag = null;
+    const p = stretchPoint(e);
+    if (!stretchDrag) {
+      const hit = stretchHit(sheet, p);
+      canvas.style.cursor = hit ? (hit.kind === 'box' ? cursors[hit.part] : (e.shiftKey && hit.kind === 'row' ? 'crosshair' : cursors[hit.kind])) : '';
+      return;
+    }
+    const d = stretchDrag;
+    const dx = Math.round(p.x - d.x);
+    const dy = Math.round(p.y - d.y);
+    const pf = plainFrameOf(sheet);
+    const key = focusFrameKey(sheet);
+    editStretch(sheet, (s) => {
+      const item = s[LISTS[d.kind]][stretchPick?.i];
+      if (!item) return;
+      if (d.kind === 'row' && d.bend) {
+        // A bend point where the line was grabbed, following the pointer up and down. The line
+        // stays where it was a few pixels to each side (unless bent there already): a bend is a
+        // bump, e.g. one per shoulder.
+        const at = within(Math.round(d.x), 0, pf.w);
+        const reach = Math.max(3, Math.round(pf.w / 10));
+        const place = rowPlace(item, key);
+        const pins = [];
+        if (!item.bend.some(([bx]) => bx >= at - reach && bx < at - 1) && at - reach >= 0) pins.push([at - reach, Math.round(lineY(item, key, at - reach) - place)]);
+        if (!item.bend.some(([bx]) => bx <= at + reach && bx > at + 1) && at + reach <= pf.w) pins.push([at + reach, Math.round(lineY(item, key, at + reach) - place)]);
+        item.bend = [...item.bend.filter(([bx]) => Math.abs(bx - at) > 1), ...pins, [at, Math.round(p.y) - place]].sort((u, v) => u[0] - v[0]);
+      } else if (d.kind === 'row') setRowPlace(item, key, within(d.start.y + dy, 0, pf.h));
+      else if (d.kind === 'col') item.x = within(d.start.x + dx, 0, pf.w);
+      else if (d.part === 'corner') {
+        item.w = Math.max(1, d.start.w + dx);
+        item.h = Math.max(1, d.start.h + dy);
+      } else {
+        item.x = d.start.x + dx;
+        item.y = d.start.y + dy;
+      }
+    }, { panel: false });
   });
   canvas.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || neckDrag || !focusKey()) return;
+    const sheet = $('layer-sheet').value;
+    if (e.button !== 0 || !stretchView || !stretchEditing(sheet)) return;
+    e.stopImmediatePropagation();
+    canvas.focus();
+    const p = stretchPoint(e);
+    const hit = stretchHit(sheet, p);
+    if (!hit) {
+      stretchPick = null;
+      renderTaller();
+      drawFocus();
+      return;
+    }
+    const item = stretchOf(sheet)[LISTS[hit.kind]][hit.i];
+    stretchPick = { kind: hit.kind, i: hit.i };
+    stretchDrag = {
+      kind: hit.kind, part: hit.part, x: p.x, y: p.y, bend: hit.kind === 'row' && e.shiftKey,
+      start: hit.kind === 'row' ? { y: rowPlace(item, focusFrameKey(sheet)) } : { ...item },
+    };
+    canvas.setPointerCapture(e.pointerId);
+    renderTaller();
+    drawFocus();
+  });
+  const endStretch = () => {
+    if (!stretchDrag) return;
+    stretchDrag = null;
+    renderTaller();
+  };
+  canvas.addEventListener('pointerup', endStretch);
+  canvas.addEventListener('pointercancel', endStretch);
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || !focusKey()) return;
     canvas.focus();
     canvas.setPointerCapture(e.pointerId);
     canvas.classList.add('dragging');

@@ -366,6 +366,24 @@ export function addPack(library, packName, entries) {
   return pack;
 }
 
+/**
+ * Adds generator-named files to a pack that is open already (e.g. stretched copies of its parts,
+ * "Stretched parts/stretched/Male/TV_Clothing1_p11.png" -> Clothing "p11 (stretched)", which borrows
+ * the sheets it hasn't got from p11).
+ * @returns {number} the files read
+ */
+export function addFilesToPack(library, packName, entries) {
+  let n = 0;
+  for (const { path, src } of entries) {
+    const parsed = parsePartPath(path);
+    if (!parsed) continue;
+    addParsed(library, packName, parsed, path, src);
+    n++;
+  }
+  finishPack(library, packName);
+  return n;
+}
+
 /** Takes a whole pack (one opened folder) out of the library again. */
 export function removePack(library, name) {
   library.packs = library.packs.filter((p) => p.name !== name);
