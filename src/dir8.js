@@ -46,15 +46,20 @@ export function join8(walk, diagonal) {
 
 /** How the diagonals of a part drawn in 4 directions are made: turned (a little or more), or the side view. */
 export const DIAGONAL_MODES = {
-  turned: { label: 'Turned', options: { near: 0.7, far: 1.2, shift: 3, inside: 'up' } },
-  more: { label: 'Turned more', options: { near: 0.6, far: 1.3, shift: 4, inside: 'up' } },
+  turned: { label: 'Turned', options: { near: 0.7, far: 1.2, shift: 3, inside: 'up', faceShift: 2 } },
+  more: { label: 'Turned more', options: { near: 0.6, far: 1.3, shift: 4, inside: 'up', faceShift: 3 } },
   side: { label: 'Side view', options: null },
 };
 
-/** The diagonal rows of a 4-direction walk picture, made the given way (default: turned). */
-export function diagonalsOf(walk, mode = 'turned') {
+/**
+ * The diagonal rows of a 4-direction walk picture, made the given way (default: turned).
+ * face: a part on the front of the face (eyes, mouth, nose...): it moves further toward the turn
+ * than the head's outline, which is what makes a face read as turned rather than squeezed.
+ */
+export function diagonalsOf(walk, mode = 'turned', face = false) {
   const options = (DIAGONAL_MODES[mode] || DIAGONAL_MODES.turned).options;
-  return options ? diagonalWarp(walk, options) : diagonalFallback(walk);
+  if (!options) return diagonalFallback(walk);
+  return diagonalWarp(walk, face ? { ...options, shift: options.shift + (options.faceShift || 0) } : options);
 }
 
 /**

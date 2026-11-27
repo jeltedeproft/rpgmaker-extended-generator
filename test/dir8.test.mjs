@@ -36,3 +36,14 @@ test('turned diagonals: the front turned toward the side, one outline, never a s
   // Side view: down-left is just the left picture.
   assert.deepEqual([...diagonalsOf(walk, 'side').data.subarray(0, 20 * 20 * 4)], [...walk.data.subarray(20 * 20 * 4, 2 * 20 * 20 * 4)]);
 });
+
+test('turned diagonals: face parts (eyes, mouth...) move further toward the turn than the head', async () => {
+  const { diagonalsOf } = await import('../src/dir8.js');
+  const { createImage } = await import('../src/recolor.js');
+  const walk = createImage(20, 80);
+  walk.data.set([255, 0, 0, 255], ((10) * 20 + 10) * 4);
+  const leftmost = (img) => [...Array(20).keys()].find((x) => img.data[(10 * 20 + x) * 4 + 3]);
+  for (const mode of ['turned', 'more']) {
+    assert.ok(leftmost(diagonalsOf(walk, mode, true)) < leftmost(diagonalsOf(walk, mode)), mode);
+  }
+});
