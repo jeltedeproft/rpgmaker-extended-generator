@@ -417,7 +417,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .extract-row .tpl-num { width: 52px; }
 .extract-panel .export-toggles button { padding: 3px 8px; font-size: 12px; }
 #focus-extract.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-.focus-stage.extracting canvas { cursor: crosshair; }
+.focus-stage.extracting #focus-canvas { cursor: default; }
 .use-dialog { width: min(620px, calc(100vw - 32px)); overflow-x: hidden; }
 .use-dialog .assign-form { width: auto; }
 .use-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
