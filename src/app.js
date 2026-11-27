@@ -1524,7 +1524,7 @@ function renderImageTransform() {
   $('image-scale').value = t.scale || 100;
   $('image-keep').checked = !t.scaleY;
   $('image-scaley').value = t.scaleY || t.scale || 100;
-  $('image-scaley').disabled = !t.scaleY;
+  $('image-size').value = sizeOf(t.scale || 100, t.scaleY || t.scale || 100);
   $('image-flipx').checked = !!t.flipX;
   $('image-flipy').checked = !!t.flipY;
   markImageTransform();
@@ -1535,23 +1535,41 @@ function markImageTransform() {
   $('image-transform-mark').textContent = changed.length ? `(changed: ${changed.join(', ')})` : '';
 }
 
-function updateImageTransform() {
+/** Size: width and height together (their average). */
+const sizeOf = (w, h) => Math.round((w + h) / 2);
+const percent = (v) => Math.max(10, Math.min(400, Math.round(Number(v) || 100)));
+
+function updateImageTransform(e) {
   const sheet = $('image-sheet').value;
-  const t = readShape('image', 400);
   const keep = $('image-keep').checked;
-  $('image-scaley').disabled = keep;
-  if (keep) $('image-scaley').value = t.scale;
-  else {
-    const h = Math.max(10, Math.min(400, Number($('image-scaley').value) || 100));
-    if (h !== t.scale) t.scaleY = h;
+  const changed = e?.target?.id;
+  let w = percent($('image-scale').value);
+  let h = percent($('image-scaley').value);
+  if (changed === 'image-size') {
+    // Both grow or shrink by the same share.
+    const before = sizeOf(w, h);
+    const size = percent($('image-size').value);
+    if (keep) w = h = size;
+    else {
+      w = percent((w * size) / before);
+      h = percent((h * size) / before);
+    }
+  } else if (keep) {
+    if (changed === 'image-scaley') w = h;
+    else h = w;
   }
+  $('image-scale').value = w;
+  $('image-scaley').value = h;
+  if (changed !== 'image-size') $('image-size').value = sizeOf(w, h);
+  const t = readShape('image', 400);
+  if (h !== t.scale) t.scaleY = h;
   const all = (state.character.sheetTransform ||= {});
   if (t.x || t.y || t.rot || t.scale !== 100 || t.scaleY || t.flipX || t.flipY) all[sheet] = t;
   else delete all[sheet];
   markImageTransform();
   renderPreview();
 }
-for (const f of [...SHAPE_FIELDS, 'scaley', 'keep']) $(`image-${f}`).addEventListener('input', updateImageTransform);
+for (const f of [...SHAPE_FIELDS, 'scaley', 'keep', 'size']) $(`image-${f}`).addEventListener('input', updateImageTransform);
 $('image-sheet').addEventListener('change', renderImageTransform);
 $('image-reset').addEventListener('click', () => {
   delete state.character.sheetTransform?.[$('image-sheet').value];

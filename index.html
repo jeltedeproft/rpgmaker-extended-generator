@@ -302,17 +302,16 @@
           </select>
           <button id="image-reset" class="small-button">Reset this image</button>
         </div>
-        <div class="offset-grid">
-          <span></span>
+        <div class="offset-grid image-grid">
           <label>x <input type="number" id="image-x" step="1" value="0"></label>
           <label>y <input type="number" id="image-y" step="1" value="0"></label>
           <label>turn <input type="number" id="image-rot" step="5" value="0" title="Degrees, clockwise"></label>
-          <span></span>
-          <label>size <input type="number" id="image-scale" min="10" max="400" step="5" value="100" title="Percent of the original size (the width, when the proportions are not kept)"> %</label>
+          <label title="Width and height together: both grow or shrink by the same share">size <input type="number" id="image-size" min="10" max="400" step="5" value="100"> %</label>
+          <label>width <input type="number" id="image-scale" min="10" max="400" step="5" value="100" title="Percent of the original width"> %</label>
+          <label>height <input type="number" id="image-scaley" min="10" max="400" step="5" value="100" title="Percent of the original height"> %</label>
+          <label title="Untick to stretch or squash: width and height then change on their own"><input type="checkbox" id="image-keep" checked> keep proportions</label>
           <label title="Mirror left to right"><input type="checkbox" id="image-flipx"> mirror</label>
           <label title="Upside down"><input type="checkbox" id="image-flipy"> flip</label>
-          <label title="Untick to stretch or squash: the size above is then the width, this one the height"><input type="checkbox" id="image-keep" checked> keep proportions</label>
-          <label>height <input type="number" id="image-scaley" min="10" max="400" step="5" value="100" title="Percent of the original height" disabled> %</label>
         </div>
       </details>
       <details id="credits" class="settings">

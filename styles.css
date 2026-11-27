@@ -208,6 +208,9 @@ select.match-colour { font-size: 12px; padding: 3px 6px; }
 .offsets h3 { margin-top: 14px; }
 .offset-grid { display: grid; grid-template-columns: auto auto auto auto; gap: 6px 12px; align-items: center; justify-content: start; font-size: 13px; }
 .offset-grid input { width: 64px; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
+.offset-grid.image-grid { grid-template-columns: repeat(3, max-content); gap: 6px 10px; font-size: 12px; }
+.offset-grid.image-grid label { white-space: nowrap; }
+.offset-grid.image-grid input[type="number"] { width: 50px; padding: 3px 4px; }
 .offset-grid input[type="checkbox"] { width: auto; padding: 0; margin: 0 4px 0 0; vertical-align: middle; }
 .small-button { margin-top: 8px; padding: 3px 9px; font-size: 12px; }
 .recent { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; align-items: center; }
