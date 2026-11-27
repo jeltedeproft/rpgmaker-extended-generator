@@ -372,7 +372,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .assign-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 10px; }
 .assign-form .field input, .assign-form .field select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .problems .assign { margin: 0 0 0 4px; padding: 0 6px; font-size: 11px; }
-.templates-dialog { width: min(820px, calc(100vw - 32px)); overflow-x: hidden; }
+.templates-dialog { width: min(660px, calc(100vw - 32px)); overflow-x: hidden; }
 .template-grid input.tpl-num { width: 100%; min-width: 0; }
 .template-grid select { width: 100%; min-width: 0; }
 .template-grid { display: grid; grid-template-columns: 22px minmax(80px, 1fr) minmax(90px, 130px) repeat(4, minmax(44px, 64px)) auto; gap: 4px 6px; align-items: center; font-size: 12px; }
