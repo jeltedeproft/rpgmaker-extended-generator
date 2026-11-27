@@ -17,3 +17,21 @@ test('an 8-direction sheet: walk rows, then diagonals; 4-direction parts face th
   assert.deepEqual(rowsOf(diagonalFallback(walk)), [2, 3, 2, 3]);
   assert.equal(guessSheet(144, 384).sheet, 'DIR8');
 });
+
+test('turned diagonals: the front over the side picture, moved toward the side it turns to', async () => {
+  const { diagonalsOf } = await import('../src/dir8.js');
+  const { createImage } = await import('../src/recolor.js');
+  // 1 column, 4 rows of 20 x 20: down is a red dot in the middle, left a blue dot at the back (right).
+  const walk = createImage(20, 80);
+  const dot = (row, x, rgb) => walk.data.set([...rgb, 255], ((row * 20 + 10) * 20 + x) * 4);
+  dot(0, 10, [255, 0, 0]);
+  dot(1, 14, [0, 0, 255]);
+  const d = diagonalsOf(walk, 'turned');
+  const at = (row, x) => [...d.data.subarray(((row * 20 + 10) * 20 + x) * 4, ((row * 20 + 10) * 20 + x) * 4 + 4)];
+  const red = [...Array(20).keys()].filter((x) => at(0, x)[0] === 255);
+  const blue = [...Array(20).keys()].filter((x) => at(0, x)[2] === 255);
+  assert.ok(red.length && red.every((x) => x < 10), `the face moves left: ${red}`);
+  assert.ok(blue.length && blue.every((x) => x > 14), `the side picture moves right, behind it: ${blue}`);
+  // Side view: down-left is just the left picture.
+  assert.deepEqual([...diagonalsOf(walk, 'side').data.subarray(0, 20 * 20 * 4)], [...walk.data.subarray(20 * 20 * 4, 2 * 20 * 20 * 4)]);
+});

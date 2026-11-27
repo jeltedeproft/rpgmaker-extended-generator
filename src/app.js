@@ -11,7 +11,7 @@ import {
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { WALK_LAYOUTS } from './xp.js';
 import { cropBox, cropScale } from './crop.js';
-import { diagonalFallback, join8 } from './dir8.js';
+import { diagonalsOf, join8, DIAGONAL_MODES } from './dir8.js';
 import { normalizeStretch, isStretched, stretchFrames, lineY } from './stretch.js';
 import { selectByColour, growSelection, keepSelected, removeSelected, nearestOutside, selectedCount } from './extract.js';
 import { packCharacters, MULTI_COLS, MULTI_ROWS } from './multi.js';
@@ -2043,7 +2043,7 @@ async function renderPreview() {
       if (x.base === 'DIR8') {
         const settings = extraSettings({ ...x, base: 'TV', cols: 3, rows: 4 });
         const walk = composeSheet('TV', state.character, state.library, byId, settings).image;
-        const diagonal = walk && composeSheet('TV', state.character, diagonalLibrary(), byId, settings).image;
+        const diagonal = walk && composeSheet('TV', state.character, diagonalLibrary(x.diagonals), byId, settings).image;
         return { sheet: x, image: walk && diagonal && join8(walk, diagonal) };
       }
       // RPG Maker XP: the walk sheet, as 4 x 4 frames.
@@ -7099,23 +7099,25 @@ function croppedPortrait(crop, t, byId, character = state.character) {
 }
 
 // 8 directions: the diagonals are drawn like the walk sheet, from each picture's diagonal rows: its
-// own (a part made with 8 rows) or, for a part with 4 directions, the side each diagonal faces.
-const diagonalPictures = new WeakMap();
-function diagonalOf(ref) {
+// own (a part made with 8 rows) or, for a part with 4 directions, made from its 4 directions: turned
+// (the front or back over the side picture), or the side each diagonal faces.
+const diagonalPictures = { turned: new WeakMap(), more: new WeakMap(), side: new WeakMap() };
+function diagonalOf(ref, mode) {
   if (!ref?.pixels) return null;
   if (ref.diagonal) return ref.diagonal;
-  let d = diagonalPictures.get(ref.pixels);
-  if (!d) diagonalPictures.set(ref.pixels, (d = diagonalFallback(ref.pixels)));
+  const cache = diagonalPictures[mode] || diagonalPictures.turned;
+  let d = cache.get(ref.pixels);
+  if (!d) cache.set(ref.pixels, (d = diagonalsOf(ref.pixels, mode)));
   return d;
 }
-function diagonalRef(ref) {
+function diagonalRef(ref, mode) {
   if (!ref) return ref;
   // A different path: pictures cut into pieces are cached by path.
-  return Object.defineProperty({ ...ref, path: `${ref.path}#diagonal` }, 'pixels', { get: () => diagonalOf(ref), enumerable: true });
+  return Object.defineProperty({ ...ref, path: `${ref.path}#diagonal-${mode || 'turned'}` }, 'pixels', { get: () => diagonalOf(ref, mode), enumerable: true });
 }
 /** The library as the diagonals see it: walk pictures swapped for their diagonal rows. */
-function diagonalLibrary() {
-  const swap = (v) => v && { ...v, layers: v.layers.map((l) => (l.sheet === 'TV' && !l.vxace ? { ...l, base: diagonalRef(l.base), mask: diagonalRef(l.mask), paint: diagonalRef(l.paint) } : l)) };
+function diagonalLibrary(mode = 'turned') {
+  const swap = (v) => v && { ...v, layers: v.layers.map((l) => (l.sheet === 'TV' && !l.vxace ? { ...l, base: diagonalRef(l.base, mode), mask: diagonalRef(l.mask, mode), paint: diagonalRef(l.paint, mode) } : l)) };
   return { ...state.library, variants: { get: (id) => swap(state.library.variants.get(id)), has: (id) => state.library.variants.has(id) } };
 }
 
@@ -7261,7 +7263,7 @@ function renderTemplates() {
     return select;
   };
   /** One row: on, name, parts, width, height, columns, rows, Remove. Every sheet alike. */
-  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove, onCrop = null, cropped = false, xp = false }) => {
+  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove, onCrop = null, cropped = false, xp = false, diagonals = null, onDiagonals = null }) => {
     const tick = el('input', { type: 'checkbox', checked: on, title: 'Untick to leave it out of the preview and the export' });
     tick.addEventListener('change', () => onToggle(tick.checked));
     const nameBox = el('input', { type: 'text', className: 'tpl-name', value: name || '', placeholder, title: 'Its name in the preview and on the export button' });
@@ -7274,6 +7276,13 @@ function renderTemplates() {
         title: 'Cut it out of the whole portrait: pick the part (e.g. the face of a full-body picture); Width and Height set the size it is made' });
       crop.addEventListener('click', onCrop);
       actions.unshift(crop);
+    }
+    // 8 directions: how the diagonals of parts drawn in 4 directions are made.
+    if (base === 'DIR8' && onDiagonals) {
+      const pick = el('select', { className: 'tpl-diagonals', title: 'Diagonals of parts drawn in 4 directions. Turned: the front (or back) turned toward the side, over the side picture; it may need touching up, e.g. wide wings. Side view: the side each diagonal faces' },
+        Object.entries(DIAGONAL_MODES).map(([key, m]) => el('option', { value: key, textContent: `Diagonals: ${m.label}`, selected: (diagonals || 'turned') === key })));
+      pick.addEventListener('change', () => onDiagonals(pick.value));
+      actions.unshift(pick);
     }
     return [tick, nameBox, partsSelect(base, onBase, xp),
       ...['fw', 'fh', 'cols', 'rows'].map((f, k) => number(size?.[f], ['width', 'height', 'columns', 'rows'][k], (v) => onSize(f, v))),
@@ -7315,6 +7324,8 @@ function renderTemplates() {
     onRemove: () => { state.settings.extraSheets = extraSheets().filter((s) => s !== x); sheetsChanged(); renderTemplates(); },
     cropped: !!x.crop,
     onCrop: () => openCrop(x.name || 'Sheet', () => x.crop, (c) => { x.crop = c || undefined; }, () => x),
+    diagonals: x.diagonals,
+    onDiagonals: (v) => { x.diagonals = v === 'turned' ? undefined : v; sheetsChanged(); },
   }));
   $('template-grid').replaceChildren(...head, ...builtIn, ...extras);
   const removed = SHEET_KEYS.filter((s) => sheetOption(s).removed);
