@@ -356,7 +356,7 @@ $('setup-dialog').addEventListener('close', () => {
 });
 
 /**
- * The setup with the pictures of the chosen folders, in one zip: opening it (Load → Open a zip,
+ * The setup with the pictures of the chosen folders, in one zip: opening it (Load → Load pack,
  * or dropping it) opens the pictures as a folder and offers the setup, as a folder with a setup does.
  */
 async function saveSetupZip(name, json, packNames) {
@@ -378,7 +378,7 @@ async function saveSetupZip(name, json, packNames) {
   const top = packNameFromEntries(entries, '');
   files.push({ name: `${top ? `${top}/` : ''}${safeFileName(name)}.setup.json`, bytes: new TextEncoder().encode(json) });
   downloadBlob(new Blob([zipFiles(files)], { type: 'application/zip' }), `${safeFileName(name)}.zip`);
-  toast(`Saved ${safeFileName(name)}.zip: ${files.length - 1} file(s) and the setup. Others open it with Load → Open a zip.`, 7000);
+  toast(`Saved ${safeFileName(name)}.zip: ${files.length - 1} file(s) and the setup. Others open it with Load → Load pack.`, 7000);
 }
 
 /** A zip (a shared setup, or a pack of parts): opened as a folder; just a setup applies to the open folders. */
@@ -395,11 +395,6 @@ async function openZip(file) {
   await importEntries(entries, packNameFromEntries(entries, file.name.replace(/\.zip$/i, '')), { loose: true });
 }
 
-$('zip-input').addEventListener('change', async (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (file) await openZip(file).catch((err) => toast(`Could not open ${file.name}: ${err.message}`));
-});
 $('import-setup').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   e.target.value = '';
@@ -5567,10 +5562,14 @@ $('folder-input').addEventListener('change', async (e) => {
   await importEntries(entries, packNameFromEntries(entries));
 });
 
-// Single files without a folder: a pack named after the first file.
+// Load pack: zips open like folders; single pictures without a folder become a pack named after
+// the first one.
 $('files-input').addEventListener('change', async (e) => {
-  const entries = entriesFromFileList(e.target.files);
+  const picked = [...e.target.files];
   e.target.value = '';
+  const isZip = (f) => /\.zip$/i.test(f.name) || f.type === 'application/zip';
+  for (const file of picked.filter(isZip)) await openZip(file).catch((err) => toast(`Could not open ${file.name}: ${err.message}`));
+  const entries = entriesFromFileList(picked.filter((f) => !isZip(f)));
   if (!entries.length) return;
   const first = entries[0].path.replace(/\.png$/i, '');
   await importEntries(entries, entries.length > 1 ? `${first} +${entries.length - 1}` : first, { ask: true });
@@ -5639,7 +5638,7 @@ document.addEventListener('drop', async (e) => {
   if (folders.length && entries.every((x) => folders.some((h) => x.path.startsWith(h.name + '/')))) {
     for (const h of folders) await importHandle(h);
   } else {
-    // Loose files are named after the first one, as with Load → Open files.
+    // Loose files are named after the first one, as with Load → Load pack.
     const first = entries[0].path.split('/').pop().replace(/\.png$/i, '');
     await importEntries(entries, packNameFromEntries(entries, entries.length > 1 ? `${first} +${entries.length - 1}` : first), { loose: true, ask: true });
   }

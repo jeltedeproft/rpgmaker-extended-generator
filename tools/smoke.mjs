@@ -1,7 +1,7 @@
 // Browser smoke test: loads the sample kit in headless Chrome, exercises the UI and saves screenshots.
 // Needs the dev server running (npm run serve). Run: node tools/smoke.mjs [outDir]
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, existsSync, mkdtempSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -177,7 +177,7 @@ try {
   check('Save setup opens from the Save menu, and the menu closes', await evaluate(`document.getElementById('setup-dialog').open && document.querySelector('#save-menu .menu-list').hidden`));
   await evaluate(`document.getElementById('setup-dialog').close()`);
   check('Rules holds the sheet templates, Files the look-alikes', await evaluate(`document.querySelector('#rules-menu .menu-list').contains(document.getElementById('open-templates')) && document.querySelector('#files-menu .menu-list').contains(document.getElementById('open-alikes'))`));
-  check('the Load menu holds files, character, set, setup and sample kit', await evaluate(`['files-input', 'load-character', 'import-sets', 'import-setup', 'sample-kit'].every(id => document.querySelector('#load-menu .menu-list').contains(document.getElementById(id)))`));
+  check('the Load menu holds pack, character, set, setup and sample kit', await evaluate(`['files-input', 'load-character', 'import-sets', 'import-setup', 'sample-kit'].every(id => document.querySelector('#load-menu .menu-list').contains(document.getElementById(id)))`));
   await click('#open-sets');
   await sleep(300);
   check('the sets are in the Gallery, with Export', await evaluate(`document.getElementById('gallery-dialog').open && !document.getElementById('gallery-sets').hidden && !!document.querySelector('#gallery-sets #export-sets')`));
@@ -1395,6 +1395,14 @@ try {
     await send('DOM.setFileInputFiles', { nodeId: input, files: [join(process.cwd(), 'sample-kit/Generator/Face/Male/FG_Eyes_p01_c1_m002.png')] });
     for (let i = 0; i < 20 && !(await evaluate(`/FG_Eyes_p01_c1_m002/.test(document.getElementById('packs').textContent)`)); i++) await sleep(500);
     check('single files open as a pack of their own', await evaluate(`/FG_Eyes_p01_c1_m002/.test(document.getElementById('packs').textContent)`));
+    // Load pack takes zips too, picked together with pictures: each zip opens like a folder.
+    const { zipFiles } = await import('../src/zip.js');
+    const face = 'sample-kit/Generator/Face/Male/FG_Face_p02_c1_m001.png';
+    writeFileSync(join(OUT, 'zipped-pack.zip'), zipFiles([{ name: 'Zipped pack/Generator/Face/Male/FG_Face_p02_c1_m001.png', bytes: new Uint8Array(readFileSync(join(process.cwd(), face))) }]));
+    await send('DOM.setFileInputFiles', { nodeId: input, files: [join(OUT, 'zipped-pack.zip'), join(process.cwd(), 'sample-kit/Generator/Face/Male/FG_FrontHair_p02_c1_m003.png')] });
+    for (let i = 0; i < 20 && !(await evaluate(`/Zipped pack/.test(document.getElementById('packs').textContent) && /FG_FrontHair_p02/.test(document.getElementById('packs').textContent)`)); i++) await sleep(500);
+    check('Load pack opens a zip and pictures picked together', await evaluate(`/Zipped pack/.test(document.getElementById('packs').textContent) && /FG_FrontHair_p02/.test(document.getElementById('packs').textContent)`),
+      await evaluate(`document.getElementById('packs').textContent.slice(0, 300)`));
   }
   // A file dragged in from the computer (a real drop: its data is gone after the first await).
   {
