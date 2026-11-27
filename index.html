@@ -435,7 +435,7 @@
         <label class="lock small" title="The grid of the frame, one square per pixel, when it is big enough"><input type="checkbox" id="focus-grid"> pixel grid</label>
         <label class="lock small" title="An outline around the picked part"><input type="checkbox" id="focus-outline" checked> outline</label>
         <input type="color" id="focus-outline-colour" value="#ffd640" title="The outline's colour">
-        <button type="button" id="focus-extract" class="small-button" title="Take a piece out of this picture (e.g. the eyes or the head of a finished character) to use as a part, by its colours or its colour mask">Extract…</button>
+        <button type="button" id="focus-extract" class="small-button" aria-pressed="false" title="Extract mode: take a piece out of this picture (e.g. the eyes or the head of a finished character) to use as a part, by colours, pixels and areas">Extract</button>
         <button value="close" class="small-button">Close</button>
       </div>
       <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Mouse wheel: zoom; right- or middle-drag: pan. Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility does Clip Content; Squash and stretch shows its lines to drag.</p>
@@ -445,6 +445,29 @@
           <details open id="focus-layers"><summary>Layers</summary></details>
           <details id="focus-colours"><summary>Colours</summary></details>
           <details id="focus-visibility"><summary>Visibility: Clip Content</summary></details>
+          <div id="focus-extract-panel" class="extract-panel" hidden>
+            <div class="extract-title">Extract a part</div>
+            <label class="extract-row">From <select id="extract-source"></select></label>
+            <div class="extract-row"><span class="muted small">Show</span><span class="export-toggles" id="extract-view">
+              <button type="button" data-view="picture">Picture</button><button type="button" data-view="mask" title="The colour mask: each colour is a region (skin, eyes, hair...)">Colour mask</button><button type="button" data-view="piece">The piece</button><button type="button" data-view="rest">What is left</button></span></div>
+            <div class="extract-row"><span class="muted small">Pick with</span><span class="export-toggles" id="extract-tool">
+              <button type="button" data-tool="colour" title="Click a colour: every pixel of it (only in the area, when there is one)">Colour</button><button type="button" data-tool="pixel" title="Click or drag over single pixels">Pixels</button><button type="button" data-tool="area" title="Drag a box: the area that colours are picked in">Area</button></span></div>
+            <div class="extract-row">
+              <label title="How different a colour may be and still count as the same">Tolerance <input type="number" id="extract-tolerance" class="tpl-num" min="0" max="128" value="12"></label>
+              <label class="lock"><input type="checkbox" id="extract-touching"> Touching only</label>
+              <label class="lock" title="Pick by the colours of the colour mask instead of the picture"><input type="checkbox" id="extract-by-mask"> By colour mask</label>
+            </div>
+            <div class="extract-row" id="extract-area-row" hidden><span class="muted small" id="extract-area-text"></span><button type="button" id="extract-area-all" class="small-button">Pick all in the area</button><button type="button" id="extract-area-clear" class="small-button">No area</button></div>
+            <div class="extract-row">
+              <button type="button" id="extract-grow" class="small-button" title="A pixel more all around">Grow</button><button type="button" id="extract-shrink" class="small-button" title="A pixel less all around">Shrink</button><button type="button" id="extract-invert" class="small-button" title="Everything else instead">Invert</button><button type="button" id="extract-undo" class="small-button" title="Undo (Ctrl+Z)">Undo</button><button type="button" id="extract-clear" class="small-button">Clear</button>
+            </div>
+            <p id="extract-count" class="muted small"></p>
+            <label class="lock"><input type="checkbox" id="extract-fill" checked> Fill the hole with the colours around it</label>
+            <label class="extract-row">Add the piece as <select id="extract-part"></select></label>
+            <label class="extract-row">What is left as <select id="extract-rest-part"></select></label>
+            <div class="extract-row"><button type="button" id="extract-add" class="primary">Add as parts</button><button type="button" id="extract-save" class="small-button" title="Both pictures as PNG files">Save as PNG</button></div>
+            <p class="muted small">Shift: take away instead of add. Mouse wheel: zoom; right-drag: pan.</p>
+          </div>
           <div id="focus-taller" class="focus-taller"><button type="button" id="taller-toggle" class="taller-toggle" aria-pressed="false" title="Bigger or smaller: Set frames along stretch lines to make each band wider or narrower, or wider and narrower. Works with layered generator parts and single layered completed images.">Squash and stretch</button><div id="taller-panel" class="taller-panel"></div></div>
         </div>
       </div>
@@ -723,35 +746,6 @@
       </div>
       <p id="use-note" class="muted small"></p>
       <div id="use-options" class="use-options"></div>
-    </form>
-  </dialog>
-
-  <dialog id="extract-dialog" class="assign-form-dialog extract-dialog">
-    <form method="dialog" class="assign-form">
-      <div class="files-head">
-        <h3 id="extract-title">Extract a part</h3>
-        <button value="close" class="small-button">Close</button>
-      </div>
-      <p class="muted small">Click a colour to take it out: everywhere it is, or only where it touches. Click more colours to add them; Shift-click takes one back. Then add the piece, and what is left, as parts.</p>
-      <div class="extract-controls">
-        <label>From <select id="extract-source"></select></label>
-        <label title="Its colour mask: each colour of the mask is a region (skin, eyes, hair...)">Pick by <select id="extract-by"><option value="picture">its colours</option><option value="mask">its colour mask</option></select></label>
-        <label title="How different a colour may be and still count as the same">Tolerance <input type="number" id="extract-tolerance" class="tpl-num" min="0" max="128" value="12"></label>
-        <label class="lock"><input type="checkbox" id="extract-touching"> Touching only</label>
-        <label title="Make what is picked a pixel bigger (or smaller) all around">Grow <input type="number" id="extract-grow" class="tpl-num" min="-4" max="4" value="0"> px</label>
-        <button type="button" id="extract-clear" class="small-button">Clear</button>
-      </div>
-      <div class="extract-views">
-        <figure><canvas id="extract-canvas" width="0" height="0"></canvas><figcaption id="extract-count" class="muted small"></figcaption></figure>
-        <figure><canvas id="extract-piece" width="0" height="0"></canvas><figcaption class="muted small">The piece</figcaption></figure>
-        <figure><canvas id="extract-rest" width="0" height="0"></canvas><figcaption><label class="lock small"><input type="checkbox" id="extract-fill" checked> What is left, the hole filled with the colours around it</label></figcaption></figure>
-      </div>
-      <div class="extract-out">
-        <label>Add the piece as <select id="extract-part"></select></label>
-        <label>What is left as <select id="extract-rest-part"></select></label>
-        <button type="button" id="extract-add" class="primary">Add as parts</button>
-        <button type="button" id="extract-save" class="small-button" title="Both pictures as PNG files">Save as PNG</button>
-      </div>
     </form>
   </dialog>
 

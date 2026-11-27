@@ -6105,7 +6105,7 @@ function renderTaller() {
 
 /** Whether the close up shows the lines (the Squash and stretch panel is open and on). */
 function stretchEditing(sheet) {
-  return TALLER_SHEETS.includes(sheet) && !!stretchOf(sheet) && !!state.composites[sheet];
+  return !ex && TALLER_SHEETS.includes(sheet) && !!stretchOf(sheet) && !!state.composites[sheet];
 }
 
 /** Where the frame with the lines is drawn in the close up: canvas px = (o + frame px) * zoom. */
@@ -6337,139 +6337,243 @@ async function saveStretchedParts() {
   downloadBlob(new Blob([zip], { type: 'application/zip' }), `${safeFileName(state.character.name || 'character')}_stretched_parts.zip`);
 }
 
-// ---------- extract: a piece of a picture (e.g. the eyes) made a part of its own ----------
+// ---------- extract mode: a piece of a picture (e.g. the eyes) made a part of its own ----------
+// In the close up: the whole picture, picked pixels in pink. Pick by colour (everywhere, or only
+// in an area), by single pixels, or all of an area; Shift takes away.
 
-/** {sheet, sources: [{label, image, mask}], seeds: [{x, y, out}], zoom} while the dialog is open. */
-let extracting = null;
+/** {sheet, sources, sel, undo, area, view, tool} while extract mode is on, else null. */
+let ex = null;
+/** Where the picture is drawn: canvas px = (pad + px) * zoom. */
+let exView = null;
 
-function openExtract() {
-  const sheet = $('layer-sheet').value;
+function extractSourcesFor(sheet) {
   const c = state.composites[sheet];
-  if (!c) return;
   const base = sheetBase(sheet);
-  const sources = [{ label: `The ${sheetLabel(sheet).toLowerCase()} as shown (every part)`, image: c.plain?.image || c.image, mask: null, part: null }];
+  const sources = c ? [{ label: `The ${sheetLabel(sheet).toLowerCase()} as shown (every part)`, image: c.plain?.image || c.image, mask: null, part: null }] : [];
   // The picked part's own pictures on this sheet, with their colour masks.
   const key = state.selectedPart && state.selectedPart !== ALL_COLOURS ? itemOfKey(state.selectedPart) : null;
   const variant = key && state.library.variants.get(state.character.parts[key]);
   if (variant) {
     for (const l of sheetLayers(variant, base, state.library)) {
       if (!l.base?.pixels || l.base.cells) continue;
-      sources.push({ label: `${partOfKey(key)}: its picture ${l.key || l.layer}`, image: l.base.pixels, mask: (l.paint || l.mask)?.pixels || null, part: variant.part });
+      const mask = (l.paint || l.mask)?.pixels;
+      sources.push({ label: `${partOfKey(key)}: its picture ${l.key || l.layer}`, image: l.base.pixels, mask: mask?.width === l.base.pixels.width && mask?.height === l.base.pixels.height ? mask : null, part: variant.part });
     }
   }
-  extracting = { sheet: base, label: sheetLabel(sheet), sources, seeds: [] };
-  $('extract-title').textContent = `Extract a part: ${sheetLabel(sheet)}`;
-  $('extract-source').replaceChildren(...sources.map((src, i) => el('option', { value: i, textContent: src.label })));
-  $('extract-source').value = sources.length > 1 ? '1' : '0';
-  const parts = [...new Set([...PART_ORDER, ...partNames(state.library, state.character.bodyType)])];
-  $('extract-part').replaceChildren(...parts.map((p) => el('option', { value: p, textContent: p })));
-  $('extract-part').value = parts.includes('Eyes') ? 'Eyes' : parts[0];
-  $('extract-rest-part').replaceChildren(el('option', { value: '', textContent: "don't add it" }), ...parts.map((p) => el('option', { value: p, textContent: p })));
-  $('extract-rest-part').value = '';
-  extractSourceChanged();
-  $('extract-dialog').showModal();
+  return sources;
 }
-$('focus-extract').addEventListener('click', openExtract);
 
-function extractSource() {
-  return extracting?.sources[Number($('extract-source').value)] || extracting?.sources[0];
+function setExtractMode(on) {
+  const sheet = $('layer-sheet').value;
+  ex = on ? { sheet: sheetBase(sheet), sources: extractSourcesFor(sheet), si: 0, sel: null, undo: [], area: null, view: 'picture', tool: 'colour' } : null;
+  if (ex && !ex.sources.length) {
+    ex = null;
+    toast('Nothing to extract from: this picture is empty.');
+  }
+  const extracting = !!ex;
+  $('focus-extract').classList.toggle('active', extracting);
+  $('focus-extract').setAttribute('aria-pressed', String(extracting));
+  $('focus-canvas').parentElement.classList.toggle('extracting', extracting);
+  for (const id of ['focus-layers', 'focus-colours', 'focus-visibility', 'focus-taller']) $(id).hidden = extracting;
+  $('focus-extract-panel').hidden = !extracting;
+  // The note says how to pick pixels while extracting (and how to move parts again after).
+  const note = $('focus-note');
+  note.dataset.parts ||= note.textContent;
+  note.textContent = extracting
+    ? 'Extract: pick the pixels of the piece on the picture (pink). Colour: click a colour; Pixels: click or drag; Area: drag a box that colours are picked in. Shift takes away. Then add the piece, and what is left, as parts. Click Extract again to go back.'
+    : note.dataset.parts;
+  focusUserZoom = null;
+  if (ex) {
+    ex.si = ex.sources.length > 1 ? 1 : 0;
+    $('extract-source').replaceChildren(...ex.sources.map((src, i) => el('option', { value: i, textContent: src.label })));
+    $('extract-source').value = String(ex.si);
+    const parts = [...new Set([...PART_ORDER, ...partNames(state.library, state.character.bodyType)])];
+    $('extract-part').replaceChildren(...parts.map((p) => el('option', { value: p, textContent: p })));
+    $('extract-part').value = parts.includes('Eyes') ? 'Eyes' : parts[0];
+    $('extract-rest-part').replaceChildren(el('option', { value: '', textContent: "don't add it" }), ...parts.map((p) => el('option', { value: p, textContent: p })));
+    extractSourceChanged();
+  }
+  drawFocus();
 }
+$('focus-extract').addEventListener('click', () => setExtractMode(!ex));
+$('focus-dialog').addEventListener('close', () => {
+  if (ex) setExtractMode(false);
+});
+
+const exSource = () => ex.sources[ex.si] || ex.sources[0];
 
 function extractSourceChanged() {
-  const src = extractSource();
-  $('extract-by').value = src.mask ? 'mask' : 'picture';
-  $('extract-by').querySelector('[value="mask"]').disabled = !src.mask;
+  ex.si = Number($('extract-source').value) || 0;
+  const src = exSource();
+  ex.sel = new Uint8Array(src.image.width * src.image.height);
+  ex.undo = [];
+  ex.area = null;
+  $('extract-by-mask').checked = !!src.mask;
+  $('extract-by-mask').disabled = !src.mask;
+  $('extract-view').querySelector('[data-view="mask"]').disabled = !src.mask;
+  if (ex.view === 'mask' && !src.mask) ex.view = 'picture';
   if (src.part && $('extract-rest-part').querySelector(`[value="${CSS.escape(src.part)}"]`)) $('extract-rest-part').value = src.part;
-  extracting.seeds = [];
-  drawExtract();
+  else $('extract-rest-part').value = '';
+  renderExtract();
+}
+$('extract-source').addEventListener('change', () => {
+  extractSourceChanged();
+  drawFocus();
+});
+
+/** Changes the picked pixels, keeping the old ones for Undo. */
+function changeSelection(fn) {
+  ex.undo.push(ex.sel.slice());
+  if (ex.undo.length > 40) ex.undo.shift();
+  fn(ex.sel);
+  const img = exSource().image;
+  // Only pixels with something on them count.
+  for (let i = 0; i < ex.sel.length; i++) if (ex.sel[i] && img.data[i * 4 + 3] === 0) ex.sel[i] = 0;
+  renderExtract();
+  drawFocus();
 }
 
-/** The picked pixels: the colours clicked, less the ones Shift-clicked, grown or shrunk. */
-function extractSelection() {
-  const src = extractSource();
-  const opts = {
-    by: $('extract-by').value === 'mask' && src.mask ? src.mask : src.image,
-    tolerance: within(Number($('extract-tolerance').value), 0, 128, 12),
-    touching: $('extract-touching').checked,
-  };
-  const take = extracting.seeds.filter((s) => !s.out);
-  const back = extracting.seeds.filter((s) => s.out);
-  let sel = selectByColour(src.image, take, opts);
-  if (back.length) {
-    const minus = selectByColour(src.image, back, opts);
-    for (let i = 0; i < sel.length; i++) if (minus[i]) sel[i] = 0;
-  }
-  const grow = within(Math.round(Number($('extract-grow').value)), -4, 4, 0);
-  if (grow) {
-    sel = growSelection(sel, src.image.width, src.image.height, grow);
-    // Only where there is something to take.
-    for (let i = 0; i < sel.length; i++) if (src.image.data[i * 4 + 3] === 0) sel[i] = 0;
-  }
-  return sel;
-}
+const inArea = (i, w) => {
+  if (!ex.area) return true;
+  const x = i % w;
+  const y = Math.floor(i / w);
+  return x >= ex.area.x && x < ex.area.x + ex.area.w && y >= ex.area.y && y < ex.area.y + ex.area.h;
+};
 
 /** The piece and what is left (and their colour masks, when the picture has one). */
 function extractResult() {
-  const src = extractSource();
-  const sel = extractSelection();
+  const src = exSource();
   const fill = $('extract-fill').checked;
-  const from = fill ? nearestOutside(src.image, sel) : null;
-  const mask = src.mask && src.mask.width === src.image.width && src.mask.height === src.image.height ? src.mask : null;
+  const from = fill ? nearestOutside(src.image, ex.sel) : null;
   return {
-    sel,
-    piece: keepSelected(src.image, sel),
-    rest: removeSelected(src.image, sel, { fill, from }),
-    pieceMask: mask && keepSelected(mask, sel),
-    restMask: mask && removeSelected(mask, sel, { fill, from }),
+    piece: keepSelected(src.image, ex.sel),
+    rest: removeSelected(src.image, ex.sel, { fill, from }),
+    pieceMask: src.mask && keepSelected(src.mask, ex.sel),
+    restMask: src.mask && removeSelected(src.mask, ex.sel, { fill, from }),
   };
 }
 
-function drawExtract() {
-  if (!extracting) return;
-  const src = extractSource();
-  const { sel, piece, rest } = extractResult();
-  const img = src.image;
-  const room = Math.min(window.innerWidth - 120, 940) / 3;
-  const zoom = Math.max(1, Math.min(8, Math.floor(room / img.width), Math.floor(Math.min(560, window.innerHeight - 330) / img.height)));
-  extracting.zoom = zoom;
-  const show = (id, image, overlay = null) => {
-    const canvas = $(id);
-    canvas.width = image.width * zoom;
-    canvas.height = image.height * zoom;
-    const ctx = canvas.getContext('2d');
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(toCanvas(image), 0, 0, canvas.width, canvas.height);
-    if (!overlay) return;
-    ctx.fillStyle = 'rgba(255, 40, 200, 0.6)';
-    for (let i = 0; i < overlay.length; i++) if (overlay[i]) ctx.fillRect((i % image.width) * zoom, Math.floor(i / image.width) * zoom, zoom, zoom);
-  };
-  show('extract-canvas', $('extract-by').value === 'mask' && src.mask ? src.mask : img, sel);
-  show('extract-piece', piece);
-  show('extract-rest', rest);
-  const n = selectedCount(sel);
-  $('extract-count').textContent = n ? `Picked: ${n} pixels (pink)` : 'Click a colour to pick it.';
+function renderExtract() {
+  if (!ex) return;
+  for (const b of $('extract-view').querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === ex.view);
+  for (const b of $('extract-tool').querySelectorAll('[data-tool]')) b.classList.toggle('on', b.dataset.tool === ex.tool);
+  const n = selectedCount(ex.sel);
+  $('extract-count').textContent = n ? `Picked: ${n} pixel${n === 1 ? '' : 's'} (pink).` : 'Nothing picked yet: click a colour or pixels on the picture.';
   $('extract-add').disabled = $('extract-save').disabled = !n;
+  $('extract-undo').disabled = !ex.undo.length;
+  $('extract-area-row').hidden = !ex.area;
+  if (ex.area) $('extract-area-text').textContent = `Area ${ex.area.w} × ${ex.area.h}: colours are picked only in it.`;
 }
 
-$('extract-canvas').addEventListener('click', (e) => {
-  if (!extracting) return;
-  const canvas = $('extract-canvas');
+function drawExtractMode(canvas) {
+  const src = exSource();
+  const img = src.image;
+  const view = ex.view === 'mask' && src.mask ? src.mask
+    : ex.view === 'piece' || ex.view === 'rest' ? extractResult()[ex.view] : img;
+  const P = FOCUS_PAD;
+  const stage = canvas.parentElement;
+  const fit = Math.max(1, Math.min(16, Math.floor(Math.min((stage.clientWidth - 16) / (img.width + 2 * P), (stage.clientHeight - 16) / (img.height + 2 * P)))));
+  focusZoom = focusUserZoom || fit;
+  const z = focusZoom;
+  canvas.width = (img.width + 2 * P) * z;
+  canvas.height = (img.height + 2 * P) * z;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(toCanvas(view), P * z, P * z, img.width * z, img.height * z);
+  exView = { P, w: img.width, h: img.height };
+  ctx.strokeStyle = 'rgba(128, 128, 128, 0.6)';
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(P * z - 0.5, P * z - 0.5, img.width * z + 1, img.height * z + 1);
+  // The frame grid of a sprite sheet, faintly, to see where the frames are.
+  const frame = state.composites[$('layer-sheet').value]?.frame;
+  if (frame?.cols && img.width === frame.w * frame.cols && img.height === frame.h * frame.rows) {
+    ctx.strokeStyle = 'rgba(128, 128, 128, 0.3)';
+    ctx.beginPath();
+    for (let c = 1; c < frame.cols; c++) { ctx.moveTo((P + c * frame.w) * z, P * z); ctx.lineTo((P + c * frame.w) * z, (P + img.height) * z); }
+    for (let r = 1; r < frame.rows; r++) { ctx.moveTo(P * z, (P + r * frame.h) * z); ctx.lineTo((P + img.width) * z, (P + r * frame.h) * z); }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  if (ex.view === 'picture' || ex.view === 'mask') {
+    ctx.fillStyle = 'rgba(255, 40, 200, 0.55)';
+    for (let i = 0; i < ex.sel.length; i++) if (ex.sel[i]) ctx.fillRect((P + (i % img.width)) * z, (P + Math.floor(i / img.width)) * z, z, z);
+  }
+  if (ex.area) {
+    ctx.strokeStyle = '#4fc3ff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 3]);
+    ctx.strokeRect((P + ex.area.x) * z, (P + ex.area.y) * z, ex.area.w * z, ex.area.h * z);
+    ctx.setLineDash([]);
+  }
+}
+
+/** The picture pixel under the pointer. */
+function exPoint(e) {
+  const canvas = $('focus-canvas');
   const rect = canvas.getBoundingClientRect();
   const k = canvas.width / (rect.width || 1);
-  const x = Math.floor(((e.clientX - rect.left) * k) / extracting.zoom);
-  const y = Math.floor(((e.clientY - rect.top) * k) / extracting.zoom);
-  extracting.seeds.push({ x, y, out: e.shiftKey });
-  drawExtract();
+  return {
+    x: Math.floor(((e.clientX - rect.left) * k) / focusZoom - exView.P),
+    y: Math.floor(((e.clientY - rect.top) * k) / focusZoom - exView.P),
+  };
+}
+
+/** A colour clicked: its pixels added (or, with Shift, taken away), only in the area if there is one. */
+function pickColourAt(p, out) {
+  const src = exSource();
+  const picked = selectByColour(src.image, [p], {
+    by: $('extract-by-mask').checked && src.mask ? src.mask : src.image,
+    tolerance: within(Number($('extract-tolerance').value), 0, 128, 12),
+    touching: $('extract-touching').checked,
+  });
+  const w = src.image.width;
+  changeSelection((sel) => {
+    for (let i = 0; i < sel.length; i++) if (picked[i] && inArea(i, w)) sel[i] = out ? 0 : 1;
+  });
+}
+
+function paintPixel(p, out) {
+  const { w, h } = exView;
+  if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) return;
+  ex.sel[p.y * w + p.x] = out || exSource().image.data[(p.y * w + p.x) * 4 + 3] === 0 ? 0 : 1;
+}
+
+$('extract-view').addEventListener('click', (e) => {
+  const view = e.target.closest('[data-view]')?.dataset.view;
+  if (!view || !ex) return;
+  ex.view = view;
+  renderExtract();
+  drawFocus();
 });
-$('extract-source').addEventListener('change', extractSourceChanged);
-for (const id of ['extract-by', 'extract-tolerance', 'extract-touching', 'extract-grow', 'extract-fill']) $(id).addEventListener('change', drawExtract);
-$('extract-clear').addEventListener('click', () => {
-  extracting.seeds = [];
-  drawExtract();
+$('extract-tool').addEventListener('click', (e) => {
+  const tool = e.target.closest('[data-tool]')?.dataset.tool;
+  if (!tool || !ex) return;
+  ex.tool = tool;
+  renderExtract();
 });
-$('extract-dialog').addEventListener('close', () => {
-  extracting = null;
+$('extract-area-all').addEventListener('click', () => changeSelection((sel) => {
+  for (let i = 0; i < sel.length; i++) if (inArea(i, exView.w)) sel[i] = 1;
+}));
+$('extract-area-clear').addEventListener('click', () => {
+  ex.area = null;
+  renderExtract();
+  drawFocus();
 });
+for (const [id, by] of [['extract-grow', 1], ['extract-shrink', -1]]) {
+  $(id).addEventListener('click', () => changeSelection((sel) => sel.set(growSelection(sel, exView.w, exView.h, by))));
+}
+$('extract-invert').addEventListener('click', () => changeSelection((sel) => {
+  for (let i = 0; i < sel.length; i++) if (inArea(i, exView.w)) sel[i] = sel[i] ? 0 : 1;
+}));
+function extractUndo() {
+  if (!ex?.undo.length) return;
+  ex.sel = ex.undo.pop();
+  renderExtract();
+  drawFocus();
+}
+$('extract-undo').addEventListener('click', extractUndo);
+$('extract-clear').addEventListener('click', () => changeSelection((sel) => sel.fill(0)));
+$('extract-fill').addEventListener('change', () => drawFocus());
 
 /** The next free part number of a part in a pack: "07". */
 function nextPid(packName, bodyType, part, taken = new Set()) {
@@ -6485,11 +6589,11 @@ function nextPid(packName, bodyType, part, taken = new Set()) {
 }
 
 $('extract-add').addEventListener('click', async () => {
-  if (!extracting) return;
+  if (!ex) return;
   const { piece, rest, pieceMask, restMask } = extractResult();
   const PACK = 'Extracted';
   const body = state.character.bodyType;
-  const sheet = extracting.sheet;
+  const sheet = ex.sheet;
   const taken = new Set();
   const entries = [];
   const added = [];
@@ -6502,7 +6606,6 @@ $('extract-add').addEventListener('click', async () => {
   };
   await addOne($('extract-part').value, piece, pieceMask);
   if ($('extract-rest-part').value) await addOne($('extract-rest-part').value, rest, restMask);
-  $('extract-dialog').close();
   const pack = state.library.packs.find((p) => p.name === PACK);
   if (pack) {
     addFilesToPack(state.library, PACK, entries);
@@ -6515,11 +6618,11 @@ $('extract-add').addEventListener('click', async () => {
 });
 
 $('extract-save').addEventListener('click', async () => {
-  if (!extracting) return;
+  if (!ex) return;
   const { piece, rest } = extractResult();
   const name = safeFileName(state.character.name || 'character');
-  downloadImage(piece, `${name}_${extracting.sheet}_${$('extract-part').value}.png`);
-  downloadImage(rest, `${name}_${extracting.sheet}_rest.png`);
+  await downloadImage(piece, `${name}_${ex.sheet}_${$('extract-part').value}.png`);
+  await downloadImage(rest, `${name}_${ex.sheet}_rest.png`);
 });
 
 // ---------- close up: one image big, the picked part glowing, moved by mouse or arrow keys ----------
@@ -6624,6 +6727,12 @@ function drawFocus() {
     canvas.height = 0;
     return;
   }
+  if (ex) {
+    $('focus-title').textContent = `Extract: ${sheetLabel(sheet)}`;
+    drawExtractMode(canvas);
+    return;
+  }
+  exView = null;
   if (stretchEditing(sheet)) {
     drawStretchEdit(sheet, c, canvas);
     return;
@@ -6730,6 +6839,13 @@ function focusNudge(dx, dy) {
 // not in a text box or a dropdown.
 $('focus-dialog').addEventListener('keydown', (e) => {
   if (e.target.closest('input, select, textarea')) return;
+  if (ex) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      extractUndo();
+    }
+    return;
+  }
   const step = e.shiftKey ? 10 : 1;
   const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
   if (!move) return;
@@ -6770,6 +6886,55 @@ $('focus-dialog').addEventListener('keydown', (e) => {
     const fy = (e.clientY - rect.top) / (rect.height || 1);
     setFocusZoom(focusZoom + (e.deltaY < 0 ? 1 : -1), fx, fy, e.clientX, e.clientY);
   }, { passive: false });
+  // Extract mode: pick by colour, paint pixels, or drag an area. Shift takes away.
+  let exDrag = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!ex || !exView || e.button !== 0) return;
+    e.stopImmediatePropagation();
+    canvas.focus();
+    const p = exPoint(e);
+    if (ex.tool === 'colour') {
+      pickColourAt(p, e.shiftKey);
+      return;
+    }
+    canvas.setPointerCapture(e.pointerId);
+    if (ex.tool === 'pixel') {
+      ex.undo.push(ex.sel.slice());
+      exDrag = { tool: 'pixel', out: e.shiftKey, last: p };
+      paintPixel(p, e.shiftKey);
+      renderExtract();
+      drawFocus();
+    } else {
+      exDrag = { tool: 'area', x: p.x, y: p.y };
+      ex.area = null;
+    }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!ex || !exDrag) return;
+    e.stopImmediatePropagation();
+    const p = exPoint(e);
+    if (exDrag.tool === 'pixel') {
+      // Every pixel on the way, however fast the mouse moves.
+      const { last } = exDrag;
+      const steps = Math.max(Math.abs(p.x - last.x), Math.abs(p.y - last.y), 1);
+      for (let t = 1; t <= steps; t++) paintPixel({ x: Math.round(last.x + ((p.x - last.x) * t) / steps), y: Math.round(last.y + ((p.y - last.y) * t) / steps) }, exDrag.out);
+      exDrag.last = p;
+    } else {
+      const x0 = within(Math.min(exDrag.x, p.x), 0, exView.w);
+      const y0 = within(Math.min(exDrag.y, p.y), 0, exView.h);
+      const x1 = within(Math.max(exDrag.x, p.x) + 1, 0, exView.w);
+      const y1 = within(Math.max(exDrag.y, p.y) + 1, 0, exView.h);
+      ex.area = x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+    }
+    drawFocus();
+  });
+  const endEx = () => {
+    if (!exDrag) return;
+    exDrag = null;
+    renderExtract();
+  };
+  canvas.addEventListener('pointerup', endEx);
+  canvas.addEventListener('pointercancel', endEx);
   // Squash and stretch: lines and boxes are dragged on the frame at the left; Shift-drag bends a line.
   let stretchDrag = null;
   const cursors = { row: 'ns-resize', col: 'ew-resize', corner: 'nwse-resize', move: 'move' };
