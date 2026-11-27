@@ -7433,28 +7433,31 @@ function croppedPortrait(crop, t, byId, character = state.character) {
 // (the front or back picture turned toward the side, see dir8.js), or the side each diagonal faces.
 // Parts on the front of the face turn further than the head they are on (see diagonalsOf).
 const FACE_PARTS = new Set(['Eyes', 'Eyebrows', 'Nose', 'Mouth', 'FacialMark', 'Glasses']);
+// The rest of the head: going up, its side peeks out (an ear, a cheek); the body's doesn't.
+const HEAD_PARTS = new Set(['Face', 'Ears', 'BeastEars', 'Beard']);
+const diagonalKind = (part) => (FACE_PARTS.has(part) ? 'face' : HEAD_PARTS.has(part) ? 'head' : null);
 const diagonalPictures = new Map();
-function diagonalOf(ref, mode, face = false) {
+function diagonalOf(ref, mode, kind = null) {
   if (!ref?.pixels) return null;
   if (ref.diagonal) return ref.diagonal;
-  const key = `${DIAGONAL_MODES[mode] ? mode : 'turned'}${face ? ':face' : ''}`;
+  const key = `${DIAGONAL_MODES[mode] ? mode : 'turned'}:${kind || 'body'}`;
   if (!diagonalPictures.has(key)) diagonalPictures.set(key, new WeakMap());
   const cache = diagonalPictures.get(key);
   let d = cache.get(ref.pixels);
-  if (!d) cache.set(ref.pixels, (d = diagonalsOf(ref.pixels, mode, face)));
+  if (!d) cache.set(ref.pixels, (d = diagonalsOf(ref.pixels, mode, kind)));
   return d;
 }
-function diagonalRef(ref, mode, face = false) {
+function diagonalRef(ref, mode, kind = null) {
   if (!ref) return ref;
   // A different path: pictures cut into pieces are cached by path.
-  return Object.defineProperty({ ...ref, path: `${ref.path}#diagonal-${mode || 'turned'}${face ? '-face' : ''}` }, 'pixels', { get: () => diagonalOf(ref, mode, face), enumerable: true });
+  return Object.defineProperty({ ...ref, path: `${ref.path}#diagonal-${mode || 'turned'}-${kind || 'body'}` }, 'pixels', { get: () => diagonalOf(ref, mode, kind), enumerable: true });
 }
 /** The library as the diagonals see it: walk pictures swapped for their diagonal rows. */
 function diagonalLibrary(mode = 'turned') {
   const swap = (v) => v && { ...v, layers: v.layers.map((l) => {
     if (l.sheet !== 'TV' || l.vxace) return l;
-    const face = FACE_PARTS.has(l.part || v.part);
-    return { ...l, base: diagonalRef(l.base, mode, face), mask: diagonalRef(l.mask, mode, face), paint: diagonalRef(l.paint, mode, face) };
+    const kind = diagonalKind(l.part || v.part);
+    return { ...l, base: diagonalRef(l.base, mode, kind), mask: diagonalRef(l.mask, mode, kind), paint: diagonalRef(l.paint, mode, kind) };
   }) };
   return { ...state.library, variants: { get: (id) => swap(state.library.variants.get(id)), has: (id) => state.library.variants.has(id) } };
 }

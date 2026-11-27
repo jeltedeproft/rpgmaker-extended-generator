@@ -46,20 +46,26 @@ export function join8(walk, diagonal) {
 
 /** How the diagonals of a part drawn in 4 directions are made: turned (a little or more), or the side view. */
 export const DIAGONAL_MODES = {
-  turned: { label: 'Turned', options: { near: 0.7, far: 1.2, shift: 3, inside: 'up', faceShift: 2 } },
-  more: { label: 'Turned more', options: { near: 0.6, far: 1.3, shift: 4, inside: 'up', faceShift: 3 } },
+  turned: { label: 'Turned', options: { near: 0.7, far: 1.2, shift: 3, inside: 'up', faceShift: 2, body: { near: 0.9, far: 1.02, shift: 2 } } },
+  more: { label: 'Turned more', options: { near: 0.6, far: 1.3, shift: 4, inside: 'up', faceShift: 3, body: { near: 0.85, far: 1.04, shift: 2 } } },
   side: { label: 'Side view', options: null },
 };
 
 /**
  * The diagonal rows of a 4-direction walk picture, made the given way (default: turned).
- * face: a part on the front of the face (eyes, mouth, nose...): it moves further toward the turn
- * than the head's outline, which is what makes a face read as turned rather than squeezed.
+ * kind: 'face' for a part on the front of the face (eyes, mouth, nose...): it moves further toward
+ * the turn than the head's outline, which makes a face read as turned rather than squeezed; 'head'
+ * for the rest of the head (face, ears); else the body, clothes, hair...
  */
-export function diagonalsOf(walk, mode = 'turned', face = false) {
+export function diagonalsOf(walk, mode = 'turned', kind = null) {
   const options = (DIAGONAL_MODES[mode] || DIAGONAL_MODES.turned).options;
   if (!options) return diagonalFallback(walk);
-  return diagonalWarp(walk, face ? { ...options, shift: options.shift + (options.faceShift || 0) } : options);
+  const o = { ...options };
+  // Only the head shows its side going up (an ear, a cheek): a body or clothes doing that showed a
+  // second arm and leg on the back.
+  if (kind !== 'head' && kind !== 'face' && kind !== true) o.inside = false;
+  if (kind === 'face' || kind === true) o.shift += options.faceShift || 0;
+  return diagonalWarp(walk, o);
 }
 
 /**
@@ -71,27 +77,36 @@ export function diagonalsOf(walk, mode = 'turned', face = false) {
  * @param {{cols?:number, near?:number, far?:number, shift?:number, inside?:boolean|'up', sideShift?:number, gap?:number}} [options]
  *   near: how wide the half it turns to stays; far: how wide the other half becomes; shift: pixels
  */
-export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, inside = false, sideShift = 3, gap = 2 } = {}) {
+export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, inside = false, sideShift = 3, gap = 2, body = null, neck = [0.5, 0.62] } = {}) {
   if (!walk || walk.height % 4) return walk;
   const fh = walk.height / 4;
   const n = cols || (walk.width % 3 === 0 ? 3 : Math.max(1, Math.round(walk.width / fh)));
   const fw = Math.floor(walk.width / n);
   const out = createImage(walk.width, walk.height);
   const cx = fw / 2;
-  // [front or back row, which way it turns: -1 left, 1 right, back?]
+  // Below the neck the body turns less than the head (body: {near, far, shift}), so the arms keep
+  // their width instead of one going thin and the other fat. Between the two it changes gradually.
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const rowTurn = (y) => {
+    if (!body) return { near, far, shift };
+    const t = Math.min(1, Math.max(0, ((y + 0.5) / fh - neck[0]) / (neck[1] - neck[0])));
+    return { near: lerp(near, body.near, t), far: lerp(far, body.far, t), shift: lerp(shift, body.shift, t) };
+  };
+  // [front or back row, which way it turns: -1 left, 1 right, back?, the side row it turns to]
   const MADE = [[0, -1, false, 1], [0, 1, false, 2], [3, -1, true, 1], [3, 1, true, 2]];
   for (const [d, [main, dir, back, sideRow]] of MADE.entries()) {
     // Seen from the back, the middle of the back moves away from the side it turns to.
     const side = back ? -dir : dir;
-    const mid = cx + side * shift;
-    const from = [];
-    for (let x = 0; x < fw; x++) {
-      const u = x + 0.5 - mid;
-      const sx = Math.floor(cx + (Math.sign(u) === side ? u / near : u / far));
-      from.push(sx >= 0 && sx < fw ? sx : -1);
-    }
-    for (let c = 0; c < n; c++) {
-      for (let y = 0; y < fh; y++) {
+    for (let y = 0; y < fh; y++) {
+      const turn = rowTurn(y);
+      const mid = cx + side * turn.shift;
+      const from = [];
+      for (let x = 0; x < fw; x++) {
+        const u = x + 0.5 - mid;
+        const sx = Math.floor(cx + (Math.sign(u) === side ? u / turn.near : u / turn.far));
+        from.push(sx >= 0 && sx < fw ? sx : -1);
+      }
+      for (let c = 0; c < n; c++) {
         const o = (d * fh + y) * out.width + c * fw;
         const s = (main * fh + y) * walk.width + c * fw;
         for (let x = 0; x < fw; x++) {
@@ -99,7 +114,7 @@ export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, in
           const si = (s + from[x]) * 4;
           if (walk.data[si + 3]) out.data.set(walk.data.subarray(si, si + 4), (o + x) * 4);
         }
-        // Inside: the side picture's far half (ear, side of the hair) painted within the outline only.
+        // Inside: the side picture's far half (ear, cheek) painted within the outline only.
         if (!(inside === true || (inside === 'up' && back))) continue;
         const ss = (sideRow * fh + y) * walk.width + c * fw;
         for (let x = 0; x < fw; x++) {

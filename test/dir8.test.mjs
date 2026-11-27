@@ -47,3 +47,17 @@ test('turned diagonals: face parts (eyes, mouth...) move further toward the turn
     assert.ok(leftmost(diagonalsOf(walk, mode, true)) < leftmost(diagonalsOf(walk, mode)), mode);
   }
 });
+
+test('turned diagonals: going up, only head parts show their side; the body does not', async () => {
+  const { diagonalsOf } = await import('../src/dir8.js');
+  const { createImage } = await import('../src/recolor.js');
+  // Back row: a grey block; left row: a blue block in the same place.
+  const walk = createImage(20, 80);
+  for (let y = 5; y < 15; y++) for (let x = 2; x < 18; x++) {
+    walk.data.set([128, 128, 128, 255], ((60 + y) * 20 + x) * 4);
+    walk.data.set([0, 0, 255, 255], ((20 + y) * 20 + x) * 4);
+  }
+  const blue = (img) => { let n = 0; for (let i = 40 * 20 * 4; i < 60 * 20 * 4; i += 4) if (img.data[i + 2] === 255 && !img.data[i]) n++; return n; };
+  assert.equal(blue(diagonalsOf(walk, 'turned')), 0, 'body: just its back');
+  assert.ok(blue(diagonalsOf(walk, 'turned', 'head')) > 0, 'head: its side peeks out');
+});
