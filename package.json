@@ -2,7 +2,7 @@
   "name": "rpgmaker-extended-generator",
   "version": "0.3.32",
   "private": true,
-  "description": "Browser-based extended character generator for RPG Maker MV/MZ generator assets.",
+  "description": "PixMix (Pixel Mixer): browser-based character generator for RPG Maker MV/MZ generator assets.",
   "type": "module",
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",

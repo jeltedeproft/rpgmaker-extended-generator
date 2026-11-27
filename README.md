@@ -1,6 +1,6 @@
-# Extended Character Generator (RPG Maker MV/MZ)
+# PixMix, the Pixel Mixer (RPG Maker character generator)
 
-A browser-based character generator for RPG Maker MV/MZ generator parts. It aims to be what the
+PixMix (short for Pixel Mixer) is a browser-based character generator for RPG Maker generator parts. It aims to be what the
 existing extended generator is, minus the bugs:
 
 - **No install, any OS:** a static web page; files never leave your machine.

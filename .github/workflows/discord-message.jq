@@ -9,7 +9,7 @@ def block: (split("\n")[0]) as $subject | (bullets) as $b
 map(select(contains("[skip notify]") | not))
 | if length == 0 then ""
   else
-    (if length == 1 then "**Generator updated**\n" else "**Generator updated: \(length) changes**\n" end) as $head
+    (if length == 1 then "**PixMix updated**\n" else "**PixMix updated: \(length) changes**\n" end) as $head
     # Full blocks while they fit, then just the titles of the rest.
     | reduce .[] as $m ({text: "", rest: []};
         ($m | block) as $b
