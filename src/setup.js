@@ -75,7 +75,8 @@ export function applySetup(settings, setup, packs) {
   if (setup.randomRules) next.randomRules = setup.randomRules;
   const names = new Set((setup.sets || []).map((s) => s.name));
   next.sets = [...(next.sets || []).filter((s) => !names.has(s.name)), ...(setup.sets || [])];
-  for (const [k, v] of Object.entries(setup.options || {})) if (OPTIONS.includes(k)) next[k] = v;
+  // Copies: changing a sheet later doesn't change the setup it came from.
+  for (const [k, v] of Object.entries(setup.options || {})) if (OPTIONS.includes(k)) next[k] = structuredClone(v);
   const characters = (setup.characters || []).filter((c) => c && typeof c.text === 'string').map((c) => ({ name: String(c.name || 'Character'), text: c.text }));
   return { settings: next, customGradients: setup.customGradients || [], characters, counts: { files, parts, sets: names.size } };
 }

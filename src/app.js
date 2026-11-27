@@ -82,6 +82,27 @@ function loadSettings() {
     return { ...DEFAULT_SETTINGS };
   }
 }
+/**
+ * The sheets picked to export: 'all', or sheet keys and "extra:<id>". Declared up here: the sheet
+ * list (showSheetOptions) uses it while the page starts.
+ */
+const exportPick = new Set(['all']);
+let exportFormat = 'png';
+
+// PixMix open in another tab: its changes to the settings (e.g. sheets added or removed) are taken
+// over here, so neither tab brings back what the other changed.
+window.addEventListener('storage', (e) => {
+  if (e.key !== 'xgen-settings' || !e.newValue) return;
+  try {
+    state.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(e.newValue) };
+  } catch {
+    return;
+  }
+  tidyExtraSheets();
+  renderTemplates();
+  showSheetOptions();
+  if (state.character) renderPreview();
+});
 function saveSettings() {
   try {
     localStorage.setItem('xgen-settings', JSON.stringify(state.settings));
@@ -307,6 +328,7 @@ function offerSetup(pack) {
 function useSetup(data, packs) {
   const { settings, customGradients, characters, counts } = applySetup(state.settings, data, packs);
   state.settings = settings;
+  tidyExtraSheets();
   saveSettings();
   for (const c of characters) addToGallery(c.text, c.name, 'loaded');
   for (const g of customGradients) {
@@ -7244,6 +7266,29 @@ const sheetBase = (sheet) => sheetOption(sheet).base || sheet;
 const sheetLabel = (sheet) => sheetOption(sheet).name || SHEET_NAMES[sheet];
 /** Sheets added in Sheet templates: {id, base, name, off, fw, fh, cols, rows}. */
 const extraSheets = () => state.settings.extraSheets || [];
+
+/** Every added sheet with an id of its own (sheets copied twice, e.g. by a setup, become one). */
+function tidyExtraSheets() {
+  const list = state.settings.extraSheets;
+  if (!Array.isArray(list)) return;
+  const seen = new Set();
+  state.settings.extraSheets = list.filter((x) => {
+    if (!x || typeof x !== 'object') return false;
+    x.id ||= newSheetKey();
+    if (seen.has(x.id)) return false;
+    seen.add(x.id);
+    return true;
+  });
+}
+const newSheetKey = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+
+/** "Sheet 3": the first number no added sheet is called yet. */
+function newSheetName() {
+  const names = new Set(extraSheets().map((x) => x.name));
+  let n = extraSheets().length + 1;
+  while (names.has(`Sheet ${n}`)) n++;
+  return `Sheet ${n}`;
+}
 /** The settings an extra sheet is drawn with: its base sheet, with the extra sheet's template. */
 function extraSettings(x) {
   const template = x.fw > 0 && x.fh > 0 ? { fw: x.fw, fh: x.fh, cols: x.cols, rows: x.rows } : undefined;
@@ -7355,6 +7400,7 @@ function renderExtraPreviews() {
 }
 
 function sheetsChanged() {
+  tidyExtraSheets();
   saveSettings();
   showSheetOptions();
   if (state.character) renderPreview();
@@ -7511,7 +7557,8 @@ function renderTemplates() {
     onBase: (v) => { x.base = v; sheetsChanged(); renderTemplates(); },
     size: x,
     onSize: (field, v) => { x[field] = v; sheetsChanged(); },
-    onRemove: () => { state.settings.extraSheets = extraSheets().filter((s) => s !== x); sheetsChanged(); renderTemplates(); },
+    // By id: the list may have been read again since this row was drawn (a setup, another tab).
+    onRemove: () => { state.settings.extraSheets = extraSheets().filter((s) => s.id !== x.id && s !== x); sheetsChanged(); renderTemplates(); },
     cropped: !!x.crop,
     onCrop: () => openCrop(x.name || 'Sheet', () => x.crop, (c) => { x.crop = c || undefined; }, () => x),
     diagonals: x.diagonals,
@@ -7629,13 +7676,16 @@ $('restore-sheets').addEventListener('click', () => {
   renderTemplates();
 });
 $('add-sheet').addEventListener('click', () => {
+  tidyExtraSheets();
+  const name = newSheetName();
   const list = (state.settings.extraSheets ||= []);
-  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
-  list.push({ id, base: 'TV', name: `Sheet ${list.length + 1}` });
+  const id = newSheetKey();
+  list.push({ id, base: 'TV', name });
   newSheetId = id;
   sheetsChanged();
   renderTemplates();
 });
+tidyExtraSheets();
 renderTemplates();
 showSheetOptions();
 
@@ -7685,9 +7735,6 @@ function safeFileName(name) {
 
 // ---------- export: pick the sheets and the kind, then Export now ----------
 
-/** The sheets picked to export: 'all', or sheet keys and "extra:<id>". */
-const exportPick = new Set(['all']);
-let exportFormat = 'png';
 
 function renderExport() {
   for (const b of $('export-buttons').querySelectorAll('[data-export]')) b.classList.toggle('on', exportPick.has(b.dataset.export));

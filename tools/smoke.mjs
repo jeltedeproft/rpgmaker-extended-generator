@@ -1413,6 +1413,18 @@ try {
     check('a file dragged in from the computer is read', await evaluate(`/FG_Eyes_p02_c1_m002/.test(document.getElementById('packs').textContent)`),
       await evaluate(`document.getElementById('toast').textContent`));
   }
+  // The page starts with an added sheet saved (v0.3.32 stopped starting then): it can be removed and added.
+  {
+    await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('xgen-settings') || '{}'); s.extraSheets = [{ id: 'kept', base: 'TV', name: 'Kept sheet' }]; localStorage.setItem('xgen-settings', JSON.stringify(s)); })()`);
+    await send('Page.reload');
+    await sleep(3000);
+    const names = `[...document.querySelectorAll('#template-grid .tpl-name')].map((i) => i.value).filter(Boolean)`;
+    check('a saved added sheet is listed after a reload', JSON.stringify(await evaluate(names)) === '["Kept sheet"]', JSON.stringify(await evaluate(names)));
+    await evaluate(`[...document.querySelectorAll('#template-grid button')].filter(b => b.textContent === 'Remove').pop().click()`);
+    await evaluate(`document.getElementById('add-sheet').click()`);
+    await sleep(300);
+    check('after a reload, sheets can be removed and added', JSON.stringify(await evaluate(names)) === '["Sheet 1"]', JSON.stringify(await evaluate(names)));
+  }
   check('no uncaught errors', errors.length === 0, errors.join(' | '));
 } catch (e) {
   check('smoke run', false, e.stack);
