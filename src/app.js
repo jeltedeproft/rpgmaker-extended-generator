@@ -333,7 +333,7 @@ $('export-setup').addEventListener('click', () => {
   const characters = galleryEntries();
   $('setup-characters').replaceChildren(...(characters.length ? characters.map((c) => el('label', { className: 'lock' }, [
     el('input', { type: 'checkbox', value: c.id, checked: false }), ` ${c.name}`,
-  ])) : [el('span', { className: 'muted small', textContent: 'Your Gallery is empty: save characters to share them here.' })]));
+  ])) : [el('span', { className: 'muted small', textContent: 'None yet: Save → Save character adds them.' })]));
   $('setup-pictures').checked = false;
   $('setup-dialog').showModal();
 });

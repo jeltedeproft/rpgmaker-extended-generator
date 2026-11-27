@@ -390,7 +390,14 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .use-option.best { border-color: var(--accent); }
 .use-option canvas { image-rendering: pixelated; max-width: 150px; background: repeating-conic-gradient(#0000 0 25%, #8882 0 50%) 0 0 / 12px 12px; }
 .use-best { font-size: 11px; color: var(--accent-text); background: var(--accent); border-radius: 4px; padding: 0 6px; }
-.setup-characters { display: flex; flex-wrap: wrap; gap: 4px 12px; max-height: 120px; overflow: auto; }
+.setup-dialog { width: min(460px, calc(100vw - 32px)); }
+.setup-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.setup-fields label { display: grid; gap: 3px; font-size: 12px; }
+.setup-fields .wide { grid-column: 1 / -1; }
+.setup-fields input, .setup-fields textarea { width: 100%; box-sizing: border-box; }
+.setup-group { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 10px; padding: 6px 10px 8px; }
+.setup-group legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
+.setup-list { display: flex; flex-wrap: wrap; gap: 4px 12px; max-height: 110px; overflow: auto; margin-bottom: 4px; }
 .multi-dialog { width: min(760px, calc(100vw - 32px)); }
 .multi-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
 .multi-slots select { min-width: 0; font: inherit; font-size: 12px; }
