@@ -743,7 +743,7 @@ const EDITOR_TABS = [
   ['colours', 'Colours', 'Colours, colour masks and matching colours'],
   ['position', 'Position', 'Move, turn, resize, mirror; move parts together'],
   ['images', 'Per image', 'Which picture the part uses on the portrait, walk, damage and battler'],
-  ['visibility', 'Visibility', 'Show only inside another part, hide what sticks out, split into pieces'],
+  ['visibility', 'Visibility', 'Show only inside another part, Clip Content, split into pieces'],
   ['all', 'All', 'Everything on one page'],
 ];
 
@@ -1223,7 +1223,7 @@ function renderCovers(worn) {
   const own = partOfKey(itemOfKey(key));
   const others = [...worn, ...partNames(state.library, state.character.bodyType).filter((p) => p !== own && !worn.includes(p))];
   $('cover-box').hidden = !others.length;
-  $('cover-box').replaceChildren(el('span', { className: 'small', textContent: 'Hides what sticks out of it:' }), ...others.map((other) => {
+  $('cover-box').replaceChildren(el('span', { className: 'small', textContent: 'Clip Content (these only show inside it):' }), ...others.map((other) => {
     const box = el('input', { type: 'checkbox', checked: clips[other]?.mode === 'inside' && clips[other]?.by === key });
     box.addEventListener('change', () => {
       const all = (state.character.clip ||= {});
