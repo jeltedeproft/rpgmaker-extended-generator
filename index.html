@@ -340,11 +340,6 @@
           <label>height <input type="number" id="image-scaley" min="10" max="400" step="5" value="100" title="Percent of the original height" disabled> %</label>
         </div>
       </details>
-      <details id="taller" class="settings">
-        <summary>Taller sprites <span id="taller-mark" class="muted small"></span></summary>
-        <p class="muted small">Less chibi: the head stays as it is and everything below the neck is stretched down, pixel for pixel, so the body and legs get longer. The frames grow taller by as much (feet on the bottom, still RPG Maker's grid). The neck line shows in the close up (click the walk picture), where you can drag it. Touch up the stretched pixels in your image editor if you like.</p>
-        <div id="taller-grid" class="taller-grid"></div>
-      </details>
       <details id="credits" class="settings">
         <summary>Credits</summary>
         <p class="muted small">Packs this character uses. Readme and credit files found in a pack folder are shown here; add an author or licence line per pack if it has none.</p>
@@ -465,13 +460,14 @@
         <input type="color" id="focus-outline-colour" value="#ffd640" title="The outline's colour">
         <button value="close" class="small-button">Close</button>
       </div>
-      <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Mouse wheel: zoom; right- or middle-drag: pan. Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility hides what sticks out of another part.</p>
+      <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Mouse wheel: zoom; right- or middle-drag: pan. Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility does Clip Content; Taller sprites shows a neck line to drag.</p>
       <div class="focus-body">
         <div class="focus-stage"><canvas id="focus-canvas" width="0" height="0" tabindex="0"></canvas></div>
         <div class="focus-side">
           <details open id="focus-layers"><summary>Layers</summary></details>
           <details id="focus-colours"><summary>Colours</summary></details>
           <details id="focus-visibility"><summary>Visibility: Clip Content</summary></details>
+          <details id="focus-taller" title="Less chibi: the head stays, the body below the neck gets longer (frames grow taller, feet on the bottom)"><summary>Taller sprites</summary><div id="taller-panel" class="taller-panel"></div></details>
         </div>
       </div>
     </form>

@@ -2026,7 +2026,7 @@ async function renderPreview() {
     const { image, problems: pr, ...p } = crop ? croppedPortrait(crop, state.settings.templates?.[sheet], byId)
       : composeSheet(base, state.character, state.library, byId, settings);
     problems.push(...pr);
-    state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame) } : null;
+    state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame), plainH: p.plainFrame?.h } : null;
   }
   state.extraComposites = extraSheets().filter((x) => !x.off).map((x) => {
     // One sheet that can't be drawn doesn't stop the others (it says why in its preview).
@@ -2087,7 +2087,7 @@ async function renderPreview() {
   renderSheetView();
   renderCredits();
   renderProblems();
-  if (!$('taller').contains(document.activeElement)) renderTaller();
+  if (!$('taller-panel').contains(document.activeElement)) renderTaller();
 }
 
 /** Credits: every pack the character uses, the parts taken from it, and the pack's readme. */
@@ -5843,7 +5843,10 @@ $('copy-credits').addEventListener('click', async () => {
   }
 });
 
-$('layer-sheet').addEventListener('change', renderLayers);
+$('layer-sheet').addEventListener('change', () => {
+  renderLayers();
+  renderTaller();
+});
 
 // ---------- taller sprites ----------
 
@@ -5851,53 +5854,110 @@ const TALLER_SHEETS = ['TV', 'TVD', 'SV'];
 /** Where the head ends by default, as a share of the frame's height (MV/MZ chibi sprites). */
 const NECK_SHARE = { TV: 0.58, TVD: 0.58, SV: 0.53 };
 
-/** The frame height of a sprite sheet before it is made taller. */
-function plainFrameHeight(sheet) {
+/** The frame the close up shows, as "column,row" of its sheet's grid (a frame's own neck line). */
+function focusFrameKey(sheet) {
   const c = state.composites[sheet];
-  const t = state.character.taller?.[sheet];
-  if (!c?.frame) return sheet === 'SV' ? 64 : 48;
-  if (!(t?.stretch > 100)) return c.frame.h;
-  const below = Math.round(((c.frame.h - t.neck) * 100) / t.stretch);
-  return t.neck + below;
+  if (!c?.frame) return '0,0';
+  const r = focusRect(sheet, c.image, c.frame);
+  return `${Math.round(r.x / c.frame.w)},${Math.round(r.y / c.frame.h)}`;
 }
 
+/** Where the neck line of a frame is in the drawn (taller) frame: its own top room plus its neck. */
+function drawnNeck(sheet, key) {
+  const t = state.character.taller?.[sheet];
+  const c = state.composites[sheet];
+  if (!t || !c?.frame) return null;
+  const plainH = c.plainH || c.frame.h;
+  const neck = t.necks?.[key] ?? t.neck;
+  const grown = Math.round(((plainH - neck) * (t.stretch || 100)) / 100);
+  return { neck, y: c.frame.h - (neck + grown) + neck, own: t.necks?.[key] != null };
+}
+
+/** The neck line was clicked in the close up: the arrow keys move it (not the part). */
+let neckPicked = false;
+
+/** Sets the neck line of the sheet shown in the close up: of every frame, or of this one. */
+function setNeck(sheet, value, thisFrame) {
+  const t = state.character.taller?.[sheet];
+  if (!t) return;
+  const plainH = state.composites[sheet]?.plainH || state.composites[sheet]?.frame?.h || 48;
+  const neck = Math.max(0, Math.min(plainH - 1, Math.round(value)));
+  if (thisFrame) (t.necks ||= {})[focusFrameKey(sheet)] = neck;
+  else t.neck = neck;
+  renderPreview();
+}
+
+/** Taller sprites, in the close up: for the picture shown there (walk, damage or battler). */
 function renderTaller() {
   if (!state.character) return;
-  const all = state.character.taller || {};
-  const on = TALLER_SHEETS.filter((s) => all[s]?.stretch > 100);
-  $('taller-mark').textContent = on.length ? `(${on.map((s) => SHEET_NAMES[s]).join(', ')})` : '';
-  $('taller-grid').replaceChildren(...TALLER_SHEETS.flatMap((sheet) => {
-    const t = all[sheet];
-    const tick = el('input', { type: 'checkbox', checked: t?.stretch > 100 });
-    const neck = el('input', { type: 'number', min: 0, max: 512, value: t?.neck ?? '', title: 'Pixels from the top of the frame: the head above it stays as it is' });
-    const stretch = el('input', { type: 'number', min: 105, max: 400, step: 5, value: t?.stretch ?? 150, title: 'How long the body below the neck gets: 150 = half again as long' });
-    neck.disabled = stretch.disabled = !tick.checked;
-    const save = () => {
-      const taller = (state.character.taller ||= {});
-      if (!tick.checked) delete taller[sheet];
-      else {
-        const h = plainFrameHeight(sheet);
-        taller[sheet] = {
-          neck: Math.max(0, Math.min(h - 1, Math.round(Number(neck.value) || Math.round(h * NECK_SHARE[sheet])))),
-          stretch: Math.max(105, Math.min(400, Math.round(Number(stretch.value) || 150))),
-        };
-      }
+  const box = $('taller-panel');
+  const sheet = $('layer-sheet').value;
+  if (!TALLER_SHEETS.includes(sheet)) {
+    box.replaceChildren(el('p', { className: 'muted small', textContent: 'For the walk, damage and battler pictures.' }));
+    return;
+  }
+  const t = state.character.taller?.[sheet];
+  const key = focusFrameKey(sheet);
+  const at = t ? drawnNeck(sheet, key) : null;
+  const on = el('input', { type: 'checkbox', checked: !!t });
+  on.addEventListener('change', () => {
+    const taller = (state.character.taller ||= {});
+    if (!on.checked) delete taller[sheet];
+    else {
+      const h = state.composites[sheet]?.frame?.h || 48;
+      taller[sheet] = { neck: Math.round(h * NECK_SHARE[sheet]), stretch: 150, width: 100 };
+    }
+    renderTaller();
+    renderPreview();
+  });
+  const rows = [el('label', { className: 'lock' }, [on, ` Make the ${sheetLabel(sheet).toLowerCase()} taller`])];
+  if (t) {
+    const thisFrame = el('input', { type: 'checkbox', checked: !!at?.own, title: 'This frame (the one shown) gets a neck line of its own, e.g. a bowing or crouching pose' });
+    const neck = el('input', { type: 'number', className: 'tpl-num', min: 0, max: 512, value: at?.neck ?? t.neck, title: 'Pixels from the top of the frame: the head above it stays as it is' });
+    neck.addEventListener('change', () => setNeck(sheet, Number(neck.value) || 0, thisFrame.checked));
+    const nudge = (d, label) => {
+      const b = el('button', { type: 'button', className: 'small-button', textContent: label, title: d < 0 ? 'Neck line up' : 'Neck line down' });
+      b.addEventListener('click', () => setNeck(sheet, (Number(neck.value) || 0) + d, thisFrame.checked));
+      return b;
+    };
+    thisFrame.addEventListener('change', () => {
+      if (thisFrame.checked) (t.necks ||= {})[key] = t.neck;
+      else delete t.necks?.[key];
       renderTaller();
       renderPreview();
+    });
+    const percent = (field, min, max, title) => {
+      const i = el('input', { type: 'number', className: 'tpl-num', min, max, step: 5, value: t[field] ?? 100, title });
+      i.addEventListener('change', () => {
+        t[field] = Math.max(min, Math.min(max, Math.round(Number(i.value) || 100)));
+        renderPreview();
+      });
+      return i;
     };
-    for (const i of [tick, neck, stretch]) i.addEventListener('change', save);
-    return [
-      el('label', { className: 'lock' }, [tick, ` ${SHEET_NAMES[sheet]}`]),
-      el('label', {}, ['neck at ', neck, ' px']),
-      el('label', {}, ['body ', stretch, ' %']),
-    ];
-  }));
+    const own = Object.keys(t.necks || {}).length;
+    const resetFrames = el('button', { type: 'button', className: 'small-button', textContent: `One neck line for all (${own} frame${own === 1 ? ' has its' : 's have their'} own)` });
+    resetFrames.addEventListener('click', () => {
+      delete t.necks;
+      renderTaller();
+      renderPreview();
+    });
+    rows.push(
+      el('div', { className: 'taller-row' }, ['Neck at ', neck, ' px ', nudge(-1, '↑'), nudge(1, '↓')]),
+      el('label', { className: 'lock' }, [thisFrame, ' Only this frame']),
+      el('div', { className: 'taller-row' }, ['Body length ', percent('stretch', 100, 400, 'How long the body below the neck gets: 150 = half again as long'), ' %']),
+      el('div', { className: 'taller-row' }, ['Body width ', percent('width', 50, 200, 'How wide the body below the neck is: 100 = as it is'), ' %']),
+      ...(own ? [resetFrames] : []),
+      el('p', { className: 'muted small', textContent: 'Drag the blue neck line, or click it and use ↑ ↓. The head above it stays; the body below is stretched.' }),
+    );
+  }
+  box.replaceChildren(...rows);
 }
 
 // ---------- close up: one image big, the picked part glowing, moved by mouse or arrow keys ----------
 
 /** Panels of the part editor shown in the close up while it is open: [element, its place]. */
 const focusPanels = [['layers', 'focus-layers'], ['slots', 'focus-colours'], ['clip-box', 'focus-visibility']];
+// Taller sprites live in the close up only (its own panel there).
 const focusHomes = new Map();
 let focusZoom = 1;
 /** Zoom picked with the wheel or the buttons; null = fit the window. */
@@ -5919,6 +5979,8 @@ function openFocus(sheet) {
   }
   $('focus-dirs').hidden = sheet !== 'TV';
   focusUserZoom = null;
+  neckPicked = false;
+  renderTaller();
   $('focus-outline').checked = state.settings.focusOutline !== false;
   $('focus-outline-colour').value = state.settings.focusOutlineColour || '#ffd640';
   if (!$('focus-dialog').open) $('focus-dialog').showModal();
@@ -6018,18 +6080,27 @@ function drawFocus() {
     for (let y = 0; y <= r.h; y++) { ctx.moveTo(P * focusZoom, (y + P) * focusZoom + 0.5); ctx.lineTo((r.w + P) * focusZoom, (y + P) * focusZoom + 0.5); }
     ctx.stroke();
   }
-  // Taller sprites: the neck line (drag it to move it).
-  const tall = state.character.taller?.[sheet];
-  focusNeck = tall?.stretch > 100 && sheet !== 'FG' ? { y: (P + tall.neck) * focusZoom, sheet } : null;
+  // Taller sprites: the neck line of the frame shown (drag it, or click it and use the arrow keys).
+  const at = TALLER_SHEETS.includes(sheet) ? drawnNeck(sheet, focusFrameKey(sheet)) : null;
+  focusNeck = at ? { y: (P + at.y) * focusZoom, sheet } : null;
   if (focusNeck) {
     ctx.save();
     ctx.strokeStyle = '#4fc3ff';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([8, 4]);
+    ctx.lineWidth = neckPicked ? 3 : 2;
+    if (!neckPicked) ctx.setLineDash([8, 4]);
     ctx.beginPath();
     ctx.moveTo(0, focusNeck.y);
     ctx.lineTo(canvas.width, focusNeck.y);
     ctx.stroke();
+    // A handle with its value, at the right end.
+    const label = `neck ${at.neck}${at.own ? ' (this frame)' : ''}`;
+    ctx.setLineDash([]);
+    ctx.font = '12px system-ui, sans-serif';
+    const w = ctx.measureText(label).width + 10;
+    ctx.fillStyle = '#4fc3ff';
+    ctx.fillRect(canvas.width - w, focusNeck.y - 9, w, 18);
+    ctx.fillStyle = '#06202c';
+    ctx.fillText(label, canvas.width - w + 5, focusNeck.y + 4);
     ctx.restore();
   }
   const key = focusKey();
@@ -6114,6 +6185,12 @@ $('focus-dialog').addEventListener('keydown', (e) => {
   const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
   if (!move) return;
   e.preventDefault();
+  const sheet = $('layer-sheet').value;
+  if (neckPicked && focusNeck && move[1]) {
+    const at = drawnNeck(sheet, focusFrameKey(sheet));
+    if (at) setNeck(sheet, at.neck + move[1], at.own);
+    return;
+  }
   focusNudge(...move);
 });
 {
@@ -6161,17 +6238,23 @@ $('focus-dialog').addEventListener('keydown', (e) => {
     if (!neckDrag) return;
     const rect = canvas.getBoundingClientRect();
     const y = ((e.clientY - rect.top) * canvas.height) / (rect.height || 1);
-    const neck = Math.max(0, Math.round(y / focusZoom) - FOCUS_PAD);
-    const t = state.character.taller?.[neckDrag];
-    if (!t || t.neck === neck) return;
-    t.neck = Math.min(plainFrameHeight(neckDrag) - 1, neck);
-    renderPreview();
+    const at = drawnNeck(neckDrag, focusFrameKey(neckDrag));
+    if (!at) return;
+    // The line follows the pointer: the same move for the neck (the room above it stays).
+    const neck = at.neck + Math.round(y / focusZoom) - FOCUS_PAD - at.y;
+    if (neck !== at.neck) setNeck(neckDrag, neck, at.own);
   });
   canvas.addEventListener('pointerdown', (e) => {
     if (e.button === 0 && nearNeck(e)) {
       canvas.setPointerCapture(e.pointerId);
       neckDrag = focusNeck.sheet;
+      neckPicked = true;
+      canvas.focus();
+      drawFocus();
       e.stopImmediatePropagation();
+    } else if (e.button === 0 && neckPicked) {
+      neckPicked = false;
+      drawFocus();
     }
   });
   canvas.addEventListener('pointerup', () => {

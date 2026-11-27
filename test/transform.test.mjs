@@ -215,3 +215,23 @@ test('make room keeps the feet on the frame bottom and only the room the drawing
   assert.equal(alpha(2, 0), 255); // the hat on the top row
   assert.equal(alpha(8 + 0, 3), 255); // the second frame's dot at its left edge
 });
+
+test('taller sprites: a frame can have its own neck line, and the body can get wider', async () => {
+  const { tallerFrames } = await import('../src/compose.js');
+  // 2 frames of 4 x 4 side by side; row y is coloured y * 10 + 10.
+  const frame = { w: 4, h: 4, cols: 2, rows: 1 };
+  const image = createImage(8, 4);
+  for (let y = 0; y < 4; y++) for (let x = 0; x < 8; x++) image.data.set([y * 10 + 10, 0, 0, 255], (y * 8 + x) * 4);
+  // First frame: neck at 2 (2 body rows -> 4); second: its own neck at 3 (1 body row -> 2).
+  const { image: out, frame: f } = tallerFrames(image, frame, 2, 200, { necks: { '1,0': 3 } });
+  assert.equal(f.h, 6);
+  const red = (x, y) => out.data[(y * out.width + x) * 4];
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((y) => red(0, y)), [10, 20, 30, 30, 40, 40]);
+  // The second frame (5 rows) stands on the bottom: its top row is empty.
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((y) => red(4, y)), [0, 10, 20, 30, 40, 40]);
+  // Half as wide below the neck: the body's outer columns are empty, the head keeps its width.
+  const narrow = tallerFrames(image, frame, 2, 105, { width: 50 }).image;
+  const alpha = (x, y) => narrow.data[(y * narrow.width + x) * 4 + 3];
+  assert.deepEqual([0, 1, 2, 3].map((x) => alpha(x, 0)), [255, 255, 255, 255]);
+  assert.deepEqual([0, 1, 2, 3].map((x) => alpha(x, narrow.height - 1)), [0, 255, 255, 0]);
+});
