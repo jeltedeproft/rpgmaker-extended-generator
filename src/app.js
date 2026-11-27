@@ -5472,7 +5472,7 @@ async function renderRecentInto(box, note) {
     }
   }
   const forgetAll = el('button', { className: 'forget', textContent: folders.length > 1 ? 'Forget all' : 'Forget',
-    title: 'Forget these folders, what you assigned, removed or decided about look-alikes in them, your saved characters (Gallery), sets and randomize rules' });
+    title: 'Forget these folders, what you assigned, removed or decided about look-alikes in them, your saved characters (Gallery), sets, randomize rules and sheet templates' });
   forgetAll.addEventListener('click', async () => {
     let removed = 0;
     for (const f of folders) removed += await forgetAndUnload(f.key);
@@ -5480,21 +5480,29 @@ async function renderRecentInto(box, note) {
     const gallery = galleryEntries();
     const sets = state.settings.sets || [];
     const savedRules = state.settings.randomRules;
+    // Sheet templates: frame sizes, sheets turned off or renamed, sheets added.
+    const TEMPLATE_FIELDS = ['templates', 'sheetOptions', 'extraSheets'];
+    const savedTemplates = Object.fromEntries(TEMPLATE_FIELDS.filter((k) => state.settings[k] !== undefined).map((k) => [k, state.settings[k]]));
+    const hadTemplates = Object.values(savedTemplates).some((v) => (Array.isArray(v) ? v.length : Object.keys(v || {}).length));
     saveGallery([]);
     state.settings.sets = [];
     delete state.settings.randomRules;
+    for (const k of TEMPLATE_FIELDS) delete state.settings[k];
     saveSettings();
+    if (hadTemplates) sheetsChanged();
     renderSets();
     renderRecentFolders();
-    const kept = gallery.length || sets.length || savedRules;
-    toast(`Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and what you assigned in them${removed ? ', and took their parts out' : ''}${gallery.length || sets.length ? `, your ${gallery.length} saved character${gallery.length === 1 ? '' : 's'} and ${sets.length} set${sets.length === 1 ? '' : 's'}` : ''}${savedRules ? ', and your randomize rules' : ''}.`,
+    const kept = gallery.length || sets.length || savedRules || hadTemplates;
+    toast(`Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and what you assigned in them${removed ? ', and took their parts out' : ''}${gallery.length || sets.length ? `, your ${gallery.length} saved character${gallery.length === 1 ? '' : 's'} and ${sets.length} set${sets.length === 1 ? '' : 's'}` : ''}${savedRules || hadTemplates ? `, and your ${[savedRules && 'randomize rules', hadTemplates && 'sheet templates'].filter(Boolean).join(' and ')}` : ''}.`,
       10000, kept ? { label: 'Undo', run: () => {
         saveGallery(gallery);
         state.settings.sets = sets;
         if (savedRules) state.settings.randomRules = savedRules;
+        Object.assign(state.settings, savedTemplates);
         saveSettings();
+        if (hadTemplates) sheetsChanged();
         renderSets();
-        toast('Your saved characters, sets and rules are back.');
+        toast('Your saved characters, sets, rules and sheet templates are back.');
       } } : undefined);
   });
   box.append(forgetAll);
