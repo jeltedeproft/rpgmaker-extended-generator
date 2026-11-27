@@ -589,3 +589,4 @@ html:has(#focus-dialog[open]) { overflow: hidden; }
 .focus-side [data-tab][hidden] { display: none; }
 @media (max-width: 800px) { .focus-body { grid-template-columns: 1fr; } }
 #focus-note.warn { color: var(--accent); }
+#extra-previews canvas.zoomable { cursor: zoom-in; }

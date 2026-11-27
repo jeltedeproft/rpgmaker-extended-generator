@@ -6123,7 +6123,7 @@ function renderTaller() {
 
 /** Whether the close up shows the lines (the Squash and stretch panel is open and on). */
 function stretchEditing(sheet) {
-  return !ex && TALLER_SHEETS.includes(sheet) && !!stretchOf(sheet) && !!state.composites[sheet];
+  return !ex && !focusExtraId && TALLER_SHEETS.includes(sheet) && !!stretchOf(sheet) && !!state.composites[sheet];
 }
 
 /** Where the frame with the lines is drawn in the close up: canvas px = (o + frame px) * zoom. */
@@ -6377,6 +6377,8 @@ function rememberExtract() {
 let exView = null;
 
 function extractSourcesFor(sheet) {
+  const extra = focusExtra();
+  if (focusExtraId) return extra?.image ? [{ label: `${extra.sheet.name || 'The sheet'} as shown (every part)`, image: extra.image, mask: null, part: null }] : [];
   const c = state.composites[sheet];
   const base = sheetBase(sheet);
   const sources = c ? [{ label: `The ${sheetLabel(sheet).toLowerCase()} as shown (every part)`, image: c.plain?.image || c.image, mask: null, part: null }] : [];
@@ -6396,7 +6398,7 @@ function extractSourcesFor(sheet) {
 function setExtractMode(on) {
   const sheet = $('layer-sheet').value;
   if (!on) rememberExtract();
-  ex = on ? { sheet: sheetBase(sheet), sources: extractSourcesFor(sheet), si: 0, sel: null, undo: [], area: null, view: 'picture', tool: 'colour' } : null;
+  ex = on ? { sheet: focusExtraId ? `extra:${focusExtraId}` : sheetBase(sheet), sources: extractSourcesFor(sheet), si: 0, sel: null, undo: [], area: null, view: 'picture', tool: 'colour' } : null;
   if (ex && !ex.sources.length) {
     ex = null;
     toast('Nothing to extract from: this picture is empty.');
@@ -6412,7 +6414,7 @@ function setExtractMode(on) {
   note.dataset.parts ||= note.textContent;
   note.textContent = extracting
     ? 'Extract: pick the pixels of the piece on the picture (they are highlighted). Colour: click a colour; Pixels: click or drag; Area: drag a box that colours are picked in. Right-click (or Shift) takes away, the same way. Then add the piece, and what is left, as parts. Click Extract again to go back.'
-    : note.dataset.parts;
+    : note.dataset.extra || note.dataset.parts;
   focusUserZoom = null;
   if (ex) {
     ex.si = ex.sources.length > 1 ? 1 : 0;
@@ -6433,6 +6435,10 @@ let exWasOn = false;
 $('focus-dialog').addEventListener('close', () => {
   exWasOn = !!ex;
   if (ex) setExtractMode(false);
+  focusExtraId = null;
+  const note = $('focus-note');
+  if (note.dataset.parts) note.textContent = note.dataset.parts;
+  note.dataset.extra = '';
 });
 
 const exSource = () => ex.sources[ex.si] || ex.sources[0];
@@ -6511,6 +6517,9 @@ function renderExtract() {
   const n = selectedCount(ex.sel);
   $('extract-count').textContent = n ? `Picked: ${n} pixel${n === 1 ? '' : 's'} (highlighted).` : 'Nothing picked yet: click a colour or pixels on the picture.';
   $('extract-add').disabled = $('extract-save').disabled = !n;
+  // A piece of an added sheet (e.g. 8 directions) isn't laid out like a part: save it as a PNG.
+  if (focusExtraId) $('extract-add').disabled = true;
+  $('extract-add').title = focusExtraId ? 'Pieces of an added sheet are saved as PNG (Save as PNG); pieces of the Walk, Battler, Damage or Portrait can be added as parts' : '';
   $('extract-undo').disabled = !ex.undo.length;
   $('extract-area-row').hidden = !ex.area;
   if (ex.area) $('extract-area-text').textContent = `Area ${ex.area.w} × ${ex.area.h}: colours are picked only in it.`;
@@ -6523,7 +6532,8 @@ function drawExtractMode(canvas) {
     : ex.view === 'piece' || ex.view === 'rest' ? extractResult()[ex.view] : img;
   const P = FOCUS_PAD;
   const stage = canvas.parentElement;
-  const fit = Math.max(1, Math.min(16, Math.floor(Math.min((stage.clientWidth - 16) / (img.width + 2 * P), (stage.clientHeight - 16) / (img.height + 2 * P)))));
+  // At least 2x, so tall sheets (8 directions) aren't tiny: the stage scrolls.
+  const fit = Math.max(2, Math.min(16, Math.floor(Math.min((stage.clientWidth - 16) / (img.width + 2 * P), (stage.clientHeight - 16) / (img.height + 2 * P)))));
   focusZoom = focusUserZoom || fit;
   const z = focusZoom;
   canvas.width = (img.width + 2 * P) * z;
@@ -6536,8 +6546,8 @@ function drawExtractMode(canvas) {
   ctx.setLineDash([4, 4]);
   ctx.strokeRect(P * z - 0.5, P * z - 0.5, img.width * z + 1, img.height * z + 1);
   // The frame grid of a sprite sheet, faintly, to see where the frames are.
-  const frame = state.composites[$('layer-sheet').value]?.frame;
-  if (frame?.cols && img.width === frame.w * frame.cols && img.height === frame.h * frame.rows) {
+  const frame = focusExtraId ? extraFrameOf(focusExtra()) : state.composites[$('layer-sheet').value]?.frame;
+  if (frame?.cols && img.width >= frame.w * frame.cols && img.height >= frame.h * frame.rows) {
     ctx.strokeStyle = 'rgba(128, 128, 128, 0.3)';
     ctx.beginPath();
     for (let c = 1; c < frame.cols; c++) { ctx.moveTo((P + c * frame.w) * z, P * z); ctx.lineTo((P + c * frame.w) * z, (P + img.height) * z); }
@@ -6704,8 +6714,74 @@ let focusUserZoom = null;
 const FOCUS_PAD = 2;
 let focusTimer = 0;
 
-function openFocus(sheet) {
+// ---------- close up of an added sheet (Sheet templates: 8 directions, XP, your own sizes) ----------
+// The whole sheet big, in its own frames. Its parts are picked and recoloured here; they move on
+// the sheet they are made of (the Walk for 8 directions), which this one follows. Extract works here.
+
+/** The id of the added sheet the close up shows, else null. */
+let focusExtraId = null;
+const focusExtra = () => (focusExtraId ? (state.extraComposites || []).find((x) => x.sheet.id === focusExtraId) || null : null);
+
+/** The frames of an added sheet: its own columns and rows, else those of its kind. */
+function extraFrameOf(x) {
+  const img = x?.image;
+  if (!img) return null;
+  const kind = { DIR8: [3, 8], XP: [4, 4], RM2K: [3, 4] }[x.sheet.base] || [SHEETS[x.sheet.base]?.frame?.cols || 1, SHEETS[x.sheet.base]?.frame?.rows || 1];
+  const cols = x.sheet.cols > 0 ? x.sheet.cols : kind[0];
+  const rows = x.sheet.rows > 0 ? x.sheet.rows : kind[1];
+  return { w: Math.floor(img.width / cols), h: Math.floor(img.height / rows), cols, rows };
+}
+
+function openExtraFocus(id) {
+  const x = (state.extraComposites || []).find((s) => s.sheet.id === id);
+  if (!x?.image) return;
+  const base = WALK_LAYOUTS[x.sheet.base] ? 'TV' : x.sheet.base;
+  openFocus(base, id);
+}
+
+/** An added sheet in the close up: the whole picture and its frames. */
+function drawExtraFocus(canvas, x) {
+  const img = x.image;
+  const P = FOCUS_PAD;
+  const stage = canvas.parentElement;
+  // At least 2x, so tall sheets (8 directions) aren't tiny: the stage scrolls.
+  const fit = Math.max(2, Math.min(16, Math.floor(Math.min((stage.clientWidth - 16) / (img.width + 2 * P), (stage.clientHeight - 16) / (img.height + 2 * P)))));
+  focusZoom = focusUserZoom || fit;
+  const z = focusZoom;
+  canvas.width = (img.width + 2 * P) * z;
+  canvas.height = (img.height + 2 * P) * z;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(toCanvas(img), P * z, P * z, img.width * z, img.height * z);
+  drawFrameLines(ctx, P, z, img, extraFrameOf(x));
+}
+
+/** The edge of a picture, its frame grid and (when big enough and ticked) its pixel grid. */
+function drawFrameLines(ctx, P, z, img, frame) {
+  ctx.strokeStyle = 'rgba(128, 128, 128, 0.6)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(P * z - 0.5, P * z - 0.5, img.width * z + 1, img.height * z + 1);
+  if (frame?.cols > 1 || frame?.rows > 1) {
+    ctx.strokeStyle = 'rgba(128, 128, 128, 0.45)';
+    ctx.beginPath();
+    for (let c = 1; c < frame.cols; c++) { ctx.moveTo((P + c * frame.w) * z + 0.5, P * z); ctx.lineTo((P + c * frame.w) * z + 0.5, (P + img.height) * z); }
+    for (let r = 1; r < frame.rows; r++) { ctx.moveTo(P * z, (P + r * frame.h) * z + 0.5); ctx.lineTo((P + img.width) * z, (P + r * frame.h) * z + 0.5); }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  if ($('focus-grid').checked && z >= 3) {
+    ctx.strokeStyle = 'rgba(128, 128, 128, 0.3)';
+    ctx.beginPath();
+    for (let px = 0; px <= img.width; px++) { ctx.moveTo((px + P) * z + 0.5, P * z); ctx.lineTo((px + P) * z + 0.5, (img.height + P) * z); }
+    for (let py = 0; py <= img.height; py++) { ctx.moveTo(P * z, (py + P) * z + 0.5); ctx.lineTo((img.width + P) * z, (py + P) * z + 0.5); }
+    ctx.stroke();
+  }
+}
+
+function openFocus(sheet, extraId = null) {
   if (!state.character) return;
+  focusExtraId = extraId;
   if ($('layer-sheet').value !== sheet) $('layer-sheet').value = sheet;
   // Borrow the Layers, Colours and Visibility panels; they go back on close.
   for (const [id, place] of focusPanels) {
@@ -6713,7 +6789,14 @@ function openFocus(sheet) {
     if (!focusHomes.has(id)) focusHomes.set(id, { parent: node.parentElement, next: node.nextSibling });
     $(place).append(node);
   }
-  $('focus-dirs').hidden = sheet !== 'TV';
+  $('focus-dirs').hidden = sheet !== 'TV' || !!extraId;
+  // An added sheet's parts move on the sheet it is made of.
+  const note = $('focus-note');
+  note.dataset.parts ||= note.textContent;
+  note.dataset.extra = extraId
+    ? `${focusExtra()?.sheet.name || 'This sheet'} is made of the ${sheetLabel(sheet)} parts: pick and recolour them here (Layers, Colours); they move in the ${sheetLabel(sheet)} close up, and this sheet follows. Extract works here too. Mouse wheel: zoom; middle- or right-drag: pan.`
+    : '';
+  note.textContent = note.dataset.extra || note.dataset.parts;
   focusUserZoom = null;
   stretchPick = null;
   renderTaller();
@@ -6787,8 +6870,24 @@ function focusRect(sheet, image, frame) {
 function drawFocus() {
   if (!$('focus-dialog').open || !state.character) return;
   const sheet = $('layer-sheet').value;
-  const c = state.composites[sheet];
   const canvas = $('focus-canvas');
+  const extra = focusExtra();
+  if (focusExtraId) {
+    $('focus-title').textContent = `${ex ? 'Extract' : 'Close up'}: ${extra?.sheet.name || 'Sheet'}`;
+    if (!extra?.image) {
+      canvas.width = 0;
+      canvas.height = 0;
+      return;
+    }
+    if (ex) drawExtractMode(canvas);
+    else {
+      exView = null;
+      stretchView = null;
+      drawExtraFocus(canvas, extra);
+    }
+    return;
+  }
+  const c = state.composites[sheet];
   $('focus-title').textContent = `Close up: ${sheetLabel(sheet)}`;
   if (!c) {
     canvas.width = 0;
@@ -6914,6 +7013,7 @@ $('focus-dialog').addEventListener('keydown', (e) => {
     }
     return;
   }
+  if (focusExtraId) return;
   const step = e.shiftKey ? 10 : 1;
   const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
   if (!move) return;
@@ -7095,7 +7195,7 @@ $('focus-dialog').addEventListener('keydown', (e) => {
   canvas.addEventListener('pointerup', endStretch);
   canvas.addEventListener('pointercancel', endStretch);
   canvas.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0 || !focusKey()) return;
+    if (e.button !== 0 || !focusKey() || focusExtraId) return;
     canvas.focus();
     canvas.setPointerCapture(e.pointerId);
     canvas.classList.add('dragging');
@@ -7234,8 +7334,14 @@ let newSheetId = null;
 function renderExtraPreviews() {
   $('extra-previews').replaceChildren(...(state.extraComposites || []).map((x) => {
     const from = WALK_LAYOUTS[x.sheet.base] ? WALK_LAYOUTS[x.sheet.base].note : `from the ${SHEET_NAMES[x.sheet.base]} parts`;
+    const big = x.image && toCanvas(x.image);
+    if (big) {
+      big.title = 'Click: a close up of this sheet';
+      big.classList.add('zoomable');
+      big.addEventListener('click', () => openExtraFocus(x.sheet.id));
+    }
     const figure = el('figure', { className: 'wide' }, [
-      x.image ? toCanvas(x.image)
+      x.image ? big
         : el('div', { className: 'empty-sheet muted small', textContent: x.error ? `Could not be drawn: ${x.error}` : `Nothing to draw yet: no ${SHEET_NAMES[WALK_LAYOUTS[x.sheet.base] ? 'TV' : x.sheet.base]} parts are worn.` }),
       el('figcaption', { textContent: x.image ? `${x.sheet.name || 'Sheet'} (${x.image.width} x ${x.image.height}, ${from})` : `${x.sheet.name || 'Sheet'} (${from})` }),
     ]);
