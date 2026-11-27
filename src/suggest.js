@@ -325,22 +325,41 @@ export function frameHints(sizes, frames, covered = new Set()) {
  * @returns {Array<{use:string, label:string, cols:number, rows:number, best?:boolean}>}
  *   use: a sheet value of the assign form (TV, XP, RM2K, DIR8, TVD, SV, FG, icon) or 'cut'
  */
+/** Which engine's standard a frame size is: 'MV/MZ', 'VX Ace', '2000/2003'... or ''. */
+export function standardOf(use, fw, fh) {
+  if (use === 'FG') return fw === 144 && fh === 144 ? 'MV/MZ' : fw === 96 && fh === 96 ? 'VX Ace' : '';
+  if (use === 'SV') return fw === 64 && fh === 64 ? 'MV/MZ' : '';
+  if (use === 'XP') return 'XP';
+  if (use === 'RM2K') return fw === 24 && fh === 32 ? '2000/2003' : '';
+  if (fw === 48 && fh === 48) return 'MV/MZ';
+  if (fw === 32 && fh === 32) return 'VX Ace';
+  if (fw === 24 && fh === 32) return '2000/2003';
+  return '';
+}
+
 export function readingsOf(width, height, fileName = '') {
   const frames = (cols, rows) => `${width / cols}×${height / rows}`;
   const all = [];
-  const add = (use, label, cols, rows) => all.push({ use, label, cols, rows });
+  const add = (use, label, cols, rows) => {
+    // Characters on a sheet of 8 have 3 x 4 frames each.
+    const fw = use === 'cut' && cols * rows === 8 && /characters/.test(label) ? width / cols / 3 : width / cols;
+    const fh = use === 'cut' && cols * rows === 8 && /characters/.test(label) ? height / rows / 4 : height / rows;
+    all.push({ use, label, cols, rows, standard: standardOf(use === 'cut' && /face set/.test(label) ? 'FG' : use, fw, fh) });
+  };
   // Only frames shaped like sprites: about square, or taller than wide (walk frames).
   const fits = (cols, rows, most = 2.5) => width % cols === 0 && height % rows === 0 && height / rows >= (width / cols) * 0.75 && height / rows <= (width / cols) * most;
   if (fits(3, 4)) add('TV', `Walk sheet: 3 × 4 frames of ${frames(3, 4)}`, 3, 4);
   if (fits(3, 8)) add('DIR8', `Walk in 8 directions: 3 × 8 frames of ${frames(3, 8)}`, 3, 8);
-  if (fitsXp(width, height) && fits(4, 4)) add('XP', `RPG Maker XP walk: 4 × 4 frames of ${frames(4, 4)}`, 4, 4);
-  if (width % 3 === 0 && height % 4 === 0 && (width / 3) * 4 === (height / 4) * 3) add('RM2K', `RPG Maker 2000/2003 character: 3 × 4 frames of ${frames(3, 4)}`, 3, 4);
+  if (fitsXp(width, height) && fits(4, 4)) add('XP', `XP walk: 4 × 4 frames of ${frames(4, 4)}`, 4, 4);
+  if (width % 3 === 0 && height % 4 === 0 && (width / 3) * 4 === (height / 4) * 3) add('RM2K', `2000/2003 character: 3 × 4 frames of ${frames(3, 4)}`, 3, 4);
   if (fits(9, 6, 1.34)) add('SV', `Battler: 9 × 6 frames of ${frames(9, 6)}`, 9, 6);
   if (width % 3 === 0 && width / 3 === height) add('TVD', `Damage: 3 frames of ${frames(3, 1)}`, 3, 1);
   add('FG', `Portrait (face picture), ${width}×${height}`, 1, 1);
   if (width <= 64 && height <= 64) add('icon', 'Variation icon', 1, 1);
-  if (!/^!?\$/.test(fileName) && width % 12 === 0 && height % 8 === 0) add('cut', `A sheet of 8 characters: cut it into 8 first (4 × 2 of ${frames(4, 2)})`, 4, 2);
-  add('cut', 'Something else: cut it into pieces first', 1, 1);
+  if (!/^!?\$/.test(fileName) && width % 12 === 0 && height % 8 === 0) add('cut', `8 characters: cut into 8 first (4 × 2 of ${frames(4, 2)})`, 4, 2);
+  // A face set: 8 square faces (96px in VX Ace, 144px in MV/MZ).
+  if (width % 4 === 0 && height % 2 === 0 && width / 4 === height / 2 && width / 4 >= 48) add('cut', `A face set: cut into 8 portraits (4 × 2 of ${frames(4, 2)})`, 4, 2);
+  add('cut', 'Something else: cut it into pieces', 1, 1);
   const best = guessSheet(width, height, fileName).sheet;
   const i = all.findIndex((r) => r.use === best);
   if (i > 0) all.unshift(...all.splice(i, 1));

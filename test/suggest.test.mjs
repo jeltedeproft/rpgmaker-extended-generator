@@ -170,3 +170,19 @@ test('a picture is offered in every way it could be read, the likeliest first', 
   assert.deepEqual(uses(128, 192, 'xp.png')[0], 'XP');
   assert.deepEqual(uses(144, 384, 'eight.png')[0], 'DIR8');
 });
+
+test('readings say which standard their frame size is, and a face set is offered', async () => {
+  const { readingsOf, standardOf } = await import('../src/suggest.js');
+  assert.equal(standardOf('TV', 48, 48), 'MV/MZ');
+  assert.equal(standardOf('TV', 32, 32), 'VX Ace');
+  assert.equal(standardOf('RM2K', 24, 32), '2000/2003');
+  assert.equal(standardOf('TV', 40, 40), '');
+  // A VX Ace walk sheet of one character.
+  assert.equal(readingsOf(96, 128, 'Hero.png').find((r) => r.use === 'TV').standard, 'VX Ace');
+  // A VX Ace character sheet: 8 characters of 32px frames.
+  assert.equal(readingsOf(384, 256, 'Actor1.png').find((r) => r.use === 'cut' && r.cols === 4).standard, 'VX Ace');
+  // A VX Ace face set: 8 faces of 96 x 96.
+  const face = readingsOf(384, 192, 'Actor1_face.png').find((r) => /face set/.test(r.label));
+  assert.deepEqual([face.cols, face.rows, face.standard], [4, 2, 'VX Ace']);
+  assert.ok(!readingsOf(144, 192).some((r) => /RPG Maker/.test(r.label)));
+});

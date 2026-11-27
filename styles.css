@@ -390,12 +390,15 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .stretch-item { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
 .stretch-item input.tpl-num { width: 50px; }
 .stretch-item .small-button.active { background: var(--accent); color: #10141c; }
-.use-dialog { width: min(780px, calc(100vw - 32px)); }
-.use-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
-.use-option { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px; font: inherit; font-size: 12px; text-align: center; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.use-dialog { width: min(620px, calc(100vw - 32px)); overflow-x: hidden; }
+.use-dialog .assign-form { width: auto; }
+.use-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }
+.use-option { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 5px; font: inherit; font-size: 11px; line-height: 1.25; text-align: center; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
 .use-option:hover { border-color: var(--accent); }
 .use-option.best { border-color: var(--accent); }
-.use-option canvas { image-rendering: pixelated; max-width: 150px; background: repeating-conic-gradient(#0000 0 25%, #8882 0 50%) 0 0 / 12px 12px; }
+.use-tags { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.use-standard { font-size: 10px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.use-option canvas { image-rendering: pixelated; max-width: 104px; background: repeating-conic-gradient(#0000 0 25%, #8882 0 50%) 0 0 / 12px 12px; }
 .use-best { font-size: 11px; color: var(--accent-text); background: var(--accent); border-radius: 4px; padding: 0 6px; }
 .setup-dialog { width: min(460px, calc(100vw - 32px)); }
 .setup-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }

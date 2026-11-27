@@ -441,7 +441,7 @@ function askLater(packName) {
 
 /** The picture with the frame grid of one way to read it drawn over it. */
 function gridPicture(image, cols, rows) {
-  const scale = Math.min(1, 150 / image.width, 150 / image.height) * (image.width < 75 && image.height < 75 ? 2 : 1);
+  const scale = Math.min(1, 104 / image.width, 104 / image.height) * (image.width < 52 && image.height < 52 ? 2 : 1);
   const canvas = el('canvas', { width: Math.max(1, Math.round(image.width * scale)), height: Math.max(1, Math.round(image.height * scale)) });
   const ctx = canvas.getContext('2d');
   ctx.imageSmoothingEnabled = scale < 1;
@@ -473,13 +473,16 @@ async function askHowToUse(files) {
   }
   const name = entry.path.split('/').pop();
   $('use-title').textContent = `How do you want to use ${name}?`;
-  $('use-note').textContent = `${image.width} × ${image.height} pixels. Its name isn't one the generator reads, so here it is every way it could be used (the lines show how it would be cut into frames). Pick one to go on.${rest.length ? ` ${rest.length} more after this one.` : ''}`;
+  $('use-note').textContent = `${image.width} × ${image.height} px. Every way it could be used; the lines show the frames. Pick one.${rest.length ? ` ${rest.length} more after this one.` : ''}`;
   $('use-skip-all').hidden = !rest.length;
   $('use-options').replaceChildren(...readingsOf(image.width, image.height, name).map((r) => {
     const option = el('button', { type: 'button', className: `use-option${r.best ? ' best' : ''}`, title: r.best ? 'Best guess, from its size' : '' }, [
       gridPicture(image, r.cols, r.rows),
       el('span', { textContent: r.label }),
-      ...(r.best ? [el('span', { className: 'use-best', textContent: 'best guess' })] : []),
+      ...(r.standard || r.best ? [el('span', { className: 'use-tags' }, [
+        ...(r.standard ? [el('span', { className: 'use-standard', textContent: r.standard, title: `The ${r.standard} standard size` })] : []),
+        ...(r.best ? [el('span', { className: 'use-best', textContent: 'best guess' })] : []),
+      ])] : []),
     ]);
     option.addEventListener('click', async () => {
       $('use-dialog').returnValue = 'picked';
