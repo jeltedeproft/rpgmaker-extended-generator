@@ -7342,8 +7342,7 @@ $('gif-walk').addEventListener('click', () => {
   const rows = $('walk-all').checked ? [...Array(f.rows).keys()] : [Math.min(state.walkDir, f.rows - 1)];
   const steps = animationColumns(f.cols).map((col) => rows.map((row) => [col, row]));
   const name = `${safeFileName(state.character.name)}_walk${rows.length > 1 ? '' : `_${DIRECTIONS[rows[0]]?.toLowerCase() || rows[0]}`}.gif`;
-  downloadBlob(new Blob([gifOf(walk, steps, Number($('gif-zoom').value))], { type: 'image/gif' }), name);
-  toast(`Saved ${name}.`);
+  saveGif(name, (zoom) => gifOf(walk, steps, zoom));
 });
 
 $('gif-sv').addEventListener('click', () => {
@@ -7357,9 +7356,33 @@ $('gif-sv').addEventListener('click', () => {
     : animationColumns(f.cols).map((col) => [[col, m % f.rows]]);
   const motion = (SV_MOTIONS[m] || String(m)).toLowerCase();
   const name = `${safeFileName(state.character.name)}_battler_${motion}.gif`;
-  downloadBlob(new Blob([gifOf(sv, steps, Number($('gif-zoom').value))], { type: 'image/gif' }), name);
-  toast(`Saved ${name}.`);
+  saveGif(name, (zoom) => gifOf(sv, steps, zoom));
 });
+
+/**
+ * Saves a GIF. Enlarged (size above 1x): first shown next to the original size, to save or cancel.
+ * @param {(zoom:number) => Uint8Array} make the GIF at a size
+ */
+function saveGif(name, make) {
+  const zoom = Number($('gif-zoom').value) || 1;
+  const save = () => {
+    downloadBlob(new Blob([make(zoom)], { type: 'image/gif' }), name);
+    toast(`Saved ${name}.`);
+  };
+  if (zoom === 1) return save();
+  const urls = [1, zoom].map((z) => URL.createObjectURL(new Blob([make(z)], { type: 'image/gif' })));
+  $('gif-before').src = urls[0];
+  $('gif-after').src = urls[1];
+  $('gif-after-label').textContent = `${zoom}x`;
+  $('gif-preview-name').textContent = name;
+  const dialog = $('gif-preview');
+  dialog.returnValue = '';
+  dialog.addEventListener('close', () => {
+    for (const u of urls) URL.revokeObjectURL(u);
+    if (dialog.returnValue === 'save') save();
+  }, { once: true });
+  dialog.showModal();
+}
 
 /** A picture as PNG bytes. */
 function pngBytes(image) {

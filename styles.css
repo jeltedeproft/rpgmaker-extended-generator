@@ -390,6 +390,10 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .stretch-item { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
 .stretch-item input.tpl-num { width: 50px; }
 .stretch-item .small-button.active { background: var(--accent); color: #10141c; }
+.gif-preview .assign-form { width: auto; max-width: calc(100vw - 48px); }
+.gif-compare { display: flex; gap: 16px; align-items: flex-end; overflow: auto; max-height: 70vh; }
+.gif-compare figure { margin: 0; display: grid; gap: 4px; justify-items: center; }
+.gif-compare img { image-rendering: pixelated; background: repeating-conic-gradient(#0000 0 25%, #8882 0 50%) 0 0 / 12px 12px; }
 .extract-dialog { width: min(980px, calc(100vw - 32px)); }
 .extract-dialog .assign-form { width: auto; }
 .extract-controls, .extract-out { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 12px; margin: 6px 0; }

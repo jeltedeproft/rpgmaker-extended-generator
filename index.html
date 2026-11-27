@@ -55,7 +55,7 @@
             <button type="button" id="gif-sv" title="The battler motion shown (Walk, Wait, Chant...)">Battler GIF</button>
             <button type="button" id="unite-export" title="For RPG Maker Unite: one picture per animation, its frames side by side with 1 pixel around and 2 between. The walk in 4 directions (down, left, right, up), the battler in its 18 motions and the damage poses, in one zip">Unite (zip)</button>
             <label class="lock" title="Each pixel becomes this many pixels: sprites are small">size
-              <select id="gif-zoom"><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
+              <select id="gif-zoom"><option value="1" selected>1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
           </div>
           <label class="lock" title="The engine lifts characters 6 pixels; a file named !$Name.png is drawn where it stands. For objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> <span>Save the walk sheet as <code>!$</code>name.png: drawn without RPG Maker's 6-pixel lift</span></label>
           <details class="export-help"><summary>Where the files go</summary>
@@ -772,6 +772,21 @@
         <label>What is left as <select id="extract-rest-part"></select></label>
         <button type="button" id="extract-add" class="primary">Add as parts</button>
         <button type="button" id="extract-save" class="small-button" title="Both pictures as PNG files">Save as PNG</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="gif-preview" class="assign-form-dialog gif-preview">
+    <form method="dialog" class="assign-form">
+      <h3>Enlarge the GIF?</h3>
+      <p class="muted small"><span id="gif-preview-name"></span>: the original size on the left, enlarged on the right.</p>
+      <div class="gif-compare">
+        <figure><img id="gif-before" alt="Original size"><figcaption class="muted small">1x (original)</figcaption></figure>
+        <figure><img id="gif-after" alt="Enlarged"><figcaption id="gif-after-label" class="muted small"></figcaption></figure>
+      </div>
+      <div class="dialog-actions">
+        <button value="cancel">Cancel</button>
+        <button value="save" class="primary">Save enlarged</button>
       </div>
     </form>
   </dialog>
