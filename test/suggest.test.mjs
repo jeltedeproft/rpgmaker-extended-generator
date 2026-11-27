@@ -152,3 +152,10 @@ test('colour masks are told apart from drawn parts by their colours', () => {
   assert.equal(maskColourShare(drawn, matchSlot), 0);
   assert.equal(maskColourShare(createImage(2, 2), matchSlot), 0);
 });
+
+test('parts with other frame sizes suggest a sheet template', async () => {
+  const { frameHints } = await import('../src/suggest.js');
+  const sizes = [{ sheet: 'TV', w: 144, h: 192 }, { sheet: 'TV', w: 288, h: 384 }, { sheet: 'TV', w: 288, h: 384 }, { sheet: 'FG', w: 300, h: 300 }, { sheet: 'SV', w: 577, h: 384 }];
+  assert.deepEqual(frameHints(sizes, { TV: { w: 48, h: 48 } }), [{ sheet: 'TV', w: 96, h: 96, cols: 3, rows: 4, count: 2 }]);
+  assert.deepEqual(frameHints(sizes, { TV: { w: 48, h: 48 } }, new Set(['TV|96|96'])), []);
+});

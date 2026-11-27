@@ -11,7 +11,7 @@ import {
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { WALK_LAYOUTS } from './xp.js';
 import { uniteStrip, zipFiles } from './unite.js';
-import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS } from './suggest.js';
+import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS, frameHints } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
 import { groupLayers, topRun, moveBlock, stepBlock } from './layers.js';
 import { encodeGif } from './gif.js';
@@ -269,6 +269,7 @@ async function importEntriesNow(entries, packName, { loose = false } = {}) {
   busyStep(`Opening "${packName}": drawing the character`);
   ensureCharacter();
   checkLookalikes(pack.name).then(() => findSameFiles(pack.name, true)).catch((e) => console.error(e));
+  offerFrameHints(pack.name);
   const gradientsShown = uniqueGradients(allGradients()).length;
   toast(`Added "${pack.name}": ${addedParts} parts. Now ${state.library.variants.size} parts across ${state.library.bodyTypes.size} body type(s), ${gradientsShown} distinct colours.${assignNote}`, toAssign ? 8000 : 4000);
   showApp();
@@ -399,7 +400,10 @@ function showApp() {
   for (const id of ['sidebar', 'editor', 'preview']) $(id).hidden = false;
   for (const id of APP_BUTTONS) $(id).disabled = false;
 }
-$('open-templates').addEventListener('click', () => $('templates-dialog').showModal());
+$('open-templates').addEventListener('click', () => {
+  $('templates-dialog').showModal();
+  renderFrameHints();
+});
 
 /**
  * Puts a menu's list under its button, inside the window: placed against the window (fixed), so a
@@ -5986,6 +5990,83 @@ function sheetsChanged() {
   saveSettings();
   showSheetOptions();
   if (state.character) renderPreview();
+}
+
+// ---------- frame sizes: parts made for bigger (or smaller) frames than the sheet's ----------
+
+/** Picture sizes of sprite parts (read from the file header, kept on the picture's ref), up to `limit` per folder. */
+async function spriteSizes(packName = null, limit = 300) {
+  const byPack = new Map();
+  for (const v of state.library.variants.values()) {
+    if (packName && v.pack !== packName) continue;
+    const refs = byPack.get(v.pack) || [];
+    byPack.set(v.pack, refs);
+    if (refs.length >= limit) continue;
+    for (const l of v.layers) if (l.base && !l.vxace && !l.base.layout && SHEETS[l.sheet]?.frame) refs.push([l.sheet, l.base]);
+  }
+  const sizes = [];
+  for (const [sheet, ref] of [...byPack.values()].flat()) {
+    if (!ref.size) ref.size = ref.pixels ? { w: ref.pixels.width, h: ref.pixels.height } : await pngSize(ref.src).catch(() => null);
+    if (ref.size) sizes.push({ sheet, ...ref.size });
+  }
+  return sizes;
+}
+
+/** The frame each sprite sheet uses now: its template, else what the preview drew, else RPG Maker's. */
+function currentFrames() {
+  return Object.fromEntries(['TV', 'TVD', 'SV'].map((sheet) => {
+    const t = state.settings.templates?.[sheet];
+    const f = t?.fw > 0 && t?.fh > 0 ? { w: t.fw, h: t.fh } : state.composites[sheet]?.frame || SHEETS[sheet].frame;
+    return [sheet, { w: f.w, h: f.h }];
+  }));
+}
+
+async function findFrameHints(packName = null) {
+  const covered = new Set(extraSheets().filter((x) => x.fw && x.fh).map((x) => `${x.base}|${x.fw}|${x.fh}`));
+  return frameHints(await spriteSizes(packName), currentFrames(), covered);
+}
+
+/** After opening a folder: say when its sprites have other frame sizes than the sheets. */
+function offerFrameHints(packName) {
+  findFrameHints(packName).then((hints) => {
+    if (!hints.length) return;
+    const h = hints[0];
+    // After the "Added ..." message has been read.
+    setTimeout(() => toast(`"${packName}" has ${SHEET_NAMES[h.sheet].toLowerCase()} parts with ${h.w} × ${h.h} frames${hints.length > 1 ? ' (and other sizes)' : ''}: not your sheet's size.`, 10000,
+      { label: 'Suggest a sheet', run: () => $('open-templates').click() }), 4500);
+  }).catch((e) => console.error(e));
+}
+
+/** Sheet templates: a row per frame size found in the parts, to use it or add it as a sheet. */
+async function renderFrameHints() {
+  const box = $('template-hints');
+  const hints = await findFrameHints();
+  const frames = currentFrames();
+  box.replaceChildren(...hints.slice(0, 6).map((h) => {
+    const name = SHEET_NAMES[h.sheet];
+    const use = el('button', { type: 'button', className: 'small-button', textContent: `Use for ${name}`, title: `${name}: frames of ${h.w} x ${h.h}, ${h.cols} x ${h.rows}` });
+    use.addEventListener('click', () => {
+      (state.settings.templates ||= {})[h.sheet] = { fw: h.w, fh: h.h, cols: h.cols, rows: h.rows };
+      saveSettings();
+      renderTemplates();
+      renderFrameHints();
+      if (state.character) renderPreview();
+    });
+    const add = el('button', { type: 'button', className: 'small-button', textContent: 'Add as a sheet', title: `Another ${name.toLowerCase()} sheet with ${h.w} x ${h.h} frames; yours stays as it is` });
+    add.addEventListener('click', () => {
+      const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+      (state.settings.extraSheets ||= []).push({ id, base: h.sheet, name: `${name} ${h.w}x${h.h}`, fw: h.w, fh: h.h, cols: h.cols, rows: h.rows });
+      newSheetId = id;
+      sheetsChanged();
+      renderTemplates();
+      renderFrameHints();
+    });
+    return el('div', { className: 'template-hint' }, [
+      el('span', { textContent: `${h.count} ${name.toLowerCase()} picture${h.count > 1 ? 's' : ''} with ${h.w} × ${h.h} frames (${h.cols} × ${h.rows}); your ${name} sheet: ${frames[h.sheet].w} × ${frames[h.sheet].h}.` }),
+      use, add,
+    ]);
+  }));
+  box.hidden = !hints.length;
 }
 
 function renderTemplates() {

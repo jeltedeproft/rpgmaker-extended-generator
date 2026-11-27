@@ -291,3 +291,28 @@ export function rankWithName(profile, references, named, limit = 3) {
   }
   return [...byPart.values()].sort((a, b) => b.score - a.score).slice(0, limit);
 }
+
+/**
+ * Sprite parts whose frames are another size than their sheet's (e.g. big "$" sprites, 96 x 96
+ * frames, next to 48 x 48 walk sheets): one group per sheet and frame size, most pictures first.
+ * @param {Array<{sheet:string, w:number, h:number}>} sizes picture sizes of the parts
+ * @param {Object<string, {w:number, h:number}>} frames the frame each sheet uses now
+ * @param {Set<string>} covered "sheet|w|h" a sheet template already has
+ * @returns {Array<{sheet:string, w:number, h:number, cols:number, rows:number, count:number}>}
+ */
+export function frameHints(sizes, frames, covered = new Set()) {
+  const groups = new Map();
+  for (const { sheet, w, h } of sizes) {
+    const grid = SHEETS[sheet]?.frame;
+    if (!grid || w % grid.cols || h % grid.rows) continue;
+    const fw = w / grid.cols;
+    const fh = h / grid.rows;
+    const now = frames[sheet];
+    if ((now && now.w === fw && now.h === fh) || covered.has(`${sheet}|${fw}|${fh}`)) continue;
+    const key = `${sheet}|${fw}|${fh}`;
+    const g = groups.get(key) || { sheet, w: fw, h: fh, cols: grid.cols, rows: grid.rows, count: 0 };
+    g.count++;
+    groups.set(key, g);
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count);
+}

@@ -383,6 +383,9 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .template-grid select { font: inherit; padding: 2px 4px; }
 .extra-previews:empty { display: none; }
 .extra-previews { margin-top: 10px; }
+.template-hints { display: grid; gap: 6px; margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; font-size: 12px; }
+.template-hint { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.template-hint span { flex: 1 1 260px; }
 .extra-previews .empty-sheet { padding: 18px 10px; border: 1px dashed var(--line); border-radius: 6px; text-align: center; }
 .extra-previews figure.just-added { animation: just-added 1.6s ease-out; }
 @keyframes just-added { from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
