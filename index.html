@@ -27,6 +27,7 @@
           </label>
           <label class="button menu-item" title="A sets file (Gallery → Sets → Export): its sets are added to yours">Load set…<input type="file" id="import-sets" accept=".json,application/json" hidden></label>
           <label class="button menu-item" title="A setup file (Save → Save setup): how files are read, sheet sizes, sets, colours, rules and options, for the folders you have open">Load setup…<input type="file" id="import-setup" accept=".json,application/json" hidden disabled></label>
+          <label class="button menu-item" title="A setup shared as a zip (Save → Save setup, with its pictures), or a zip of parts: opened like a folder, its setup offered">Open a zip…<input type="file" id="zip-input" accept=".zip,application/zip" hidden></label>
           <button type="button" class="menu-item" id="sample-kit" title="A few small parts to try the generator with">Load sample kit</button>
         </div>
       </div>
@@ -489,12 +490,15 @@
   <dialog id="setup-dialog">
     <form method="dialog" class="gradient-form">
       <h3>Save setup</h3>
-      <p class="muted small">Made your own parts, or set up someone's style? A setup file holds how your files are read (what you assigned, the colour masks made for them, new body types), sheet sizes, sets, your own colours, randomize rules and the options. Others load it (Load → Load setup), or put it in the parts folder: opening the folder then offers to use it.</p>
+      <p class="muted small">Made your own parts, or set up someone's style? A setup file holds how your files are read (what you assigned, the colour masks made and painted for them, how sheets were cut, new body types), sheet sizes, sets, your own colours, randomize rules, the options and the characters you pick. With the pictures it is a .zip, everything in one file. Others load it (Load → Load setup), or put it in the parts folder: opening the folder then offers to use it.</p>
       <label>Name <input id="setup-name" type="text" placeholder="e.g. Chibi style parts"></label>
       <label>Made by <input id="setup-author" type="text" placeholder="optional"></label>
       <label>Note <textarea id="setup-note" rows="3" placeholder="What it is for, where to get the parts (optional)"></textarea></label>
       <p class="muted small">For the files of these folders:</p>
       <div id="setup-packs"></div>
+      <label class="lock" title="Saves a .zip: the pictures, your setup next to them. Others open it with Load → Open a zip, or drop it on the page"><input type="checkbox" id="setup-pictures"> Include the pictures of these folders (a .zip). Only share parts you may share.</label>
+      <p class="muted small">Premade characters from your Gallery to include (they go to the Gallery of whoever uses the setup):</p>
+      <div id="setup-characters" class="setup-characters"></div>
       <div class="dialog-actions">
         <button value="cancel">Cancel</button>
         <button value="ok" class="primary">Save file</button>

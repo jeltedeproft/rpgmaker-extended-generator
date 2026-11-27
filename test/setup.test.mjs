@@ -35,3 +35,17 @@ test('a setup carries one folder\'s settings without the folder name, and applie
   assert.equal(before.assignments, undefined); // the input is not changed
   assert.throws(() => applySetup({}, { format: 'other' }, ['A']));
 });
+
+test('a setup also carries painted masks, cuts and premade characters', () => {
+  const settings = {
+    maskEdits: { 'Mine/Male/Hair/p01|TV|base': 'painted', 'Other/Male/Hair/p01|TV|base': 'not this' },
+    cuts: { 'Mine|Actor1.png': { cols: 4, rows: 2 } },
+  };
+  const setup = makeSetup(settings, ['Mine'], [], { characters: [{ name: 'Hero', text: '{"a":1}', id: 'x' }] });
+  assert.deepEqual(setup.maskEdits, { 'Male/Hair/p01|TV|base': 'painted' });
+  assert.deepEqual(setup.characters, [{ name: 'Hero', text: '{"a":1}' }]);
+  const { settings: next, characters } = applySetup({}, setup, ['Theirs']);
+  assert.equal(next.maskEdits['Theirs/Male/Hair/p01|TV|base'], 'painted');
+  assert.deepEqual(next.cuts['Theirs|Actor1.png'], { cols: 4, rows: 2 });
+  assert.deepEqual(characters, [{ name: 'Hero', text: '{"a":1}' }]);
+});

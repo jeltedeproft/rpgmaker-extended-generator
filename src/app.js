@@ -12,7 +12,8 @@ import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './rec
 import { WALK_LAYOUTS } from './xp.js';
 import { cropBox, cropScale } from './crop.js';
 import { packCharacters, MULTI_COLS, MULTI_ROWS } from './multi.js';
-import { uniteStrip, zipFiles } from './unite.js';
+import { uniteStrip } from './unite.js';
+import { zipFiles, unzip } from './zip.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS, frameHints } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
 import { groupLayers, topRun, moveBlock, stepBlock } from './layers.js';
@@ -188,6 +189,8 @@ async function importEntriesNow(entries, packName, { loose = false } = {}) {
   await nextFrame();
   const pack = addPack(state.library, packName, [...pngs, ...texts]);
   state.lastPack = pack;
+  // Its files as they are, to share them in a setup zip (Save setup).
+  pack.entries = entries;
   pack.keys = keys;
   applyRemovedParts(pack.name);
   // Character presets shipped with the pack (RPG Maker MZ generator .json files, or ours).
@@ -297,9 +300,10 @@ function offerSetup(pack) {
 }
 
 function useSetup(data, packs) {
-  const { settings, customGradients, counts } = applySetup(state.settings, data, packs);
+  const { settings, customGradients, characters, counts } = applySetup(state.settings, data, packs);
   state.settings = settings;
   saveSettings();
+  for (const c of characters) addToGallery(c.text, c.name, 'loaded');
   for (const g of customGradients) {
     if (!state.customGradients.some((x) => x.id === g.id)) state.customGradients.push(customGradientFromJson(g));
   }
@@ -315,7 +319,7 @@ function useSetup(data, packs) {
   showSheetOptions();
   renderSets();
   afterFilesChanged();
-  toast(`Using the setup "${data.name || 'setup'}": ${counts.files} file(s) read as set, ${counts.parts} colour mask(s), ${counts.sets} set(s).`, 8000);
+  toast(`Using the setup "${data.name || 'setup'}": ${counts.files} file(s) read as set, ${counts.parts} colour mask(s), ${counts.sets} set(s)${characters.length ? `, ${characters.length} character(s) in the Gallery` : ''}.`, 8000);
 }
 
 $('export-setup').addEventListener('click', () => {
@@ -323,15 +327,73 @@ $('export-setup').addEventListener('click', () => {
   $('setup-packs').replaceChildren(...packs.map((name) => el('label', { className: 'lock' }, [
     el('input', { type: 'checkbox', value: name, checked: true }), ` ${name}`,
   ])));
+  const characters = galleryEntries();
+  $('setup-characters').replaceChildren(...(characters.length ? characters.map((c) => el('label', { className: 'lock' }, [
+    el('input', { type: 'checkbox', value: c.id, checked: false }), ` ${c.name}`,
+  ])) : [el('span', { className: 'muted small', textContent: 'Your Gallery is empty: save characters to share them here.' })]));
+  $('setup-pictures').checked = false;
   $('setup-dialog').showModal();
 });
 $('setup-dialog').addEventListener('close', () => {
   if ($('setup-dialog').returnValue !== 'ok') return;
   const packs = [...$('setup-packs').querySelectorAll('input:checked')].map((i) => i.value);
   const name = $('setup-name').value.trim() || 'My setup';
+  const chosen = new Set([...$('setup-characters').querySelectorAll('input:checked')].map((i) => i.value));
+  const characters = galleryEntries().filter((c) => chosen.has(c.id));
   const setup = makeSetup(state.settings, packs, state.customGradients.filter((g) => g.id !== ADJUSTING_ID).map(customGradientToJson),
-    { name, author: $('setup-author').value.trim(), note: $('setup-note').value.trim() });
-  downloadBlob(new Blob([JSON.stringify(setup, null, 2)], { type: 'application/json' }), `${safeFileName(name)}.setup.json`);
+    { name, author: $('setup-author').value.trim(), note: $('setup-note').value.trim(), characters });
+  const json = JSON.stringify(setup, null, 2);
+  if (!$('setup-pictures').checked) {
+    downloadBlob(new Blob([json], { type: 'application/json' }), `${safeFileName(name)}.setup.json`);
+    return;
+  }
+  withBusy('Packing the setup', () => saveSetupZip(name, json, packs)).catch((err) => toast(`Could not save the zip: ${err.message}`));
+});
+
+/**
+ * The setup with the pictures of the chosen folders, in one zip: opening it (Load → Open a zip,
+ * or dropping it) opens the pictures as a folder and offers the setup, as a folder with a setup does.
+ */
+async function saveSetupZip(name, json, packNames) {
+  const entries = state.library.packs.filter((p) => packNames.includes(p.name))
+    // A setup the folder came with is replaced by this one.
+    .flatMap((p) => (p.entries || []).filter((e) => !(p.setup && e.path.split('/').pop() === p.setup.fileName)));
+  const files = [];
+  const seen = new Set();
+  for (const [i, e] of entries.entries()) {
+    if (seen.has(e.path)) continue;
+    seen.add(e.path);
+    if (i % 50 === 0) {
+      busyStep('Packing the setup', i, entries.length);
+      await nextFrame();
+    }
+    files.push({ name: e.path, bytes: await fileBytes(e.src) });
+  }
+  // Next to the pictures: in their folder when they all have the same one.
+  const top = packNameFromEntries(entries, '');
+  files.push({ name: `${top ? `${top}/` : ''}${safeFileName(name)}.setup.json`, bytes: new TextEncoder().encode(json) });
+  downloadBlob(new Blob([zipFiles(files)], { type: 'application/zip' }), `${safeFileName(name)}.zip`);
+  toast(`Saved ${safeFileName(name)}.zip: ${files.length - 1} file(s) and the setup. Others open it with Load → Open a zip.`, 7000);
+}
+
+/** A zip (a shared setup, or a pack of parts): opened as a folder; just a setup applies to the open folders. */
+async function openZip(file) {
+  const files = await withBusy(`Reading ${file.name}`, async () => unzip(new Uint8Array(await file.arrayBuffer())));
+  const entries = files.map((f) => ({ path: f.name, src: new File([f.bytes], f.name.split('/').pop(), { type: /\.png$/i.test(f.name) ? 'image/png' : '' }) }));
+  if (!entries.some((e) => /\.png$/i.test(e.path))) {
+    const setupFile = entries.find((e) => /\.json$/i.test(e.path));
+    const data = setupFile && JSON.parse(await readText(setupFile.src));
+    if (!isSetup(data)) throw new Error('it has no pictures and no setup');
+    useSetup(data, state.library.packs.map((p) => p.name));
+    return;
+  }
+  await importEntries(entries, packNameFromEntries(entries, file.name.replace(/\.zip$/i, '')), { loose: true });
+}
+
+$('zip-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (file) await openZip(file).catch((err) => toast(`Could not open ${file.name}: ${err.message}`));
 });
 $('import-setup').addEventListener('change', async (e) => {
   const file = e.target.files[0];
@@ -5364,6 +5426,11 @@ document.addEventListener('drop', async (e) => {
   const entries = await withBusy('Reading the dropped files', () => entriesFromDrop(e.dataTransfer, (n) => busyStep(`Reading the dropped files: ${n} so far`)));
   if (!entries.length) {
     toast('Nothing could be read from that drop. Try again, or use "Open folder".');
+    return;
+  }
+  // Zips: shared setups (with their pictures) or packs of parts, each opened like a folder.
+  if (entries.every((x) => /\.zip$/i.test(x.path))) {
+    for (const x of entries) await openZip(x.src).catch((err) => toast(`Could not open ${x.path}: ${err.message}`));
     return;
   }
   // Only JSON files: characters and sets, all at once.

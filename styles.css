@@ -383,6 +383,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .template-grid select { font: inherit; padding: 2px 4px; }
 .extra-previews:empty { display: none; }
 .extra-previews { margin-top: 10px; }
+.setup-characters { display: flex; flex-wrap: wrap; gap: 4px 12px; max-height: 120px; overflow: auto; }
 .multi-dialog { width: min(760px, calc(100vw - 32px)); }
 .multi-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
 .multi-slots select { min-width: 0; font: inherit; font-size: 12px; }
