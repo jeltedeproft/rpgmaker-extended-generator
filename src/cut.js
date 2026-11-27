@@ -20,7 +20,9 @@ export function guessGrid(width, height, fileName = '') {
   if (width % 12 === 0 && height % 8 === 0 && width / 12 === height / 8) return [4, 2];
   // RPG Maker 2000/2003 charsets: 288 x 256, 8 characters of 3 x 4 frames of 24 x 32.
   if (width % 12 === 0 && height % 8 === 0 && (width / 12) * 4 === (height / 8) * 3) return [4, 2];
-  if (width % 3 === 0 && height % 4 === 0 && width / 3 === height / 4) return [1, 1];
+  // A named sheet without "$" (e.g. "!Crystal.png", 576 x 768) holds 8 characters of any frame
+  // size: RPG Maker reads it that way.
+  if (fileName && width % 12 === 0 && height % 8 === 0 && width >= 288) return [4, 2];
   return [1, 1];
 }
 

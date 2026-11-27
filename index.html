@@ -341,9 +341,10 @@
         <label class="lock" title="Each pixel becomes this many pixels: sprites are small">size
           <select id="gif-zoom"><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
       </div>
+      <label class="lock small" title="RPG Maker lifts characters 6 pixels; a file named !$Name.png is drawn where it stands. For objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> Name the walk sheet <code>!$</code>…: drawn without RPG Maker's 6-pixel lift</label>
       <p class="muted small">"All" also saves a <code>_credits.txt</code> listing the packs used. GIFs are transparent with Background on Checks or Transparent, else on that colour.</p>
       <p class="muted small">"Unite (zip)": a folder per sheet with one picture per animation (walk_down.png, battler_wait.png...), frames side by side as RPG Maker Unite takes them; import them in Unite's asset manager.</p>
-      <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>. Battlers go in <code>img/sv_actors</code> and portraits (face pictures) in <code>img/faces</code>.</p>
+      <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>; with <code>$</code> a sheet can be any size, so bigger bodies make bigger sprites (Sheet templates sets the frame size). Battlers go in <code>img/sv_actors</code> and portraits (face pictures) in <code>img/faces</code>.</p>
     </section>
   </main>
 

@@ -12,7 +12,11 @@ export const PROFILE_SIZE = 12;
  * The image (sheet) a file of this size probably is, with the reason in words.
  * @returns {{sheet:string, why:string}}
  */
-export function guessSheet(width, height) {
+export function guessSheet(width, height, fileName = '') {
+  // "$Name.png" (or "!$Name.png"): one character of any size, 3 x 4 frames (RPG Maker's big sprites).
+  if (/^!?\$/.test(fileName) && width % 3 === 0 && height % 4 === 0) {
+    return { sheet: 'TV', why: `"$" at the start of the name: one character, 3×4 frames of ${width / 3}×${height / 4}px` };
+  }
   for (const [sheet, s] of Object.entries(DEFAULT_SIZE)) {
     if (s.w === width && s.h === height) return { sheet, why: `${width}×${height}px is RPG Maker's ${SHEETS[sheet].label.toLowerCase()} size` };
   }

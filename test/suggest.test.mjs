@@ -20,6 +20,14 @@ test('an RPG Maker XP character sheet (4 x 4 frames, any size) is suggested as X
   assert.deepEqual([0, 1, 2, 3].map((c) => back.data[(2 * 4 + c) * 4]), [2, 12, 2, 32]); // stand, step, stand, other step
 });
 
+test('big sprites: "$" files are one character of any size, other sheets hold 8', async () => {
+  const { guessGrid } = await import('../src/cut.js');
+  assert.equal(guessSheet(288, 384, '$BigMonster1.png').sheet, 'TV');
+  assert.match(guessSheet(432, 384, '!$Gate1.png').why, /144×96/);
+  assert.deepEqual(guessGrid(288, 384, '$BigMonster1.png'), [1, 1]);
+  assert.deepEqual(guessGrid(576, 768, '!Crystal.png'), [4, 2]);
+});
+
 test('RPG Maker 2000/2003: a charset is cut into 8 characters, read with its rows turned', async () => {
   const { guessGrid } = await import('../src/cut.js');
   assert.deepEqual(guessGrid(288, 256, 'Chara1.png'), [4, 2]);

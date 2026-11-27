@@ -36,7 +36,8 @@ const SV_MOTIONS = ['Walk', 'Wait', 'Chant', 'Guard', 'Damage', 'Evade', 'Thrust
   'Skill', 'Spell', 'Item', 'Escape', 'Victory', 'Dying', 'Abnormal', 'Sleep', 'Dead'];
 const SHEET_FILE_NAMES = {
   FG: (n) => `${n}_face.png`,
-  TV: (n) => `$${n}.png`,
+  // "!": RPG Maker draws it without lifting it 6 pixels (objects, doors, big sprites).
+  TV: (n) => `${state.settings.noShift ? '!' : ''}$${n}.png`,
   TVD: (n) => `${n}_damage.png`,
   SV: (n) => `${n}.png`,
 };
@@ -2613,7 +2614,7 @@ async function openAssignDialog(entry, queue = null) {
   try {
     const pixels = await drawFile($('assign-preview'), entry);
     assigningPixels = pixels;
-    assigningGuess = guessSheet(pixels.width, pixels.height);
+    assigningGuess = guessSheet(pixels.width, pixels.height, entry.path.split('/').pop());
     $('assign-sheet').value = assigningGuess.sheet;
     $('assign-size').textContent = `${pixels.width}×${pixels.height}px`;
   } catch {
@@ -3835,7 +3836,7 @@ async function assignFolder(d, part, bodyType) {
       const size = await pngSize(f.src).catch(() => null);
       const stem = f.path.split('/').pop().replace(/\.png$/i, '');
       const mask = /_c$/i.test(stem);
-      const guessed = size ? guessSheet(size.w, size.h).sheet : 'TV';
+      const guessed = size ? guessSheet(size.w, size.h, f.path.split('/').pop()).sheet : 'TV';
       const layout = WALK_LAYOUTS[guessed]?.layout || null;
       const sheet = layout ? 'TV' : guessed;
       const readAs = buildPartName({ sheet, part, pid: stem.replace(/_c$/i, ''), mask, cell: 'c1', slotM: sheet === 'FG' ? slot : null });
@@ -6089,7 +6090,7 @@ $('pic-bg').addEventListener('change', (e) => {
   showPicBg();
 });
 
-for (const [id, setting] of [['make-room', 'makeRoom'], ['fit-frame', 'fitFrame'], ['smooth-pixels', 'smoothPixels']]) {
+for (const [id, setting] of [['make-room', 'makeRoom'], ['fit-frame', 'fitFrame'], ['smooth-pixels', 'smoothPixels'], ['no-shift', 'noShift']]) {
   $(id).checked = !!state.settings[setting];
   $(id).addEventListener('change', (e) => {
     state.settings[setting] = e.target.checked;
