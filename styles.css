@@ -403,6 +403,13 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .export-toggles button.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .export-toggles .lock { font-size: 12px; margin-left: 6px; }
 .menu-item.primary-item { font-weight: 600; }
+.menu-group { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #999); padding: 6px 10px 2px; }
+.menu-group:first-child { padding-top: 2px; }
+.menu-item.sub-item { padding-left: 24px; font-size: 13px; }
+.setup-cards { display: grid; gap: 8px; }
+.setup-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 4px; }
+.setup-card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.setup-card-head strong { margin-right: auto; }
 .gif-preview .assign-form { width: auto; max-width: calc(100vw - 48px); }
 .gif-compare { display: flex; gap: 16px; align-items: flex-end; overflow: auto; max-height: 70vh; }
 .gif-compare figure { margin: 0; display: grid; gap: 4px; justify-items: center; }

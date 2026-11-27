@@ -326,6 +326,7 @@ function offerSetup(pack) {
 }
 
 function useSetup(data, packs) {
+  keepSetup(data, 'loaded');
   const { settings, customGradients, characters, counts } = applySetup(state.settings, data, packs);
   state.settings = settings;
   tidyExtraSheets();
@@ -349,7 +350,17 @@ function useSetup(data, packs) {
   toast(`Using the setup "${data.name || 'setup'}": ${counts.files} file(s) read as set, ${counts.parts} colour mask(s), ${counts.sets} set(s)${characters.length ? `, ${characters.length} character(s) in the Gallery` : ''}.`, 8000);
 }
 
-$('export-setup').addEventListener('click', () => {
+/** The setup dialog keeps the setup in the Gallery ("keep") or downloads it ("export"). */
+let setupMode = 'export';
+$('save-setup').addEventListener('click', () => openSetupDialog('keep'));
+$('export-setup').addEventListener('click', () => openSetupDialog('export'));
+$('export-sets-menu').addEventListener('click', () => $('export-sets').click());
+
+function openSetupDialog(mode) {
+  setupMode = mode;
+  $('setup-title').textContent = mode === 'keep' ? 'Save setup' : 'Export setup';
+  $('setup-ok').textContent = mode === 'keep' ? 'Keep in Gallery' : 'Save file';
+  $('setup-pictures-box').hidden = mode === 'keep';
   const packs = state.library.packs.map((p) => p.name);
   $('setup-packs').replaceChildren(...packs.map((name) => el('label', { className: 'lock' }, [
     el('input', { type: 'checkbox', value: name, checked: true }), ` ${name}`,
@@ -360,7 +371,7 @@ $('export-setup').addEventListener('click', () => {
   ])) : [el('span', { className: 'muted small', textContent: 'None yet: Save → Save character adds them.' })]));
   $('setup-pictures').checked = false;
   $('setup-dialog').showModal();
-});
+}
 $('setup-dialog').addEventListener('close', () => {
   if ($('setup-dialog').returnValue !== 'ok') return;
   const packs = [...$('setup-packs').querySelectorAll('input:checked')].map((i) => i.value);
@@ -370,6 +381,11 @@ $('setup-dialog').addEventListener('close', () => {
   const setup = makeSetup(state.settings, packs, state.customGradients.filter((g) => g.id !== ADJUSTING_ID).map(customGradientToJson),
     { name, author: $('setup-author').value.trim(), note: $('setup-note').value.trim(), characters });
   const json = JSON.stringify(setup, null, 2);
+  keepSetup(setup, 'saved');
+  if (setupMode === 'keep') {
+    toast(`Kept the setup "${name}" in Gallery → Setups.`, 5000, { label: 'Show', run: () => openGallery('setups') });
+    return;
+  }
   if (!$('setup-pictures').checked) {
     downloadBlob(new Blob([json], { type: 'application/json' }), `${safeFileName(name)}.setup.json`);
     return;
@@ -566,7 +582,7 @@ function setFilesLabel(toAssign = toAssignCount) {
 }
 
 /** Buttons that need a folder open (the Load menu works before: sample kit, sets). */
-const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'export-images', 'save-character', 'export-setup', 'save-set', 'open-multi',
+const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'export-images', 'save-character', 'save-setup', 'export-sets-menu', 'open-setups', 'export-setup', 'save-set', 'open-multi',
   'load-character', 'import-setup', 'open-files', 'gallery-menu-button', 'open-gallery', 'open-sets', 'open-templates',
   'rules-menu-button', 'files-menu-button'];
 
@@ -5058,17 +5074,100 @@ function renderGallery() {
   $('gallery-list').replaceChildren(...sections);
 }
 
-/** tab: "characters" or "sets". */
+// ---------- setups kept in the Gallery: saved or loaded, to switch between ----------
+
+const SETUPS_KEY = 'xgen-setups';
+function keptSetups() {
+  try {
+    return JSON.parse(localStorage.getItem(SETUPS_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+function saveKeptSetups(list) {
+  try {
+    localStorage.setItem(SETUPS_KEY, JSON.stringify(list));
+    return true;
+  } catch {
+    toast('Could not keep the setup: the browser storage is full. Delete some in Gallery → Setups.');
+    return false;
+  }
+}
+
+/** Keeps a setup in the Gallery (the same one twice is kept once, the newest first). */
+function keepSetup(data, how) {
+  if (!data || typeof data !== 'object') return;
+  const json = JSON.stringify(data);
+  const list = keptSetups().filter((s) => s.json !== json);
+  list.unshift({ id: newSheetKey(), name: data.name || 'Setup', author: data.author || '', note: data.note || '', how, date: new Date().toISOString().slice(0, 10), json });
+  saveKeptSetups(list.slice(0, 40));
+  if (!$('gallery-setups').hidden) renderSetups();
+}
+
+/** What a setup holds, in a few words. */
+function setupSummary(data) {
+  const n = (o) => (Array.isArray(o) ? o.length : Object.keys(o || {}).length);
+  const bits = [
+    [n(data.assignments), 'file read as set', 'files read as set'],
+    [n(data.autoMasks), 'colour mask', 'colour masks'],
+    [n(data.sets), 'set', 'sets'],
+    [n(data.characters), 'character', 'characters'],
+    [n(data.customGradients), 'colour', 'colours'],
+    [n(data.options?.extraSheets), 'added sheet', 'added sheets'],
+  ].filter(([count]) => count).map(([count, one, more]) => `${count} ${count === 1 ? one : more}`);
+  if (data.templates && n(data.templates)) bits.push('sheet sizes');
+  if (data.randomRules) bits.push('randomize rules');
+  return bits.join(', ') || 'options only';
+}
+
+function renderSetups() {
+  const list = keptSetups();
+  if (!list.length) {
+    $('setup-list').replaceChildren(el('p', { className: 'muted small', textContent: 'No setups yet: Save → Save setup keeps one here, and setups you load show up here too.' }));
+    return;
+  }
+  $('setup-list').replaceChildren(...list.map((s) => {
+    let data;
+    try {
+      data = JSON.parse(s.json);
+    } catch {
+      data = null;
+    }
+    const use = el('button', { type: 'button', className: 'small-button primary', textContent: 'Use', title: 'Use this setup for the folders you have open' });
+    use.disabled = !data || !state.library.packs.length;
+    use.addEventListener('click', () => {
+      useSetup(data, state.library.packs.map((p) => p.name));
+      renderSetups();
+    });
+    const save = el('button', { type: 'button', className: 'small-button', textContent: 'Export', title: 'Download it as a setup file to share' });
+    save.addEventListener('click', () => downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `${safeFileName(s.name)}.setup.json`));
+    const del = el('button', { type: 'button', className: 'small-button', textContent: 'Delete', title: 'Take it out of the Gallery (what it set stays)' });
+    del.addEventListener('click', () => {
+      saveKeptSetups(keptSetups().filter((x) => x.id !== s.id));
+      renderSetups();
+    });
+    return el('div', { className: 'setup-card' }, [
+      el('div', { className: 'setup-card-head' }, [el('strong', { textContent: s.name }), use, save, del]),
+      el('div', { className: 'muted small', textContent: `${s.how === 'loaded' ? 'Loaded' : 'Saved'} ${s.date}${s.author ? ` · by ${s.author}` : ''} · ${data ? setupSummary(data) : 'could not be read'}` }),
+      s.note ? el('div', { className: 'small', textContent: s.note }) : null,
+    ].filter(Boolean));
+  }));
+}
+
+/** tab: "characters", "sets" or "setups". */
 function openGallery(tab = 'characters') {
   for (const b of $('gallery-tabs').querySelectorAll('button')) b.classList.toggle('active', b.dataset.galleryTab === tab);
   $('gallery-characters').hidden = tab !== 'characters';
   $('gallery-sets').hidden = tab !== 'sets';
+  $('gallery-setups').hidden = tab !== 'setups';
   if (tab === 'characters') renderGallery();
+  else if (tab === 'setups') renderSetups();
   else renderSets();
   if (!$('gallery-dialog').open) $('gallery-dialog').showModal();
 }
 $('open-gallery').addEventListener('click', () => openGallery('characters'));
 $('open-sets').addEventListener('click', () => openGallery('sets'));
+$('open-setups').addEventListener('click', () => openGallery('setups'));
 for (const b of $('gallery-tabs').querySelectorAll('button')) b.addEventListener('click', () => openGallery(b.dataset.galleryTab));
 $('gallery-search').addEventListener('input', renderGallery);
 $('gallery-save').addEventListener('click', () => {

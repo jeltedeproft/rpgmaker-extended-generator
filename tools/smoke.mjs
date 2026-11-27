@@ -171,11 +171,17 @@ try {
   // Save, Load and Gallery are menus.
   await click('#save-menu-button');
   await sleep(200);
-  check('the Save menu opens with character, setup and set', await evaluate(`(() => { const l = document.querySelector('#save-menu .menu-list'); return !l.hidden && ['save-character', 'export-setup', 'save-set'].every(id => l.contains(document.getElementById(id))); })()`));
+  check('the Save menu opens with character, setup and set', await evaluate(`(() => { const l = document.querySelector('#save-menu .menu-list'); return !l.hidden && ['save-character', 'open-multi', 'save-set', 'export-sets-menu', 'save-setup', 'export-setup', 'export-images'].every(id => l.contains(document.getElementById(id))); })()`));
   await click('#export-setup');
   await sleep(300);
   check('Save setup opens from the Save menu, and the menu closes', await evaluate(`document.getElementById('setup-dialog').open && document.querySelector('#save-menu .menu-list').hidden`));
   await evaluate(`document.getElementById('setup-dialog').close()`);
+  // Save setup keeps it in Gallery → Setups.
+  await evaluate(`(() => { document.getElementById('save-setup').click(); document.getElementById('setup-name').value = 'Smoke setup'; document.getElementById('setup-dialog').close('ok'); document.getElementById('open-gallery').click(); document.querySelector('#gallery-tabs [data-gallery-tab="setups"]').click(); })()`);
+  await sleep(300);
+  check('Save setup keeps it in Gallery → Setups', await evaluate(`!document.getElementById('gallery-setups').hidden && [...document.querySelectorAll('#setup-list .setup-card strong')].some((s) => s.textContent === 'Smoke setup')`),
+    await evaluate(`document.getElementById('setup-list').textContent.slice(0, 200)`));
+  await evaluate(`document.getElementById('gallery-dialog').close()`);
   check('Rules holds the sheet templates, Files the look-alikes', await evaluate(`document.querySelector('#rules-menu .menu-list').contains(document.getElementById('open-templates')) && document.querySelector('#files-menu .menu-list').contains(document.getElementById('open-alikes'))`));
   check('the Load menu holds pack, character, set, setup and sample kit', await evaluate(`['files-input', 'load-character', 'import-sets', 'import-setup', 'sample-kit'].every(id => document.querySelector('#load-menu .menu-list').contains(document.getElementById(id)))`));
   await click('#open-sets');

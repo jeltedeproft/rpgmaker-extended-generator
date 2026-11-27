@@ -26,18 +26,24 @@
             <input id="load-character" type="file" accept=".json,application/json" multiple hidden disabled>
           </label>
           <label class="button menu-item" title="A sets file (Gallery → Sets → Export): its sets are added to yours">Load set…<input type="file" id="import-sets" accept=".json,application/json" hidden></label>
-          <label class="button menu-item" title="A setup file (Save → Save setup): how files are read, sheet sizes, sets, colours, rules and options, for the folders you have open">Load setup…<input type="file" id="import-setup" accept=".json,application/json" hidden disabled></label>
+          <label class="button menu-item" title="A setup file (Save → Export setup): how files are read, sheet sizes, sets, colours, rules and options, for the folders you have open">Load setup…<input type="file" id="import-setup" accept=".json,application/json" hidden disabled></label>
           <button type="button" class="menu-item" id="sample-kit" title="A few small parts to try the generator with">Load sample kit</button>
         </div>
       </div>
       <div class="menu" id="save-menu">
         <button type="button" class="menu-button" id="save-menu-button" aria-haspopup="menu" aria-expanded="false" disabled>Save / Export ▾</button>
         <div class="menu-list" role="menu" hidden>
+          <div class="menu-group">Character</div>
           <button type="button" class="menu-item" id="save-character" disabled title="Download the character as a file; it is also kept in the Gallery">Save character</button>
-          <button type="button" class="menu-item" id="export-setup" disabled title="A file with how your files are read (what you assigned, colour masks, new body types), sheet sizes, sets, your colours, rules and options, to share with others">Save setup…</button>
-          <button type="button" class="menu-item" id="save-set" disabled title="Save some of the current parts, with their colours, to put on other characters">Save set…</button>
+          <button type="button" class="menu-item sub-item" id="open-multi" disabled title="Up to 8 characters in one picture, like Actor1.png: their walk sheets 4 x 2 for img/characters and their faces 4 x 2 for img/faces">Several characters in one picture…</button>
+          <div class="menu-group">Set</div>
+          <button type="button" class="menu-item" id="save-set" disabled title="Save some of the current parts, with their colours, to put on other characters (Gallery → Sets)">Save set…</button>
+          <button type="button" class="menu-item" id="export-sets-menu" disabled title="Download every set as one file; Load → Load set adds them again">Export sets</button>
+          <div class="menu-group">Setup</div>
+          <button type="button" class="menu-item" id="save-setup" disabled title="Keep how your files are read (what you assigned, colour masks, new body types), sheet sizes, sets, your colours, rules and options in Gallery → Setups, to switch between setups">Save setup…</button>
+          <button type="button" class="menu-item" id="export-setup" disabled title="A file with how your files are read (what you assigned, colour masks, new body types), sheet sizes, sets, your colours, rules and options, to share with others">Export setup…</button>
+          <div class="menu-group">Images</div>
           <button type="button" class="menu-item primary-item" id="export-images" disabled title="Save the sheets as pictures for your game, as GIFs, or for Unite">Export image(s)…</button>
-          <button type="button" class="menu-item" id="open-multi" disabled title="Up to 8 characters in one picture, like Actor1.png: their walk sheets 4 x 2 for img/characters and their faces 4 x 2 for img/faces">Several characters in one picture…</button>
         </div>
       </div>
       <div class="menu" id="gallery-menu">
@@ -45,6 +51,7 @@
         <div class="menu-list" role="menu" hidden>
           <button type="button" class="menu-item" id="open-gallery" disabled title="Your saved and loaded characters and the presets in your folders, with pictures">Characters…</button>
           <button type="button" class="menu-item" id="open-sets" disabled title="Your sets: put them on, look at them, delete or export them">Sets…</button>
+          <button type="button" class="menu-item" id="open-setups" disabled title="Setups you saved or loaded: switch between them, export or delete them">Setups…</button>
         </div>
       </div>
       <span class="divider"></span>
@@ -489,7 +496,7 @@
 
   <dialog id="setup-dialog" class="setup-dialog">
     <form method="dialog" class="gradient-form">
-      <h3>Save setup</h3>
+      <h3 id="setup-title">Save setup</h3>
       <p class="muted small" title="What you assigned, colour masks made and painted, cuts, new body types, sheet sizes, sets, your colours, randomize rules and options. Others load it with Load → Load setup, or keep it in the parts folder">Everything you set up for your parts, in one file to share.</p>
       <div class="setup-fields">
         <label>Name <input id="setup-name" type="text" placeholder="e.g. Chibi style parts"></label>
@@ -498,14 +505,14 @@
       </div>
       <fieldset class="setup-group"><legend>Folders</legend>
         <div id="setup-packs" class="setup-list"></div>
-        <label class="lock" title="Saves a .zip: the pictures with your setup. Others open it with Load → Load pack, or drop it on the page. Only share parts you may share"><input type="checkbox" id="setup-pictures"> With their pictures (.zip)</label>
+        <label class="lock" id="setup-pictures-box" title="Saves a .zip: the pictures with your setup. Others open it with Load → Load pack, or drop it on the page. Only share parts you may share"><input type="checkbox" id="setup-pictures"> With their pictures (.zip)</label>
       </fieldset>
       <fieldset class="setup-group"><legend>Characters from your Gallery</legend>
         <div id="setup-characters" class="setup-list"></div>
       </fieldset>
       <div class="dialog-actions">
         <button value="cancel">Cancel</button>
-        <button value="ok" class="primary">Save file</button>
+        <button value="ok" class="primary" id="setup-ok">Save file</button>
       </div>
     </form>
   </dialog>
@@ -588,6 +595,7 @@
       <div id="gallery-tabs" class="files-tabs">
         <button type="button" data-gallery-tab="characters">Characters</button>
         <button type="button" data-gallery-tab="sets">Sets</button>
+        <button type="button" data-gallery-tab="setups">Setups</button>
       </div>
       <div id="gallery-characters">
         <div class="files-tools">
@@ -603,6 +611,10 @@
           <button type="button" id="export-sets" class="small-button" title="Download every set as one file; Load → Load set adds them again">Export all sets</button>
         </div>
         <div id="set-list" class="set-list"></div>
+      </div>
+      <div id="gallery-setups" hidden>
+        <p class="muted small">Setups you saved or loaded (Save → Save setup, Load → Load setup, or a folder or zip that came with one), kept in this browser. Use one to switch to it: what it sets is put over what you have.</p>
+        <div id="setup-list" class="setup-cards"></div>
       </div>
     </form>
   </dialog>
