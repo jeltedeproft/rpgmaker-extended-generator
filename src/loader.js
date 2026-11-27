@@ -4,6 +4,7 @@ import { cellOf } from './vxace.js';
 import { splitGradientImage } from './gradients.js';
 import { scanMask } from './recolor.js';
 import { layoutToWalk } from './xp.js';
+import { split8 } from './dir8.js';
 
 /** Entries from <input type=file webkitdirectory>. */
 export function entriesFromFileList(fileList) {
@@ -124,7 +125,15 @@ export function ensureImage(ref, isMask = false) {
         ref.full = full;
         return cellOf(ref, 0);
       })
-      : decodeImage(ref.src).then((pixels) => (ref.layout ? layoutToWalk(ref.layout, pixels) : pixels)); // XP, 2000/2003: read as MV/MZ
+      : decodeImage(ref.src).then((pixels) => {
+        // 8 directions: the walk rows are the picture, the diagonals kept aside (ref.diagonal).
+        if (ref.layout === 'dir8') {
+          const { walk, diagonal } = split8(pixels);
+          ref.diagonal = diagonal;
+          return walk;
+        }
+        return ref.layout ? layoutToWalk(ref.layout, pixels) : pixels; // XP, 2000/2003: read as MV/MZ
+      });
     pending.set(
       ref,
       decoded.then((pixels) => {

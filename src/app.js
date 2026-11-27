@@ -11,6 +11,7 @@ import {
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { WALK_LAYOUTS } from './xp.js';
 import { cropBox, cropScale } from './crop.js';
+import { diagonalFallback, join8 } from './dir8.js';
 import { packCharacters, MULTI_COLS, MULTI_ROWS } from './multi.js';
 import { uniteStrip } from './unite.js';
 import { zipFiles, unzip } from './zip.js';
@@ -1927,6 +1928,13 @@ async function renderPreview() {
   state.extraComposites = extraSheets().filter((x) => !x.off).map((x) => {
     // One sheet that can't be drawn doesn't stop the others (it says why in its preview).
     try {
+      // 8 directions: the walk sheet, with the diagonals drawn the same way under it.
+      if (x.base === 'DIR8') {
+        const settings = extraSettings({ ...x, base: 'TV', cols: 3, rows: 4 });
+        const walk = composeSheet('TV', state.character, state.library, byId, settings).image;
+        const diagonal = walk && composeSheet('TV', state.character, diagonalLibrary(), byId, settings).image;
+        return { sheet: x, image: walk && diagonal && join8(walk, diagonal) };
+      }
       // RPG Maker XP: the walk sheet, as 4 x 4 frames.
       const other = WALK_LAYOUTS[x.base];
       if (other) {
@@ -6128,6 +6136,27 @@ function croppedPortrait(crop, t, byId, character = state.character) {
     }
   }
   return { image, problems: full.problems, frame: { w: out.w, h: out.h, cols, rows } };
+}
+
+// 8 directions: the diagonals are drawn like the walk sheet, from each picture's diagonal rows: its
+// own (a part made with 8 rows) or, for a part with 4 directions, the side each diagonal faces.
+const diagonalPictures = new WeakMap();
+function diagonalOf(ref) {
+  if (!ref?.pixels) return null;
+  if (ref.diagonal) return ref.diagonal;
+  let d = diagonalPictures.get(ref.pixels);
+  if (!d) diagonalPictures.set(ref.pixels, (d = diagonalFallback(ref.pixels)));
+  return d;
+}
+function diagonalRef(ref) {
+  if (!ref) return ref;
+  // A different path: pictures cut into pieces are cached by path.
+  return Object.defineProperty({ ...ref, path: `${ref.path}#diagonal` }, 'pixels', { get: () => diagonalOf(ref), enumerable: true });
+}
+/** The library as the diagonals see it: walk pictures swapped for their diagonal rows. */
+function diagonalLibrary() {
+  const swap = (v) => v && { ...v, layers: v.layers.map((l) => (l.sheet === 'TV' && !l.vxace ? { ...l, base: diagonalRef(l.base), mask: diagonalRef(l.mask), paint: diagonalRef(l.paint) } : l)) };
+  return { ...state.library, variants: { get: (id) => swap(state.library.variants.get(id)), has: (id) => state.library.variants.has(id) } };
 }
 
 /** Shows the sheets' names, and hides the ones turned off, in the preview and the export. */

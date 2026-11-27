@@ -31,6 +31,8 @@ export function guessSheet(width, height, fileName = '') {
     const fh = height / rows;
     if (fw === fh) return { sheet, why: `splits into ${cols}×${rows} square frames of ${fw}px, like a ${SHEETS[sheet].label.toLowerCase()} sheet` };
   }
+  // 8 directions: 3 x 8 square frames (the walk rows, then the diagonals).
+  if (width % 3 === 0 && height % 8 === 0 && width / 3 === height / 8) return { sheet: 'DIR8', why: `splits into 3×8 square frames of ${width / 3}px: a walk sheet with diagonals (8 directions)` };
   // RPG Maker 2000/2003: one character of a charset, 3 x 4 frames of 24 x 32.
   if (width === 72 && height === 128) return { sheet: 'RM2K', why: '72×128px is one RPG Maker 2000/2003 character (3×4 frames of 24×32)' };
   // RPG Maker XP: 4 x 4 frames of any size, taller than wide (32 x 48 and the like).

@@ -3,6 +3,7 @@
 // 3 frames (left step, standing, right step) and walks 2 → 3 → 2 → 1.
 
 import { createImage } from './recolor.js';
+import { split8 } from './dir8.js';
 
 /** XP frame for each MV/MZ frame (left step, standing, right step). */
 const XP_TO_MV = [1, 0, 3];
@@ -69,6 +70,9 @@ export function walkToRm2k(image) {
 export const WALK_LAYOUTS = {
   XP: { layout: 'xp', toWalk: xpToWalk, fromWalk: walkToXp, label: 'Walk, RPG Maker XP', note: 'RPG Maker XP, 4 x 4 frames' },
   RM2K: { layout: 'rm2k', toWalk: rm2kToWalk, fromWalk: walkToRm2k, label: 'Walk, RPG Maker 2000/2003', note: 'RPG Maker 2000/2003, rows up, right, down, left' },
+  // 8 directions: the walk rows, then the diagonals (dir8.js). Made in app.js: the diagonals are
+  // drawn from each part's own diagonal rows, so there is no fromWalk.
+  DIR8: { layout: 'dir8', toWalk: (image) => split8(image).walk, fromWalk: null, label: 'Walk, 8 directions', note: '8 directions: down, left, right, up, down-left, down-right, up-left, up-right' },
 };
 const BY_LAYOUT = Object.fromEntries(Object.values(WALK_LAYOUTS).map((w) => [w.layout, w]));
 
