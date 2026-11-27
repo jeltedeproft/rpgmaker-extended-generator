@@ -6915,7 +6915,7 @@ function openFocus(sheet, extraId = null) {
   const note = $('focus-note');
   note.dataset.parts ||= note.textContent;
   note.dataset.extra = extraId
-    ? `${focusExtra()?.sheet.name || 'This sheet'} is made of the ${sheetLabel(sheet)} parts: pick and recolour them here (Layers, Colours); they move in the ${sheetLabel(sheet)} close up, and this sheet follows. Extract works here too. Mouse wheel: zoom; middle- or right-drag: pan.`
+    ? `${focusExtra()?.sheet.name || 'This sheet'} is made of the ${sheetLabel(sheet)} parts: pick and recolour them here (Layers, Colours); they move in the ${sheetLabel(sheet)} close up, and this sheet follows. Extract works here too. Mouse wheel: scroll; Ctrl + wheel: zoom; hold the middle button and drag: pan.`
     : '';
   note.textContent = note.dataset.extra || note.dataset.parts;
   focusUserZoom = null;
@@ -7148,7 +7148,7 @@ $('focus-dialog').addEventListener('keydown', (e) => {
   const canvas = $('focus-canvas');
   const stage = canvas.parentElement;
   let pan = null;
-  // Right- or middle-drag pans; the wheel zooms around the pointer.
+  // Middle-drag (or right-drag, outside extract mode) pans; Ctrl + wheel zooms around the pointer.
   stage.addEventListener('pointerdown', (e) => {
     if (e.button !== 1 && e.button !== 2) return;
     e.preventDefault();
@@ -7168,7 +7168,9 @@ $('focus-dialog').addEventListener('keydown', (e) => {
   stage.addEventListener('pointerup', endPan);
   stage.addEventListener('pointercancel', endPan);
   stage.addEventListener('contextmenu', (e) => e.preventDefault());
+  // The wheel scrolls (Shift: sideways); Ctrl + wheel zooms around the pointer.
   stage.addEventListener('wheel', (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const fx = (e.clientX - rect.left) / (rect.width || 1);
