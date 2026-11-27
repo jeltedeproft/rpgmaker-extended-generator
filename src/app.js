@@ -10,6 +10,7 @@ import {
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { WALK_LAYOUTS } from './xp.js';
+import { cropBox, cropScale } from './crop.js';
 import { uniteStrip, zipFiles } from './unite.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS, frameHints } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
@@ -1854,7 +1855,9 @@ async function renderPreview() {
     const base = sheetBase(sheet);
     const settings = base === sheet ? state.settings
       : { ...state.settings, templates: { ...(state.settings.templates || {}), [base]: state.settings.templates?.[sheet] } };
-    const { image, problems: pr, ...p } = composeSheet(base, state.character, state.library, byId, settings);
+    const crop = base === 'FG' && sheetOption(sheet).crop;
+    const { image, problems: pr, ...p } = crop ? croppedPortrait(crop, state.settings.templates?.[sheet], byId)
+      : composeSheet(base, state.character, state.library, byId, settings);
     problems.push(...pr);
     state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame) } : null;
   }
@@ -1867,6 +1870,7 @@ async function renderPreview() {
         const { image } = composeSheet('TV', state.character, state.library, byId, extraSettings({ ...x, base: 'TV', cols: 3, rows: 4 }));
         return { sheet: x, image: image && other.fromWalk(image) };
       }
+      if (x.base === 'FG' && x.crop) return { sheet: x, image: croppedPortrait(x.crop, x, byId).image };
       const { image } = composeSheet(x.base, state.character, state.library, byId, extraSettings(x));
       return { sheet: x, image };
     } catch (err) {
@@ -5941,6 +5945,38 @@ function extraSettings(x) {
   return { ...state.settings, templates: { ...(state.settings.templates || {}), [x.base]: template } };
 }
 
+/** The whole portrait, at the size its parts are (not a sheet template's). */
+function wholePortrait(byId = gradientsById()) {
+  return composeSheet('FG', state.character, state.library, byId, { ...state.settings, templates: { ...(state.settings.templates || {}), FG: undefined } });
+}
+
+/** The size a cropped portrait is made: the sheet's width and height, else the box as it is. */
+function cropOutput(crop, t) {
+  const w = t?.fw > 0 ? t.fw : t?.fh > 0 ? t.fh : Math.round(crop.w) || 144;
+  return { w, h: t?.fh > 0 ? t.fh : w };
+}
+
+/**
+ * A portrait sheet cut out of the whole portrait (e.g. the 144 x 144 face from a full-body
+ * picture): the crop box, made the sheet's size, repeated in every cell of a grid.
+ */
+function croppedPortrait(crop, t, byId) {
+  const full = wholePortrait(byId);
+  if (!full.image) return full;
+  const out = cropOutput(crop, t);
+  const one = cropScale(full.image, cropBox(crop, full.image.width, full.image.height, out.w, out.h), out.w, out.h);
+  const cols = t?.cols || 1;
+  const rows = t?.rows || 1;
+  if (cols * rows === 1) return { image: one, problems: full.problems, frame: null };
+  const image = createImage(out.w * cols, out.h * rows);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      for (let y = 0; y < out.h; y++) image.data.set(one.data.subarray(y * out.w * 4, (y + 1) * out.w * 4), ((r * out.h + y) * image.width + c * out.w) * 4);
+    }
+  }
+  return { image, problems: full.problems, frame: { w: out.w, h: out.h, cols, rows } };
+}
+
 /** Shows the sheets' names, and hides the ones turned off, in the preview and the export. */
 function showSheetOptions() {
   for (const sheet of SHEET_KEYS) {
@@ -6085,15 +6121,23 @@ function renderTemplates() {
     return select;
   };
   /** One row: on, name, parts, width, height, columns, rows, Remove. Every sheet alike. */
-  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove, xp = false }) => {
+  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove, onCrop = null, cropped = false, xp = false }) => {
     const tick = el('input', { type: 'checkbox', checked: on, title: 'Untick to leave it out of the preview and the export' });
     tick.addEventListener('change', () => onToggle(tick.checked));
     const nameBox = el('input', { type: 'text', className: 'tpl-name', value: name || '', placeholder, title: 'Its name in the preview and on the export button' });
     nameBox.addEventListener('change', () => onName(nameBox.value.trim()));
     const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Take this sheet out of the list' });
     remove.addEventListener('click', onRemove);
+    const actions = [remove];
+    if (base === 'FG' && onCrop) {
+      const crop = el('button', { type: 'button', className: `small-button${cropped ? ' active' : ''}`, textContent: cropped ? 'Cropped' : 'Crop…',
+        title: 'Cut it out of the whole portrait: pick the part (e.g. the face of a full-body picture); Width and Height set the size it is made' });
+      crop.addEventListener('click', onCrop);
+      actions.unshift(crop);
+    }
     return [tick, nameBox, partsSelect(base, onBase, xp),
-      ...['fw', 'fh', 'cols', 'rows'].map((f, k) => number(size?.[f], ['width', 'height', 'columns', 'rows'][k], (v) => onSize(f, v))), remove];
+      ...['fw', 'fh', 'cols', 'rows'].map((f, k) => number(size?.[f], ['width', 'height', 'columns', 'rows'][k], (v) => onSize(f, v))),
+      el('div', { className: 'tpl-actions' }, actions)];
   };
   const head = ['', 'Name', 'Made of', 'Width', 'Height', 'Columns', 'Rows', ''].map((text) => el('span', { className: 'tpl-head', textContent: text }));
   const builtIn = SHEET_KEYS.filter((sheet) => !sheetOption(sheet).removed).flatMap((sheet) => {
@@ -6104,7 +6148,7 @@ function renderTemplates() {
       name: sheetOption(sheet).name, placeholder: SHEET_NAMES[sheet],
       onName: (v) => { options().name = v || undefined; sheetsChanged(); },
       base: sheetBase(sheet),
-      onBase: (v) => { options().base = v === sheet ? undefined : v; sheetsChanged(); },
+      onBase: (v) => { options().base = v === sheet ? undefined : v; sheetsChanged(); renderTemplates(); },
       size: t[sheet],
       onSize: (field, v) => {
         const templates = (state.settings.templates ||= {});
@@ -6115,6 +6159,8 @@ function renderTemplates() {
         if (state.character) renderPreview();
       },
       onRemove: () => { options().removed = true; sheetsChanged(); renderTemplates(); },
+      cropped: !!sheetOption(sheet).crop,
+      onCrop: () => openCrop(sheetLabel(sheet), () => sheetOption(sheet).crop, (c) => { options().crop = c || undefined; }, () => state.settings.templates?.[sheet]),
     });
   });
   const extras = extraSheets().flatMap((x) => row({ xp: true,
@@ -6123,16 +6169,119 @@ function renderTemplates() {
     name: x.name, placeholder: 'name',
     onName: (v) => { x.name = v || 'Sheet'; sheetsChanged(); },
     base: x.base,
-    onBase: (v) => { x.base = v; sheetsChanged(); },
+    onBase: (v) => { x.base = v; sheetsChanged(); renderTemplates(); },
     size: x,
     onSize: (field, v) => { x[field] = v; sheetsChanged(); },
     onRemove: () => { state.settings.extraSheets = extraSheets().filter((s) => s !== x); sheetsChanged(); renderTemplates(); },
+    cropped: !!x.crop,
+    onCrop: () => openCrop(x.name || 'Sheet', () => x.crop, (c) => { x.crop = c || undefined; }, () => x),
   }));
   $('template-grid').replaceChildren(...head, ...builtIn, ...extras);
   const removed = SHEET_KEYS.filter((s) => sheetOption(s).removed);
   $('restore-sheets').hidden = !removed.length;
   $('restore-sheets').textContent = `Bring back ${removed.map((s) => SHEET_NAMES[s]).join(', ')}`;
 }
+// ---------- crop: a portrait sheet cut out of the whole portrait ----------
+
+/** The sheet being cropped: {label, get, set, template}. */
+let cropping = null;
+const CROP_VIEW = 360;
+
+function openCrop(label, get, set, template) {
+  if (!state.character) return;
+  cropping = { label, get, set, template };
+  $('crop-title').textContent = `Crop: ${label}`;
+  drawCrop(true);
+  $('crop-dialog').showModal();
+}
+
+/** Draws the whole portrait with the box on it, and what the sheet becomes. */
+function drawCrop(resetSlider = false) {
+  const full = wholePortrait().image;
+  const canvas = $('crop-canvas');
+  if (!full || !cropping) {
+    canvas.width = canvas.height = 0;
+    $('crop-note').textContent = 'No portrait to crop: wear portrait parts first.';
+    return;
+  }
+  const out = cropOutput(cropping.get() || { w: 144 }, cropping.template());
+  const box = cropBox(cropping.get(), full.width, full.height, out.w, out.h);
+  const scale = Math.min(CROP_VIEW / full.width, CROP_VIEW / full.height, 4);
+  canvas.width = Math.round(full.width * scale);
+  canvas.height = Math.round(full.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = scale < 1;
+  ctx.drawImage(toCanvas(full), 0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+  ctx.beginPath();
+  ctx.rect(0, 0, canvas.width, canvas.height);
+  ctx.rect(box.x * scale, box.y * scale, box.w * scale, box.h * scale);
+  ctx.fill('evenodd');
+  ctx.strokeStyle = '#ffd34d';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(box.x * scale + 1, box.y * scale + 1, box.w * scale - 2, box.h * scale - 2);
+  cropping.view = { scale, box, full, out };
+  const result = $('crop-result');
+  result.width = out.w;
+  result.height = out.h;
+  result.getContext('2d').putImageData(new ImageData(cropScale(full, box, out.w, out.h).data, out.w, out.h), 0, 0);
+  const most = Math.min(full.width, Math.floor(full.height / (out.h / out.w)));
+  if (resetSlider) {
+    $('crop-size').max = most;
+    $('crop-size').value = box.w;
+  }
+  $('crop-note').textContent = `Whole portrait ${full.width} × ${full.height}; the box is ${box.w} × ${box.h}, made ${out.w} × ${out.h}${cropping.template()?.fw ? '' : ' (set Width and Height in Sheet templates to make it another size)'}.`;
+}
+
+let cropRedraw = 0;
+function setCrop(crop) {
+  cropping.set(crop);
+  saveSettings();
+  drawCrop();
+  cancelAnimationFrame(cropRedraw);
+  cropRedraw = requestAnimationFrame(() => {
+    renderTemplates();
+    if (state.character) renderPreview();
+  });
+}
+
+$('crop-canvas').addEventListener('pointerdown', (e) => {
+  const v = cropping?.view;
+  if (!v) return;
+  const canvas = e.currentTarget;
+  canvas.setPointerCapture(e.pointerId);
+  const at = (ev) => {
+    const r = canvas.getBoundingClientRect();
+    return { x: ((ev.clientX - r.left) * (canvas.width / r.width)) / v.scale, y: ((ev.clientY - r.top) * (canvas.height / r.height)) / v.scale };
+  };
+  const start = at(e);
+  const inside = start.x >= v.box.x && start.x < v.box.x + v.box.w && start.y >= v.box.y && start.y < v.box.y + v.box.h;
+  // Grabbing the box moves it; clicking elsewhere puts its middle there.
+  const grab = inside ? { x: start.x - v.box.x, y: start.y - v.box.y } : { x: v.box.w / 2, y: v.box.h / 2 };
+  const move = (ev) => {
+    const p = at(ev);
+    setCrop({ x: Math.round(p.x - grab.x), y: Math.round(p.y - grab.y), w: v.box.w });
+  };
+  move(e);
+  const up = () => {
+    canvas.removeEventListener('pointermove', move);
+    canvas.removeEventListener('pointerup', up);
+  };
+  canvas.addEventListener('pointermove', move);
+  canvas.addEventListener('pointerup', up);
+});
+$('crop-size').addEventListener('input', (e) => {
+  const v = cropping?.view;
+  if (!v) return;
+  const w = Number(e.target.value);
+  // Grows and shrinks around its middle.
+  setCrop({ x: Math.round(v.box.x + (v.box.w - w) / 2), y: Math.round(v.box.y + (v.box.h - (w * v.out.h) / v.out.w) / 2), w });
+});
+$('crop-reset').addEventListener('click', () => {
+  setCrop(null);
+  drawCrop(true);
+});
+
 $('restore-sheets').addEventListener('click', () => {
   for (const s of SHEET_KEYS) if (state.settings.sheetOptions?.[s]) delete state.settings.sheetOptions[s].removed;
   sheetsChanged();

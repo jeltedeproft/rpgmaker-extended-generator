@@ -341,7 +341,7 @@
         <label class="lock" title="Each pixel becomes this many pixels: sprites are small">size
           <select id="gif-zoom"><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
       </div>
-      <label class="lock small" title="RPG Maker lifts characters 6 pixels; a file named !$Name.png is drawn where it stands. For objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> Name the walk sheet <code>!$</code>…: drawn without RPG Maker's 6-pixel lift</label>
+      <label class="lock" title="RPG Maker lifts characters 6 pixels; a file named !$Name.png is drawn where it stands. For objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> <span>Save the walk sheet as <code>!$</code>name.png: drawn without RPG Maker's 6-pixel lift</span></label>
       <p class="muted small">"All" also saves a <code>_credits.txt</code> listing the packs used. GIFs are transparent with Background on Checks or Transparent, else on that colour.</p>
       <p class="muted small">"Unite (zip)": a folder per sheet with one picture per animation (walk_down.png, battler_wait.png...), frames side by side as RPG Maker Unite takes them; import them in Unite's asset manager.</p>
       <p class="muted small">Walk sheets are saved with a <code>$</code> prefix (single-character sheet) for <code>img/characters</code>; with <code>$</code> a sheet can be any size, so bigger bodies make bigger sprites (Sheet templates sets the frame size). Battlers go in <code>img/sv_actors</code> and portraits (face pictures) in <code>img/faces</code>.</p>
@@ -696,12 +696,31 @@
         <button value="close" class="small-button">Close</button>
       </div>
       <p class="muted small">Frame size (and grid) of each sheet. Leave empty for automatic: the body's size and RPG Maker's grid. Sprite parts with other frame sizes are placed frame by frame, centred and standing on the bottom; other parts are centred.</p>
-      <p class="muted small">Untick a sheet to leave it out of the preview and the export, rename it, or pick which parts it is made of. "Add a sheet" makes another one with a frame size and grid of its own (e.g. a face set of 4 x 2 portraits, or "Walk, RPG Maker XP": the walk sheet as XP's 4 x 4 frames); it is exported as name_sheet.png. A portrait with columns and rows repeats the face in every cell.</p>
+      <p class="muted small">Untick a sheet to leave it out of the preview and the export, rename it, or pick which parts it is made of. "Add a sheet" makes another one with a frame size and grid of its own (e.g. a face set of 4 x 2 portraits, or "Walk, RPG Maker XP": the walk sheet as XP's 4 x 4 frames); it is exported as name_sheet.png. A portrait with columns and rows repeats the face in every cell. "Crop…" (sheets of portrait parts) cuts a face or a smaller picture out of a big portrait, e.g. the face of a full-body picture.</p>
       <div id="template-hints" class="template-hints" hidden title="Parts whose frames are another size than the sheet's"></div>
       <div id="template-grid" class="template-grid"></div>
       <div class="dialog-actions">
         <button type="button" id="restore-sheets" class="small-button" hidden>Bring back RPG Maker's sheets</button>
         <button type="button" id="add-sheet" class="small-button">+ Add a sheet</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="crop-dialog" class="assign-form-dialog crop-dialog">
+    <form method="dialog" class="assign-form">
+      <div class="files-head">
+        <h3 id="crop-title">Crop</h3>
+        <button value="close" class="small-button">Done</button>
+      </div>
+      <p class="muted small">For big portrait parts (a bust or a full-body picture): drag the box over what this sheet shows, e.g. the face for RPG Maker's 144 × 144 face. The slider sets how much it takes in; the sheet's Width and Height set the size it is made.</p>
+      <div class="crop-area">
+        <canvas id="crop-canvas" width="0" height="0" title="Drag the box, or click where it should go"></canvas>
+        <figure><canvas id="crop-result" width="0" height="0"></canvas><figcaption class="muted small">The sheet</figcaption></figure>
+      </div>
+      <label class="lock">Box size <input type="range" id="crop-size" min="8" max="144" value="144"></label>
+      <p id="crop-note" class="muted small"></p>
+      <div class="dialog-actions">
+        <button type="button" id="crop-reset" class="small-button" title="The sheet shows the whole portrait again, centred">No crop</button>
       </div>
     </form>
   </dialog>

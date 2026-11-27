@@ -383,6 +383,14 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .template-grid select { font: inherit; padding: 2px 4px; }
 .extra-previews:empty { display: none; }
 .extra-previews { margin-top: 10px; }
+.template-grid .tpl-actions { display: flex; gap: 4px; justify-content: flex-end; }
+.template-grid .small-button.active { border-color: var(--accent); }
+.crop-dialog { width: min(640px, calc(100vw - 32px)); }
+.crop-area { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; margin: 8px 0; }
+.crop-area > canvas { cursor: move; touch-action: none; background: repeating-conic-gradient(#0000 0 25%, #8882 0 50%) 0 0 / 16px 16px; max-width: 100%; }
+.crop-area figure { margin: 0; text-align: center; }
+.crop-area figure canvas { image-rendering: pixelated; max-width: 200px; max-height: 200px; min-width: 96px; background: repeating-conic-gradient(#0000 0 25%, #8882 0 50%) 0 0 / 16px 16px; }
+.crop-dialog input[type="range"] { flex: 1; }
 .template-hints { display: grid; gap: 6px; margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; font-size: 12px; }
 .template-hint { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .template-hint span { flex: 1 1 260px; }
