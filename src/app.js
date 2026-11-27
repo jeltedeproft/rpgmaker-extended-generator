@@ -5868,8 +5868,21 @@ $('layer-sheet').addEventListener('change', () => {
   renderLayers();
   renderTaller();
 });
-$('focus-taller').addEventListener('toggle', () => {
+// One button: squash and stretch on or off for the picture shown.
+$('taller-toggle').addEventListener('click', () => {
+  const sheet = $('layer-sheet').value;
+  if (!TALLER_SHEETS.includes(sheet) || !state.character) return;
+  const taller = (state.character.taller ||= {});
+  if (taller[sheet]) {
+    delete taller[sheet];
+    stretchPick = null;
+  } else {
+    const pf = plainFrameOf(sheet);
+    taller[sheet] = { top: 100, rows: [{ y: Math.round(pf.h * NECK_SHARE[sheet]), scale: 150 }], left: 100, cols: [], boxes: [], width: 100 };
+    stretchPick = { kind: 'row', i: 0 };
+  }
   renderTaller();
+  renderPreview();
   drawFocus();
 });
 
@@ -5937,24 +5950,21 @@ function renderTaller() {
   const box = $('taller-panel');
   const sheet = $('layer-sheet').value;
   if (!TALLER_SHEETS.includes(sheet)) {
+    $('taller-toggle').disabled = true;
+    $('taller-toggle').classList.remove('active');
     box.replaceChildren(el('p', { className: 'muted small', textContent: 'For the walk, damage and battler pictures: pick one under Layers.' }));
     return;
   }
   const spec = stretchOf(sheet);
   const key = focusFrameKey(sheet);
   const pf = plainFrameOf(sheet);
-  const on = el('input', { type: 'checkbox', checked: !!spec });
-  on.addEventListener('change', () => {
-    const taller = (state.character.taller ||= {});
-    if (!on.checked) delete taller[sheet];
-    else taller[sheet] = { top: 100, rows: [{ y: Math.round(pf.h * NECK_SHARE[sheet]), scale: 150 }], left: 100, cols: [], boxes: [], width: 100 };
-    stretchPick = on.checked ? { kind: 'row', i: 0 } : null;
-    renderTaller();
-    renderPreview();
-  });
-  const head = [el('label', { className: 'lock' }, [on, ` Squash and stretch the ${sheetLabel(sheet).toLowerCase()}`])];
+  $('taller-toggle').disabled = false;
+  $('taller-toggle').classList.toggle('active', !!spec);
+  $('taller-toggle').setAttribute('aria-pressed', String(!!spec));
+  $('taller-toggle').textContent = `Squash and stretch: ${spec ? 'on' : 'off'}`;
+  const head = [];
   if (!spec) {
-    box.replaceChildren(...head, el('p', { className: 'muted small', textContent: 'Less chibi, or more: cut the frames along lines and make each band longer or shorter, wider or narrower. Works for generator parts and finished characters alike.' }));
+    box.replaceChildren();
     return;
   }
   const num = (value, min, max, title, set, step = 1) => {
@@ -6052,7 +6062,7 @@ function renderTaller() {
 
 /** Whether the close up shows the lines (the Squash and stretch panel is open and on). */
 function stretchEditing(sheet) {
-  return $('focus-taller').open && TALLER_SHEETS.includes(sheet) && !!stretchOf(sheet) && !!state.composites[sheet];
+  return TALLER_SHEETS.includes(sheet) && !!stretchOf(sheet) && !!state.composites[sheet];
 }
 
 /** Where the frame with the lines is drawn in the close up: canvas px = (o + frame px) * zoom. */
