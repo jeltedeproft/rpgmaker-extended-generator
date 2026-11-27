@@ -386,7 +386,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .template-grid select { font: inherit; padding: 2px 4px; }
 .extra-previews:empty { display: none; }
 .extra-previews { margin-top: 10px; }
-.focus-taller { margin-top: 8px; }
+.focus-taller { margin: 6px 0; }
 .taller-toggle { width: 100%; font-weight: 600; text-align: left; }
 .taller-toggle.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .taller-panel { display: grid; gap: 6px; font-size: 12px; margin-top: 6px; }

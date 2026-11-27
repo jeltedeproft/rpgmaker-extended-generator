@@ -436,11 +436,12 @@
         <button type="button" id="focus-extract" class="small-button" aria-pressed="false" title="Extract mode: take a piece out of this picture (e.g. the eyes or the head of a finished character) to use as a part, by colours, pixels and areas">Extract</button>
         <button value="close" class="small-button">Close</button>
       </div>
-      <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Mouse wheel: zoom; right- or middle-drag: pan. Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility does Clip Content; Squash and stretch shows its lines to drag.</p>
+      <p id="focus-note" class="muted small">Pick a part under Layers: it glows. Drag it with the mouse, or move it with the arrow keys (Shift: 10 pixels). Mouse wheel: zoom; right- or middle-drag: pan. Layers also changes the draw order and hides parts; Colours recolours the picked part; Visibility does Clip Content; Squash/Stretch shows its lines to drag.</p>
       <div class="focus-body">
         <div class="focus-stage"><canvas id="focus-canvas" width="0" height="0" tabindex="0"></canvas></div>
         <div class="focus-side">
           <details open id="focus-layers"><summary>Layers</summary></details>
+          <div id="focus-taller" class="focus-taller"><button type="button" id="taller-toggle" class="taller-toggle" aria-pressed="false" title="Bigger or smaller: Set frames along stretch lines to make each band wider or narrower, or wider and narrower. Works with layered generator parts and single layered completed images.">Squash/Stretch</button><div id="taller-panel" class="taller-panel"></div></div>
           <details id="focus-colours"><summary>Colours</summary></details>
           <details id="focus-visibility"><summary>Visibility: Clip Content</summary></details>
           <div id="focus-extract-panel" class="extract-panel" hidden>
@@ -466,7 +467,6 @@
             <div class="extract-row"><button type="button" id="extract-add" class="primary">Add as parts</button><button type="button" id="extract-save" class="small-button" title="Both pictures as PNG files">Save as PNG</button></div>
             <p class="muted small">Shift: take away instead of add. Mouse wheel: zoom; right-drag: pan.</p>
           </div>
-          <div id="focus-taller" class="focus-taller"><button type="button" id="taller-toggle" class="taller-toggle" aria-pressed="false" title="Bigger or smaller: Set frames along stretch lines to make each band wider or narrower, or wider and narrower. Works with layered generator parts and single layered completed images.">Squash and stretch</button><div id="taller-panel" class="taller-panel"></div></div>
         </div>
       </div>
     </form>

@@ -6021,7 +6021,7 @@ function renderTaller() {
   $('taller-toggle').disabled = false;
   $('taller-toggle').classList.toggle('active', !!spec);
   $('taller-toggle').setAttribute('aria-pressed', String(!!spec));
-  $('taller-toggle').textContent = `Squash and stretch: ${spec ? 'on' : 'off'}`;
+  $('taller-toggle').textContent = `Squash/Stretch: ${spec ? 'on' : 'off'}`;
   const head = [];
   if (!spec) {
     box.replaceChildren();
