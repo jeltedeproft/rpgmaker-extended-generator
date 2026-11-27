@@ -1854,14 +1854,21 @@ async function renderPreview() {
     state.composites[sheet] = image ? { image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame) } : null;
   }
   state.extraComposites = extraSheets().filter((x) => !x.off).map((x) => {
-    // RPG Maker XP: the walk sheet, as 4 x 4 frames.
-    const other = WALK_LAYOUTS[x.base];
-    if (other) {
-      const { image } = composeSheet('TV', state.character, state.library, byId, extraSettings({ ...x, base: 'TV', cols: 3, rows: 4 }));
-      return { sheet: x, image: image && other.fromWalk(image) };
+    // One sheet that can't be drawn doesn't stop the others (it says why in its preview).
+    try {
+      // RPG Maker XP: the walk sheet, as 4 x 4 frames.
+      const other = WALK_LAYOUTS[x.base];
+      if (other) {
+        const { image } = composeSheet('TV', state.character, state.library, byId, extraSettings({ ...x, base: 'TV', cols: 3, rows: 4 }));
+        return { sheet: x, image: image && other.fromWalk(image) };
+      }
+      const { image } = composeSheet(x.base, state.character, state.library, byId, extraSettings(x));
+      return { sheet: x, image };
+    } catch (err) {
+      console.error(err);
+      problems.push(`${x.name || 'Sheet'}: could not be drawn (${err.message})`);
+      return { sheet: x, image: null, error: err.message };
     }
-    const { image } = composeSheet(x.base, state.character, state.library, byId, extraSettings(x));
-    return { sheet: x, image };
   });
   renderExtraPreviews();
   state.renderProblems = problems;
@@ -5953,12 +5960,25 @@ function showSheetOptions() {
   }
 }
 
-/** The extra sheets in the preview: the whole sheet. */
+/** A sheet just added in Sheet templates: its preview is scrolled into view once drawn. */
+let newSheetId = null;
+
+/** The extra sheets in the preview: the whole sheet, or why there is nothing to see yet. */
 function renderExtraPreviews() {
-  $('extra-previews').replaceChildren(...(state.extraComposites || []).filter((x) => x.image).map((x) => el('figure', { className: 'wide' }, [
-    toCanvas(x.image),
-    el('figcaption', { textContent: `${x.sheet.name || 'Sheet'} (${x.image.width} x ${x.image.height}, ${WALK_LAYOUTS[x.sheet.base] ? WALK_LAYOUTS[x.sheet.base].note : `from the ${SHEET_NAMES[x.sheet.base]} parts`})` }),
-  ])));
+  $('extra-previews').replaceChildren(...(state.extraComposites || []).map((x) => {
+    const from = WALK_LAYOUTS[x.sheet.base] ? WALK_LAYOUTS[x.sheet.base].note : `from the ${SHEET_NAMES[x.sheet.base]} parts`;
+    const figure = el('figure', { className: 'wide' }, [
+      x.image ? toCanvas(x.image)
+        : el('div', { className: 'empty-sheet muted small', textContent: x.error ? `Could not be drawn: ${x.error}` : `Nothing to draw yet: no ${SHEET_NAMES[WALK_LAYOUTS[x.sheet.base] ? 'TV' : x.sheet.base]} parts are worn.` }),
+      el('figcaption', { textContent: x.image ? `${x.sheet.name || 'Sheet'} (${x.image.width} x ${x.image.height}, ${from})` : `${x.sheet.name || 'Sheet'} (${from})` }),
+    ]);
+    if (x.sheet.id === newSheetId) {
+      newSheetId = null;
+      figure.classList.add('just-added');
+      requestAnimationFrame(() => figure.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+    }
+    return figure;
+  }));
 }
 
 function sheetsChanged() {
@@ -6038,7 +6058,9 @@ $('restore-sheets').addEventListener('click', () => {
 });
 $('add-sheet').addEventListener('click', () => {
   const list = (state.settings.extraSheets ||= []);
-  list.push({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, base: 'TV', name: `Sheet ${list.length + 1}` });
+  const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+  list.push({ id, base: 'TV', name: `Sheet ${list.length + 1}` });
+  newSheetId = id;
   sheetsChanged();
   renderTemplates();
 });
