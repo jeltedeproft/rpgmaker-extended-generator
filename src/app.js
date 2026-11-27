@@ -5551,8 +5551,10 @@ document.addEventListener('drop', async (e) => {
   $('app').classList.remove('dragging');
   // Both reads must start before the first await: the drop data is gone after that.
   const handles = dropFolderHandles(e.dataTransfer);
-  // The bar shows at once: reading a big folder (or one synced from the cloud) takes a while.
-  const entries = await withBusy('Reading the dropped files', () => entriesFromDrop(e.dataTransfer, (n) => busyStep(`Reading the dropped files: ${n} so far`)));
+  // Started before anything is awaited (withBusy waits a frame to draw its bar, and by then the
+  // browser has emptied the drop). The bar shows while it reads: big folders take a while.
+  const reading = entriesFromDrop(e.dataTransfer, (n) => busyStep(`Reading the dropped files: ${n} so far`));
+  const entries = await withBusy('Reading the dropped files', () => reading);
   if (!entries.length) {
     toast('Nothing could be read from that drop. Try again, or use "Open folder".');
     return;
@@ -5573,7 +5575,11 @@ document.addEventListener('drop', async (e) => {
   // Dropped folders open like picked ones, so they are remembered for next time too.
   if (folders.length && entries.every((x) => folders.some((h) => x.path.startsWith(h.name + '/')))) {
     for (const h of folders) await importHandle(h);
-  } else await importEntries(entries, packNameFromEntries(entries, 'Dropped files'), { loose: true, ask: true });
+  } else {
+    // Loose files are named after the first one, as with Load → Open files.
+    const first = entries[0].path.split('/').pop().replace(/\.png$/i, '');
+    await importEntries(entries, packNameFromEntries(entries, entries.length > 1 ? `${first} +${entries.length - 1}` : first), { loose: true, ask: true });
+  }
 });
 
 // ---------- editor events ----------

@@ -11,9 +11,13 @@ export function entriesFromFileList(fileList) {
   return [...fileList].map((file) => ({ path: file.webkitRelativePath || file.name, src: file }));
 }
 
-/** Entries from a drag-and-drop of folders and/or files. */
+/**
+ * Entries from a drag-and-drop of folders and/or files. Must be called right away in the drop
+ * event: the browser empties the drop's data at the first await (it reads what it needs first).
+ */
 export async function entriesFromDrop(dataTransfer, onProgress = null) {
   const roots = [...dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
+  const plainFiles = [...(dataTransfer.files || [])];
   const entries = [];
   // Folders and files are read side by side (one at a time is slow for big packs).
   async function walk(entry, prefix) {
@@ -38,7 +42,8 @@ export async function entriesFromDrop(dataTransfer, onProgress = null) {
   await Promise.all(roots.map((root) => walk(root, '')));
   entries.sort((a, b) => a.path.localeCompare(b.path));
   // Files without an entry (e.g. made by a script): take the plain file list.
-  if (!roots.length) for (const file of dataTransfer.files || []) entries.push({ path: file.name, src: file });
+  // Also when reading them failed (some drops from other programs): the plain files.
+  if (!entries.length) for (const file of plainFiles) entries.push({ path: file.name, src: file });
   return entries;
 }
 

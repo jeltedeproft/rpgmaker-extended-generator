@@ -1393,6 +1393,15 @@ try {
     for (let i = 0; i < 20 && !(await evaluate(`/FG_Eyes_p01_c1_m002/.test(document.getElementById('packs').textContent)`)); i++) await sleep(500);
     check('single files open as a pack of their own', await evaluate(`/FG_Eyes_p01_c1_m002/.test(document.getElementById('packs').textContent)`));
   }
+  // A file dragged in from the computer (a real drop: its data is gone after the first await).
+  {
+    const file = join(process.cwd(), 'sample-kit/Generator/Face/Male/FG_Eyes_p02_c1_m002.png');
+    const data = { items: [], files: [file], dragOperationsMask: 1 };
+    for (const type of ['dragEnter', 'dragOver', 'drop']) await send('Input.dispatchDragEvent', { type, x: 600, y: 400, data });
+    for (let i = 0; i < 20 && !(await evaluate(`/FG_Eyes_p02_c1_m002/.test(document.getElementById('packs').textContent)`)); i++) await sleep(500);
+    check('a file dragged in from the computer is read', await evaluate(`/FG_Eyes_p02_c1_m002/.test(document.getElementById('packs').textContent)`),
+      await evaluate(`document.getElementById('toast').textContent`));
+  }
   check('no uncaught errors', errors.length === 0, errors.join(' | '));
 } catch (e) {
   check('smoke run', false, e.stack);
