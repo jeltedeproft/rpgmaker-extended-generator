@@ -4227,7 +4227,7 @@ $('cut-dialog').addEventListener('close', async () => {
   filesTab = 'queue';
   if ($('files-dialog').open) renderFiles();
   toast(added ? `${added} piece${added === 1 ? '' : 's'} of ${file.path.split('/').pop()} added to "To assign". Assign one, e.g. as the Body (walk) of a body type, then put parts like a cloak over it.`
-    : 'Those pieces are there already.', 12000);
+    : 'Those pieces are assigned as parts already (Files → Assigned): unassign them to cut them again.', 12000);
 });
 
 /**
@@ -4237,13 +4237,18 @@ $('cut-dialog').addEventListener('close', async () => {
 async function cutPieces(packName, path, src, cut, image = null) {
   const lib = state.library;
   image ||= await decodeImage(src);
-  const known = new Set([...libraryFiles(lib), ...lib.unrecognized, ...lib.removed].filter((f) => f.pack === packName).map((f) => f.path));
+  // Pieces assigned as parts stay. Removed pieces, and ones still to assign, of an earlier cut
+  // (e.g. into frames: "col 1" is a frame there, a character now) are replaced by the new ones.
+  const assigned = new Set(libraryFiles(lib).filter((f) => f.pack === packName).map((f) => f.path));
   let added = 0;
   for (const cell of cut.cells) {
     const [col, row] = cell.split(',').map(Number);
     if (col >= cut.cols || row >= cut.rows) continue;
     const piecePath = cutPath(path, cut.cols, cut.rows, col, row);
-    if (known.has(piecePath)) continue;
+    if (assigned.has(piecePath)) continue;
+    const stale = (f) => !(f.pack === packName && f.path === piecePath);
+    lib.unrecognized = lib.unrecognized.filter(stale);
+    lib.removed = lib.removed.filter(stale);
     const piece = cropImage(image, cellRect(image.width, image.height, cut.cols, cut.rows, col, row));
     const canvas = new OffscreenCanvas(piece.width, piece.height);
     canvas.getContext('2d').putImageData(new ImageData(piece.data, piece.width, piece.height), 0, 0);
