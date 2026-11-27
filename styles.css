@@ -383,6 +383,13 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .template-grid select { font: inherit; padding: 2px 4px; }
 .extra-previews:empty { display: none; }
 .extra-previews { margin-top: 10px; }
+.multi-dialog { width: min(760px, calc(100vw - 32px)); }
+.multi-slots { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 8px 0; }
+.multi-slots select { min-width: 0; font: inherit; font-size: 12px; }
+.multi-options { display: grid; gap: 6px; margin: 8px 0; font-size: 12px; }
+.multi-preview { display: flex; flex-wrap: wrap; gap: 12px; }
+.multi-preview figure { margin: 0; }
+.multi-preview canvas { image-rendering: pixelated; max-width: 100%; max-height: 220px; background: repeating-conic-gradient(#0000 0 25%, #8882 0 50%) 0 0 / 16px 16px; }
 .template-grid .tpl-actions { display: flex; gap: 4px; justify-content: flex-end; }
 .template-grid .small-button.active { border-color: var(--accent); }
 .crop-dialog { width: min(640px, calc(100vw - 32px)); }

@@ -36,6 +36,7 @@
           <button type="button" class="menu-item" id="save-character" disabled title="Download the character as a file; it is also kept in the Gallery">Save character</button>
           <button type="button" class="menu-item" id="export-setup" disabled title="A file with how your files are read (what you assigned, colour masks, new body types), sheet sizes, sets, your colours, rules and options, to share with others">Save setup…</button>
           <button type="button" class="menu-item" id="save-set" disabled title="Save some of the current parts, with their colours, to put on other characters">Save set…</button>
+          <button type="button" class="menu-item" id="open-multi" disabled title="Up to 8 characters in one picture, like RPG Maker's Actor1.png: their walk sheets 4 x 2 for img/characters and their faces 4 x 2 for img/faces">Several characters in one picture…</button>
         </div>
       </div>
       <div class="menu" id="gallery-menu">
@@ -702,6 +703,26 @@
       <div class="dialog-actions">
         <button type="button" id="restore-sheets" class="small-button" hidden>Bring back RPG Maker's sheets</button>
         <button type="button" id="add-sheet" class="small-button">+ Add a sheet</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="multi-dialog" class="assign-form-dialog multi-dialog">
+    <form method="dialog" class="assign-form">
+      <div class="files-head">
+        <h3>Several characters in one picture</h3>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <p class="muted small">Like RPG Maker's own Actor1.png: 8 characters, 4 across and 2 down. Pick who goes where (the current character, your Gallery, or the presets in your folders). Characters of different sizes are placed in frames as big as the biggest one, standing on the bottom.</p>
+      <div id="multi-slots" class="multi-slots"></div>
+      <div class="multi-options">
+        <label>Name <input id="multi-name" type="text" value="Actors" placeholder="e.g. Actor1"></label>
+        <label class="lock"><input type="checkbox" id="multi-walk" checked> Walk sheets (<code>name.png</code>, for img/characters)</label>
+        <label class="lock"><input type="checkbox" id="multi-face" checked> Faces (<code>name_face.png</code>, for img/faces: rename it to the same name there)</label>
+      </div>
+      <div id="multi-preview" class="multi-preview"></div>
+      <div class="dialog-actions">
+        <button type="button" id="multi-save" class="primary">Save</button>
       </div>
     </form>
   </dialog>

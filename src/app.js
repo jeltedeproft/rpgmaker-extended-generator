@@ -11,6 +11,7 @@ import {
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { WALK_LAYOUTS } from './xp.js';
 import { cropBox, cropScale } from './crop.js';
+import { packCharacters, MULTI_COLS, MULTI_ROWS } from './multi.js';
 import { uniteStrip, zipFiles } from './unite.js';
 import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS, frameHints } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
@@ -378,7 +379,7 @@ function setFilesLabel(toAssign = toAssignCount) {
 }
 
 /** Buttons that need a folder open (the Load menu works before: sample kit, sets). */
-const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'save-character', 'export-setup', 'save-set',
+const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'save-character', 'export-setup', 'save-set', 'open-multi',
   'load-character', 'import-setup', 'open-files', 'gallery-menu-button', 'open-gallery', 'open-sets', 'open-templates',
   'rules-menu-button', 'files-menu-button'];
 
@@ -4434,6 +4435,91 @@ async function characterPicture(character, customGradients = []) {
   return { face, sprite };
 }
 
+// ---------- several characters in one picture (multi.js) ----------
+
+/** Characters that can go in the picture: the current one, the Gallery's, the folders' presets. */
+function multiChoices() {
+  const presets = [...state.library.packs.values()].flatMap((p) => (p.presets || []).map((x) => ({ ...x, pack: p.name })));
+  return [
+    { key: 'current', label: `This character (${state.character?.name || 'unnamed'})` },
+    ...galleryEntries().map((e) => ({ key: `g:${e.id}`, label: `Gallery: ${e.name}`, text: e.text, fileName: e.fileName || '' })),
+    ...presets.map((x, i) => ({ key: `p:${i}`, label: `${x.pack}: ${x.name}`, text: x.text, fileName: x.fileName })),
+  ];
+}
+
+/** The walk sheet and face of a character, drawn as the current sheets are. */
+async function characterSheets(choice) {
+  let character = state.character;
+  let customGradients = [];
+  if (choice.key !== 'current') {
+    ({ character, customGradients } = deserializeCharacter(choice.text, state.library, allGradients(), choice.fileName));
+    applyDefaults(character, state.library);
+  }
+  await ensureVariants(variantsToDecode(character, state.library));
+  const byId = new Map([...gradientsById(), ...customGradients.map((g) => [g.id, g])]);
+  const faceTemplate = state.settings.templates?.FG;
+  // One face each, also when the Portrait sheet is a face set.
+  const faceSettings = { ...state.settings, templates: { ...(state.settings.templates || {}), FG: faceTemplate && { fw: faceTemplate.fw, fh: faceTemplate.fh } } };
+  const face = sheetOption('FG').crop ? croppedPortrait(sheetOption('FG').crop, faceTemplate && { fw: faceTemplate.fw, fh: faceTemplate.fh }, byId, character).image
+    : composeSheet('FG', character, state.library, byId, faceSettings).image;
+  const walk = composeSheet('TV', character, state.library, byId, state.settings);
+  return { face, walk: walk.image, frame: walk.image ? frameOf('TV', walk.image, walk.frame) : null };
+}
+
+function renderMultiSlots() {
+  const choices = multiChoices();
+  const before = [...$('multi-slots').querySelectorAll('select')].map((s) => s.value);
+  $('multi-slots').replaceChildren(...[...Array(MULTI_COLS * MULTI_ROWS).keys()].map((i) => {
+    const select = el('select', { title: `Place ${i + 1} (row ${Math.floor(i / MULTI_COLS) + 1}, column ${(i % MULTI_COLS) + 1})` }, [
+      el('option', { value: '', textContent: `${i + 1}: empty` }),
+      ...choices.map((c) => el('option', { value: c.key, textContent: `${i + 1}: ${c.label}` })),
+    ]);
+    const was = before[i] ?? (i === 0 ? 'current' : '');
+    select.value = choices.some((c) => c.key === was) ? was : '';
+    select.addEventListener('change', drawMulti);
+    return select;
+  }));
+}
+
+let multiToken = 0;
+/** Draws the pictures: { walk, face } (null when nothing is picked). */
+async function makeMulti() {
+  const choices = new Map(multiChoices().map((c) => [c.key, c]));
+  const picked = [...$('multi-slots').querySelectorAll('select')].map((s) => choices.get(s.value) || null);
+  const drawn = await Promise.all(picked.map((c) => (c ? characterSheets(c).catch((e) => (console.error(e), null)) : null)));
+  const grid = drawn.find((d) => d?.frame)?.frame;
+  return {
+    walk: packCharacters(drawn.map((d) => d?.walk || null), grid ? { cols: grid.cols, rows: grid.rows } : { cols: 3, rows: 4 }),
+    face: packCharacters(drawn.map((d) => d?.face || null), null),
+  };
+}
+
+async function drawMulti() {
+  const token = ++multiToken;
+  const { walk, face } = await makeMulti();
+  if (token !== multiToken) return;
+  const figure = (image, caption) => el('figure', {}, [toCanvas(image), el('figcaption', { className: 'muted small', textContent: `${caption} (${image.width} x ${image.height})` })]);
+  $('multi-preview').replaceChildren(...(walk ? [figure(walk, 'Walk sheets')] : []), ...(face ? [figure(face, 'Faces')] : []));
+}
+
+$('open-multi').addEventListener('click', () => {
+  renderMultiSlots();
+  $('multi-dialog').showModal();
+  drawMulti();
+});
+$('multi-save').addEventListener('click', async () => {
+  const name = safeFileName($('multi-name').value.trim() || 'Actors');
+  const { walk, face } = await makeMulti();
+  if (!walk && !face) {
+    toast('Pick at least one character first.');
+    return;
+  }
+  // No "$": RPG Maker reads the picture as 8 characters. "!" if you chose no lift for walk sheets.
+  if ($('multi-walk').checked && walk) await downloadImage(walk, `${state.settings.noShift ? '!' : ''}${name}.png`);
+  if ($('multi-face').checked && face) await downloadImage(face, `${name}_face.png`);
+  toast(`Saved ${name}: put the walk sheets in img/characters and the faces in img/faces (named ${name}.png there).`, 7000);
+});
+
 // ---------- importing many JSON files at once ----------
 
 /** What a JSON file is: a sets file, a character (ours or RPG Maker MZ's), or something else. */
@@ -5946,8 +6032,8 @@ function extraSettings(x) {
 }
 
 /** The whole portrait, at the size its parts are (not a sheet template's). */
-function wholePortrait(byId = gradientsById()) {
-  return composeSheet('FG', state.character, state.library, byId, { ...state.settings, templates: { ...(state.settings.templates || {}), FG: undefined } });
+function wholePortrait(byId = gradientsById(), character = state.character) {
+  return composeSheet('FG', character, state.library, byId, { ...state.settings, templates: { ...(state.settings.templates || {}), FG: undefined } });
 }
 
 /** The size a cropped portrait is made: the sheet's width and height, else the box as it is. */
@@ -5960,8 +6046,8 @@ function cropOutput(crop, t) {
  * A portrait sheet cut out of the whole portrait (e.g. the 144 x 144 face from a full-body
  * picture): the crop box, made the sheet's size, repeated in every cell of a grid.
  */
-function croppedPortrait(crop, t, byId) {
-  const full = wholePortrait(byId);
+function croppedPortrait(crop, t, byId, character = state.character) {
+  const full = wholePortrait(byId, character);
   if (!full.image) return full;
   const out = cropOutput(crop, t);
   const one = cropScale(full.image, cropBox(crop, full.image.width, full.image.height, out.w, out.h), out.w, out.h);
