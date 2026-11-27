@@ -544,7 +544,7 @@ function setFilesLabel(toAssign = toAssignCount) {
 }
 
 /** Buttons that need a folder open (the Load menu works before: sample kit, sets). */
-const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'save-character', 'export-setup', 'save-set', 'open-multi',
+const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'export-menu-button', 'save-character', 'export-setup', 'save-set', 'open-multi',
   'load-character', 'import-setup', 'open-files', 'gallery-menu-button', 'open-gallery', 'open-sets', 'open-templates',
   'rules-menu-button', 'files-menu-button'];
 
@@ -618,7 +618,8 @@ for (const menu of document.querySelectorAll('.menu')) {
   });
   // Picking an item closes the menu (file pickers too: their input still gets the file).
   list.addEventListener('click', (e) => {
-    if (e.target.closest('.menu-item')) setTimeout(() => closeMenus(), 0);
+    // Export: saving a sheet closes it too (its size and !$ options don't).
+    if (e.target.closest('.menu-item, [data-export], #gif-walk, #gif-sv, #unite-export')) setTimeout(() => closeMenus(), 0);
   });
 }
 document.addEventListener('click', (e) => {
@@ -6651,7 +6652,7 @@ function safeFileName(name) {
   return (name || 'character').replace(/[\\/:*?"<>|]+/g, '').trim() || 'character';
 }
 
-document.querySelector('.export').addEventListener('click', async (e) => {
+$('export-buttons').addEventListener('click', async (e) => {
   const sheet = e.target.dataset?.export;
   if (!sheet) return;
   const name = safeFileName(state.character.name);
