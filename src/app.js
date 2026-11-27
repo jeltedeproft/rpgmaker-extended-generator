@@ -15,7 +15,7 @@ import { diagonalFallback, join8 } from './dir8.js';
 import { packCharacters, MULTI_COLS, MULTI_ROWS } from './multi.js';
 import { uniteStrip } from './unite.js';
 import { zipFiles, unzip } from './zip.js';
-import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS, frameHints } from './suggest.js';
+import { guessSheet, shapeProfile, rankWithName, partsInName, partsInPath, maskColourShare, nameWords, slotForPart, NAME_BONUS, frameHints, readingsOf } from './suggest.js';
 import { PAINTED_SLOTS, PAINTED_FOLLOWS, paintedIndex, cellOf, cellCount, averageColour, styleOf, ofStyle } from './vxace.js';
 import { groupLayers, topRun, moveBlock, stepBlock } from './layers.js';
 import { encodeGif } from './gif.js';
@@ -168,7 +168,7 @@ function importEntries(entries, packName, options = {}) {
   return withBusy(`Opening "${packName}"`, () => importEntriesNow(entries, packName, options));
 }
 
-async function importEntriesNow(entries, packName, { loose = false } = {}) {
+async function importEntriesNow(entries, packName, { loose = false, ask = false } = {}) {
   state.lastPack = null;
   const pngs = entries.filter((e) => /\.png$/i.test(e.path));
   if (!pngs.length) {
@@ -252,8 +252,10 @@ async function importEntriesNow(entries, packName, { loose = false } = {}) {
   const assignNote = toAssign ? ` ${toAssign} file${toAssign > 1 ? 's' : ''} to assign: see "Files…".` : '';
   syncKnownBodies();
   if (pack.setup) offerSetup(pack);
+  // Pictures dropped or picked by hand that aren't named like parts: show how each could be used.
+  const asking = ask && toAssign > 0 && askLater(pack.name);
   if (!addedParts) {
-    toast(toAssign
+    if (!asking) toast(toAssign
       ? `No parts read from the names in "${pack.name}" yet.${assignNote}`
       : `Nothing usable in "${pack.name}": ${unsupportedHint(addedGradientFiles)} See the import report.`, 12000);
     if (state.character) renderAll();
@@ -417,6 +419,106 @@ function ensureCharacter() {
     state.character = applyDefaults(createCharacter(bodyType), state.library);
   }
 }
+
+// ---------- pictures that aren't named like parts: how do you want to use them? ----------
+
+/** Files still to ask about, after the one asked now (each finished form asks the next). */
+let useQueue = [];
+/** The cut form was opened from "How do you want to use it?": its pieces are asked about next. */
+let cutFromAsk = false;
+
+/** Asks about a folder's files to assign once it has opened. True when there are any. */
+function askLater(packName) {
+  const waiting = state.library.unrecognized.filter((u) => u.pack === packName);
+  const names = new Set(waiting.map((u) => u.path.toLowerCase()));
+  // A colour mask next to its picture goes with that picture.
+  const files = waiting.filter((u) => !(/_c\.png$/i.test(u.path) && names.has(u.path.toLowerCase().replace(/_c\.png$/, '.png'))));
+  if (!files.length) return false;
+  setTimeout(() => askHowToUse(files), 0);
+  return true;
+}
+
+/** The picture with the frame grid of one way to read it drawn over it. */
+function gridPicture(image, cols, rows) {
+  const scale = Math.min(1, 150 / image.width, 150 / image.height) * (image.width < 75 && image.height < 75 ? 2 : 1);
+  const canvas = el('canvas', { width: Math.max(1, Math.round(image.width * scale)), height: Math.max(1, Math.round(image.height * scale)) });
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = scale < 1;
+  ctx.drawImage(toCanvas(image), 0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = 'rgba(255, 211, 77, 0.9)';
+  ctx.lineWidth = 1;
+  for (let c = 1; c < cols; c++) {
+    const x = Math.round((c * canvas.width) / cols) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let r = 1; r < rows; r++) {
+    const y = Math.round((r * canvas.height) / rows) + 0.5;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+  return canvas;
+}
+
+/** The first file: its picture read every way it could be, to pick one. The rest come after. */
+async function askHowToUse(files) {
+  const [entry, ...rest] = files;
+  useQueue = rest;
+  if (!entry) return;
+  entry.ref ||= { src: entry.src, pixels: null };
+  const image = await ensureImage(entry.ref).catch(() => null);
+  if (!image) {
+    toast(`Could not read ${entry.path}.`);
+    askNext();
+    return;
+  }
+  const name = entry.path.split('/').pop();
+  $('use-title').textContent = `How do you want to use ${name}?`;
+  $('use-note').textContent = `${image.width} × ${image.height} pixels. Its name isn't one the generator reads, so here it is every way it could be used (the lines show how it would be cut into frames). Pick one to go on.${rest.length ? ` ${rest.length} more after this one.` : ''}`;
+  $('use-skip-all').hidden = !rest.length;
+  $('use-options').replaceChildren(...readingsOf(image.width, image.height, name).map((r) => {
+    const option = el('button', { type: 'button', className: `use-option${r.best ? ' best' : ''}`, title: r.best ? 'Best guess, from its size' : '' }, [
+      gridPicture(image, r.cols, r.rows),
+      el('span', { textContent: r.label }),
+      ...(r.best ? [el('span', { className: 'use-best', textContent: 'best guess' })] : []),
+    ]);
+    option.addEventListener('click', async () => {
+      $('use-dialog').returnValue = 'picked';
+      $('use-dialog').close();
+      if (r.use === 'cut') {
+        cutFromAsk = true;
+        await openCutDialog(entry);
+        if (r.cols * r.rows > 1) setCutGrid(r.cols, r.rows);
+        return;
+      }
+      await openAssignDialog(entry);
+      $('assign-sheet').value = r.use;
+      $('assign-sheet').dispatchEvent(new Event('change'));
+      updateAssignPreview();
+    });
+    return option;
+  }));
+  $('use-dialog').returnValue = '';
+  if (!$('use-dialog').open) $('use-dialog').showModal();
+}
+
+/** The next file to ask about, once the form for this one is done. */
+function askNext() {
+  if (!useQueue.length) return;
+  const next = useQueue;
+  useQueue = [];
+  // Only the ones still waiting (assigning one can take its mask or others along).
+  const waiting = new Set(state.library.unrecognized.map((u) => `${u.pack}|${u.path}`));
+  askHowToUse(next.filter((u) => waiting.has(`${u.pack}|${u.path}`)));
+}
+
+$('use-dialog').addEventListener('close', () => {
+  // "Later" goes on to the next one; "Later for all" (or Escape) leaves them in Files → To assign.
+  const answer = $('use-dialog').returnValue;
+  if (answer === 'next') askNext();
+  else if (answer !== 'picked') {
+    if (useQueue.length) toast(`${useQueue.length + 1} file(s) left to assign: see Files → To assign.`);
+    useQueue = [];
+  }
+});
 
 /** Why a folder gave no parts, in words a user can act on. */
 function unsupportedHint(gradientFiles) {
@@ -3523,6 +3625,8 @@ for (const id of ['assign-sheet', 'assign-part', 'assign-layer', 'assign-pid', '
   $(id).addEventListener('input', updateAssignPreview);
 }
 $('assign-dialog').addEventListener('close', () => {
+  // Pictures asked about one by one: the next one after this form (also when it was cancelled).
+  setTimeout(() => !$('assign-dialog').open && !$('cut-dialog').open && askNext(), 0);
   const action = $('assign-dialog').returnValue;
   const entry = assigning;
   const queue = assignQueue;
@@ -4101,13 +4205,25 @@ $('cut-all').addEventListener('click', () => setCutGrid(cutting.cols, cutting.ro
 $('cut-dialog').addEventListener('close', async () => {
   const job = cutting;
   cutting = null;
-  if ($('cut-dialog').returnValue !== 'ok' || !job?.cells.size) return;
+  const asked = cutFromAsk;
+  cutFromAsk = false;
+  if ($('cut-dialog').returnValue !== 'ok' || !job?.cells.size) {
+    if (asked) askNext();
+    return;
+  }
   const { file, cols, rows } = job;
   const cut = { cols, rows, cells: [...job.cells] };
   (state.settings.cuts ||= {})[`${file.pack}|${file.path}`] = cut;
   saveSettings();
   const added = await cutPieces(file.pack, file.path, file.src, cut, job.image);
   afterFilesChanged();
+  // Cut while asking how to use it: ask about its pieces next.
+  if (asked && added) {
+    const stem = file.path.replace(/\.png$/i, '');
+    useQueue = [...state.library.unrecognized.filter((u) => u.pack === file.pack && u.path.startsWith(`${stem} (`)), ...useQueue];
+    askNext();
+    return;
+  }
   filesTab = 'queue';
   if ($('files-dialog').open) renderFiles();
   toast(added ? `${added} piece${added === 1 ? '' : 's'} of ${file.path.split('/').pop()} added to "To assign". Assign one, e.g. as the Body (walk) of a body type, then put parts like a cloak over it.`
@@ -5389,7 +5505,7 @@ $('files-input').addEventListener('change', async (e) => {
   e.target.value = '';
   if (!entries.length) return;
   const first = entries[0].path.replace(/\.png$/i, '');
-  await importEntries(entries, entries.length > 1 ? `${first} +${entries.length - 1}` : first);
+  await importEntries(entries, entries.length > 1 ? `${first} +${entries.length - 1}` : first, { ask: true });
 });
 
 async function loadSampleKit() {
@@ -5452,7 +5568,7 @@ document.addEventListener('drop', async (e) => {
   // Dropped folders open like picked ones, so they are remembered for next time too.
   if (folders.length && entries.every((x) => folders.some((h) => x.path.startsWith(h.name + '/')))) {
     for (const h of folders) await importHandle(h);
-  } else await importEntries(entries, packNameFromEntries(entries, 'Dropped files'), { loose: true });
+  } else await importEntries(entries, packNameFromEntries(entries, 'Dropped files'), { loose: true, ask: true });
 });
 
 // ---------- editor events ----------

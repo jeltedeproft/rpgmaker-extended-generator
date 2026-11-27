@@ -318,3 +318,32 @@ export function frameHints(sizes, frames, covered = new Set()) {
   }
   return [...groups.values()].sort((a, b) => b.count - a.count);
 }
+
+/**
+ * Every way a picture of this size could be used, the likeliest (guessSheet) first: as one of the
+ * sheets (with the frame grid it would be cut into), or cut into the characters of a sheet first.
+ * @returns {Array<{use:string, label:string, cols:number, rows:number, best?:boolean}>}
+ *   use: a sheet value of the assign form (TV, XP, RM2K, DIR8, TVD, SV, FG, icon) or 'cut'
+ */
+export function readingsOf(width, height, fileName = '') {
+  const frames = (cols, rows) => `${width / cols}×${height / rows}`;
+  const all = [];
+  const add = (use, label, cols, rows) => all.push({ use, label, cols, rows });
+  // Only frames shaped like sprites: about square, or taller than wide (walk frames).
+  const fits = (cols, rows, most = 2.5) => width % cols === 0 && height % rows === 0 && height / rows >= (width / cols) * 0.75 && height / rows <= (width / cols) * most;
+  if (fits(3, 4)) add('TV', `Walk sheet: 3 × 4 frames of ${frames(3, 4)}`, 3, 4);
+  if (fits(3, 8)) add('DIR8', `Walk in 8 directions: 3 × 8 frames of ${frames(3, 8)}`, 3, 8);
+  if (fitsXp(width, height) && fits(4, 4)) add('XP', `RPG Maker XP walk: 4 × 4 frames of ${frames(4, 4)}`, 4, 4);
+  if (width % 3 === 0 && height % 4 === 0 && (width / 3) * 4 === (height / 4) * 3) add('RM2K', `RPG Maker 2000/2003 character: 3 × 4 frames of ${frames(3, 4)}`, 3, 4);
+  if (fits(9, 6, 1.34)) add('SV', `Battler: 9 × 6 frames of ${frames(9, 6)}`, 9, 6);
+  if (width % 3 === 0 && width / 3 === height) add('TVD', `Damage: 3 frames of ${frames(3, 1)}`, 3, 1);
+  add('FG', `Portrait (face picture), ${width}×${height}`, 1, 1);
+  if (width <= 64 && height <= 64) add('icon', 'Variation icon', 1, 1);
+  if (!/^!?\$/.test(fileName) && width % 12 === 0 && height % 8 === 0) add('cut', `A sheet of 8 characters: cut it into 8 first (4 × 2 of ${frames(4, 2)})`, 4, 2);
+  add('cut', 'Something else: cut it into pieces first', 1, 1);
+  const best = guessSheet(width, height, fileName).sheet;
+  const i = all.findIndex((r) => r.use === best);
+  if (i > 0) all.unshift(...all.splice(i, 1));
+  if (i >= 0) all[0].best = true;
+  return all;
+}

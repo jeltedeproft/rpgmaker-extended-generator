@@ -159,3 +159,14 @@ test('parts with other frame sizes suggest a sheet template', async () => {
   assert.deepEqual(frameHints(sizes, { TV: { w: 48, h: 48 } }), [{ sheet: 'TV', w: 96, h: 96, cols: 3, rows: 4, count: 2 }]);
   assert.deepEqual(frameHints(sizes, { TV: { w: 48, h: 48 } }, new Set(['TV|96|96'])), []);
 });
+
+test('a picture is offered in every way it could be read, the likeliest first', async () => {
+  const { readingsOf } = await import('../src/suggest.js');
+  const uses = (w, h, name) => readingsOf(w, h, name).map((r) => r.use);
+  assert.deepEqual(uses(144, 192, 'x.png'), ['TV', 'XP', 'FG', 'cut', 'cut']);
+  assert.equal(readingsOf(144, 192)[0].best, true);
+  assert.deepEqual(uses(576, 384, 'Actor1.png'), ['SV', 'FG', 'cut', 'cut']);
+  assert.ok(uses(576, 384, 'Actor1.png').includes('cut'));
+  assert.deepEqual(uses(128, 192, 'xp.png')[0], 'XP');
+  assert.deepEqual(uses(144, 384, 'eight.png')[0], 'DIR8');
+});
