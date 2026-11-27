@@ -549,7 +549,7 @@ function setFilesLabel(toAssign = toAssignCount) {
 }
 
 /** Buttons that need a folder open (the Load menu works before: sample kit, sets). */
-const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'export-menu-button', 'save-character', 'export-setup', 'save-set', 'open-multi',
+const APP_BUTTONS = ['randomize', 'clear-all', 'random-rules', 'save-menu-button', 'export-images', 'save-character', 'export-setup', 'save-set', 'open-multi',
   'load-character', 'import-setup', 'open-files', 'gallery-menu-button', 'open-gallery', 'open-sets', 'open-templates',
   'rules-menu-button', 'files-menu-button'];
 
@@ -623,8 +623,7 @@ for (const menu of document.querySelectorAll('.menu')) {
   });
   // Picking an item closes the menu (file pickers too: their input still gets the file).
   list.addEventListener('click', (e) => {
-    // Export: saving a sheet closes it too (its size and !$ options don't).
-    if (e.target.closest('.menu-item, [data-export], #gif-walk, #gif-sv, #unite-export')) setTimeout(() => closeMenus(), 0);
+    if (e.target.closest('.menu-item')) setTimeout(() => closeMenus(), 0);
   });
 }
 document.addEventListener('click', (e) => {
@@ -6968,12 +6967,10 @@ function showSheetOptions() {
     button.hidden = !on;
     button.textContent = sheetLabel(sheet);
   }
-  $('gif-walk').hidden = !sheetOn('TV');
-  $('gif-sv').hidden = !sheetOn('SV');
   for (const b of document.querySelectorAll('#export-buttons [data-export^="extra:"]')) b.remove();
   const all = document.querySelector('#export-buttons [data-export="all"]');
   for (const x of extraSheets().filter((s) => !s.off)) {
-    const button = el('button', { textContent: x.name || 'Sheet', title: WALK_LAYOUTS[x.base] ? `Your walk sheet for ${WALK_LAYOUTS[x.base].note}` : `Your sheet, from the ${SHEET_NAMES[x.base]} parts` });
+    const button = el('button', { type: 'button', className: exportPick.has(`extra:${x.id}`) ? 'on' : '', textContent: x.name || 'Sheet', title: WALK_LAYOUTS[x.base] ? `Your walk sheet for ${WALK_LAYOUTS[x.base].note}` : `Your sheet, from the ${SHEET_NAMES[x.base]} parts` });
     button.dataset.export = `extra:${x.id}`;
     all.before(button);
   }
@@ -7320,33 +7317,90 @@ function safeFileName(name) {
   return (name || 'character').replace(/[\\/:*?"<>|]+/g, '').trim() || 'character';
 }
 
-$('export-buttons').addEventListener('click', async (e) => {
-  const sheet = e.target.dataset?.export;
-  if (!sheet) return;
+// ---------- export: pick the sheets and the kind, then Export now ----------
+
+/** The sheets picked to export: 'all', or sheet keys and "extra:<id>". */
+const exportPick = new Set(['all']);
+let exportFormat = 'png';
+
+function renderExport() {
+  for (const b of $('export-buttons').querySelectorAll('[data-export]')) b.classList.toggle('on', exportPick.has(b.dataset.export));
+  for (const b of $('export-format').querySelectorAll('[data-format]')) b.classList.toggle('on', b.dataset.format === exportFormat);
+  const unite = $('export-for').value === 'unite';
+  $('export-format-box').hidden = unite;
+  $('gif-size').hidden = exportFormat !== 'gif';
+  $('no-shift-box').hidden = exportFormat === 'gif';
+  $('export-note').textContent = unite
+    ? 'A zip with a folder per sheet: one picture per animation, its frames side by side, as RPG Maker Unite takes them.'
+    : exportFormat === 'gif' ? 'Portraits are still pictures: they are left out of GIFs.' : '';
+}
+
+function openExport() {
+  $('export-for').value = state.settings.exportFor || 'rm';
+  renderExport();
+  $('export-dialog').showModal();
+}
+$('export-images').addEventListener('click', openExport);
+$('export-for').addEventListener('change', () => {
+  state.settings.exportFor = $('export-for').value;
+  saveSettings();
+  renderExport();
+});
+// All, or any number of sheets: picking a sheet turns All off, picking All turns the rest off.
+$('export-buttons').addEventListener('click', (e) => {
+  const pick = e.target.closest('[data-export]')?.dataset.export;
+  if (!pick) return;
+  if (pick === 'all') {
+    exportPick.clear();
+    exportPick.add('all');
+  } else {
+    exportPick.delete('all');
+    if (exportPick.has(pick)) exportPick.delete(pick);
+    else exportPick.add(pick);
+    if (!exportPick.size) exportPick.add('all');
+  }
+  renderExport();
+});
+// Static PNG or animated GIF: one or the other.
+$('export-format').addEventListener('click', (e) => {
+  const format = e.target.closest('[data-format]')?.dataset.format;
+  if (!format) return;
+  exportFormat = format;
+  renderExport();
+});
+$('export-now').addEventListener('click', async () => {
+  const want = (key) => exportPick.has('all') || exportPick.has(key);
+  $('export-dialog').close();
+  if ($('export-for').value === 'unite') await exportUnite(want);
+  else if (exportFormat === 'gif') exportGifs(want);
+  else await exportPngs(want);
+});
+
+async function exportPngs(want) {
+  const all = exportPick.has('all');
   const name = safeFileName(state.character.name);
-  const sheets = sheet === 'all' ? SHEET_KEYS.filter(sheetOn) : SHEET_KEYS.includes(sheet) ? [sheet] : [];
   let count = 0;
-  for (const key of sheets) {
+  for (const key of SHEET_KEYS.filter((k) => sheetOn(k) && want(k))) {
     const c = state.composites[key];
     if (!c) continue;
     await downloadImage(c.image, SHEET_FILE_NAMES[key](name));
     count++;
   }
   for (const x of state.extraComposites || []) {
-    if (!x.image || (sheet !== 'all' && sheet !== `extra:${x.sheet.id}`)) continue;
+    if (!x.image || !want(`extra:${x.sheet.id}`)) continue;
     await downloadImage(x.image, `${name}_${safeFileName(x.sheet.name || 'sheet')}.png`);
     count++;
   }
-  if (sheet === 'all') {
+  if (all) {
     downloadBlob(new Blob([currentCreditsText() + '\n'], { type: 'text/plain' }), `${name}_credits.txt`);
   }
-  if (sheet === 'all' && state.customGradients.length) {
+  if (all && state.customGradients.length) {
     // Shifted source colours aren't gradients: RPG Maker can't use them.
     const exportable = state.customGradients.filter((g) => !g.shiftSource);
     if (exportable.length) await downloadImage(gradientsToImage(exportable), `${name}_custom_gradients.png`);
   }
-  toast(count ? `Exported ${count} image(s).` : 'Nothing to export for this sheet: no selected part has layers for it.');
-});
+  toast(count ? `Exported ${count} image(s).` : 'Nothing to export for these sheets: no selected part has layers for them.');
+}
 
 // ---------- animated GIFs ----------
 
@@ -7389,19 +7443,21 @@ function gifOf(composite, steps, zoom) {
 /** Columns of one animation: RPG Maker's 3-frame walk goes 0, 1, 2, 1; other grids loop. */
 const animationColumns = (cols) => (cols === 3 ? PATTERN : [...Array(cols).keys()]);
 
-$('gif-walk').addEventListener('click', () => {
+/** The walk GIF: the direction shown, or all four when All walk directions is ticked. */
+function walkGif() {
   const walk = state.composites.TV;
-  if (!walk) return toast('Nothing to export: no part has a walk sprite.');
+  if (!walk) return null;
   const f = frameOf('TV', walk.image, walk.frame);
   const rows = $('walk-all').checked ? [...Array(f.rows).keys()] : [Math.min(state.walkDir, f.rows - 1)];
   const steps = animationColumns(f.cols).map((col) => rows.map((row) => [col, row]));
   const name = `${safeFileName(state.character.name)}_walk${rows.length > 1 ? '' : `_${DIRECTIONS[rows[0]]?.toLowerCase() || rows[0]}`}.gif`;
-  saveGif(name, (zoom) => gifOf(walk, steps, zoom));
-});
+  return { name, make: (zoom) => gifOf(walk, steps, zoom) };
+}
 
-$('gif-sv').addEventListener('click', () => {
+/** The battler GIF: the motion shown. */
+function battlerGif() {
   const sv = state.composites.SV;
-  if (!sv) return toast('Nothing to export: no part has a battler.');
+  if (!sv) return null;
   const f = frameOf('SV', sv.image, sv.frame);
   const m = state.svMotion;
   // RPG Maker's battler: 18 motions of 3 frames, in 2 blocks of 9 columns.
@@ -7409,26 +7465,45 @@ $('gif-sv').addEventListener('click', () => {
     ? PATTERN.map((k) => [[Math.floor(m / 6) * 3 + k, m % 6]])
     : animationColumns(f.cols).map((col) => [[col, m % f.rows]]);
   const motion = (SV_MOTIONS[m] || String(m)).toLowerCase();
-  const name = `${safeFileName(state.character.name)}_battler_${motion}.gif`;
-  saveGif(name, (zoom) => gifOf(sv, steps, zoom));
-});
+  return { name: `${safeFileName(state.character.name)}_battler_${motion}.gif`, make: (zoom) => gifOf(sv, steps, zoom) };
+}
+
+/** The damage GIF: its poses one after another. */
+function damageGif() {
+  const d = state.composites.TVD;
+  if (!d) return null;
+  const f = frameOf('TVD', d.image, d.frame);
+  const steps = [...Array(f.rows).keys()].flatMap((row) => [...Array(f.cols).keys()].map((col) => [[col, row]]));
+  return { name: `${safeFileName(state.character.name)}_damage.gif`, make: (zoom) => gifOf(d, steps, zoom) };
+}
+
+function exportGifs(want) {
+  const gifs = [
+    want('TV') && sheetOn('TV') && walkGif(),
+    want('TVD') && sheetOn('TVD') && damageGif(),
+    want('SV') && sheetOn('SV') && battlerGif(),
+  ].filter(Boolean);
+  if (!gifs.length) return toast('Nothing to animate: pick the walk, damage or battler (portraits are still pictures).');
+  saveGifs(gifs);
+}
 
 /**
- * Saves a GIF. Enlarged (size above 1x): first shown next to the original size, to save or cancel.
- * @param {(zoom:number) => Uint8Array} make the GIF at a size
+ * Saves GIFs. Enlarged (size above 1x): the first is shown next to its original size first, to
+ * save them or cancel.
+ * @param {{name:string, make:(zoom:number) => Uint8Array}[]} gifs
  */
-function saveGif(name, make) {
+function saveGifs(gifs) {
   const zoom = Number($('gif-zoom').value) || 1;
   const save = () => {
-    downloadBlob(new Blob([make(zoom)], { type: 'image/gif' }), name);
-    toast(`Saved ${name}.`);
+    for (const g of gifs) downloadBlob(new Blob([g.make(zoom)], { type: 'image/gif' }), g.name);
+    toast(`Saved ${gifs.map((g) => g.name).join(', ')}.`);
   };
   if (zoom === 1) return save();
-  const urls = [1, zoom].map((z) => URL.createObjectURL(new Blob([make(z)], { type: 'image/gif' })));
+  const urls = [1, zoom].map((z) => URL.createObjectURL(new Blob([gifs[0].make(z)], { type: 'image/gif' })));
   $('gif-before').src = urls[0];
   $('gif-after').src = urls[1];
   $('gif-after-label').textContent = `${zoom}x`;
-  $('gif-preview-name').textContent = name;
+  $('gif-preview-name').textContent = gifs.length > 1 ? `${gifs[0].name} (and ${gifs.length - 1} more)` : gifs[0].name;
   const dialog = $('gif-preview');
   dialog.returnValue = '';
   dialog.addEventListener('close', () => {
@@ -7444,17 +7519,17 @@ function pngBytes(image) {
 }
 
 // RPG Maker Unite: every animation its own picture (frames side by side), all in one zip.
-$('unite-export').addEventListener('click', async () => {
+async function exportUnite(want = () => true) {
   const name = safeFileName(state.character.name);
   const strips = [];
-  const walk = sheetOn('TV') && state.composites.TV;
+  const walk = want('TV') && sheetOn('TV') && state.composites.TV;
   if (walk) {
     const f = frameOf('TV', walk.image, walk.frame);
     for (let row = 0; row < f.rows; row++) {
       strips.push([`${name}/walk_${(DIRECTIONS[row] || `row${row + 1}`).toLowerCase()}.png`, uniteStrip(walk.image, f, animationColumns(f.cols).map((col) => [col, row]))]);
     }
   }
-  const sv = sheetOn('SV') && state.composites.SV;
+  const sv = want('SV') && sheetOn('SV') && state.composites.SV;
   if (sv) {
     const f = frameOf('SV', sv.image, sv.frame);
     const motions = f.cols === 9 && f.rows === 6
@@ -7462,12 +7537,12 @@ $('unite-export').addEventListener('click', async () => {
       : [...Array(f.rows).keys()].map((row) => [`row${row + 1}`, [...Array(f.cols).keys()].map((col) => [col, row])]);
     for (const [motion, cells] of motions) strips.push([`${name}/battler_${motion.toLowerCase()}.png`, uniteStrip(sv.image, f, cells)]);
   }
-  const damage = sheetOn('TVD') && state.composites.TVD;
+  const damage = want('TVD') && sheetOn('TVD') && state.composites.TVD;
   if (damage) {
     const f = frameOf('TVD', damage.image, damage.frame);
     strips.push([`${name}/damage.png`, uniteStrip(damage.image, f, [...Array(f.rows).keys()].flatMap((row) => [...Array(f.cols).keys()].map((col) => [col, row])))]);
   }
-  if (sheetOn('FG') && state.composites.FG) strips.push([`${name}/portrait.png`, state.composites.FG.image]);
+  if (want('FG') && sheetOn('FG') && state.composites.FG) strips.push([`${name}/portrait.png`, state.composites.FG.image]);
   if (!strips.length) return toast('Nothing to export: no sheet has parts.');
   await withBusy('Making the Unite pictures', async () => {
     const files = [];
@@ -7475,7 +7550,7 @@ $('unite-export').addEventListener('click', async () => {
     downloadBlob(new Blob([zipFiles(files)], { type: 'application/zip' }), `${name}_unite.zip`);
   });
   toast(`Saved ${name}_unite.zip: ${strips.length} pictures for Unite.`);
-});
+}
 
 $('save-character').addEventListener('click', () => {
   const json = serializeCharacter(state.character, state.customGradients);

@@ -504,10 +504,13 @@ try {
     check('taller sprites make the walk frames taller', await evaluate(`document.getElementById('walk-canvas').height > 48 && document.getElementById('walk-canvas').width === 48`), await evaluate(`document.getElementById('walk-canvas').height`));
     await evaluate(`document.getElementById('taller-toggle').click()`);
     await sleep(900);
-    await click('#gif-walk');
+    // Export: Walk as an animated GIF, then everything for Unite.
+    await evaluate(`(() => { document.getElementById('export-images').click(); document.querySelector('#export-format [data-format="gif"]').click(); document.querySelector('#export-buttons [data-export="TV"]').click(); return document.querySelector('#export-buttons [data-export="all"]').classList.contains('on'); })()`);
+    check('picking Walk turns All off', await evaluate(`!document.querySelector('#export-buttons [data-export="all"]').classList.contains('on') && document.querySelector('#export-buttons [data-export="TV"]').classList.contains('on')`));
+    await click('#export-now');
     await sleep(300);
     check('a walk GIF is saved', await evaluate(`/_walk(_[a-z]+)?\.gif/.test(document.getElementById('toast').textContent)`), await evaluate(`document.getElementById('toast').textContent`));
-    await click('#unite-export');
+    await evaluate(`(() => { document.getElementById('export-images').click(); const f = document.getElementById('export-for'); f.value = 'unite'; f.dispatchEvent(new Event('change')); document.querySelector('#export-buttons [data-export="all"]').click(); document.getElementById('export-now').click(); f.value = 'rm'; f.dispatchEvent(new Event('change')); document.querySelector('#export-format [data-format="png"]').click(); })()`);
     await sleep(1500);
     check('a Unite zip is saved, one picture per animation', await evaluate(`document.getElementById('toast').textContent.includes('_unite.zip: 24 pictures')`), await evaluate(`document.getElementById('toast').textContent`));
     await toggle('smooth-pixels', true);

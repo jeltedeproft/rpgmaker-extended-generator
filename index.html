@@ -32,35 +32,13 @@
         </div>
       </div>
       <div class="menu" id="save-menu">
-        <button type="button" class="menu-button" id="save-menu-button" aria-haspopup="menu" aria-expanded="false" disabled>Save ▾</button>
+        <button type="button" class="menu-button" id="save-menu-button" aria-haspopup="menu" aria-expanded="false" disabled>Save / Export ▾</button>
         <div class="menu-list" role="menu" hidden>
           <button type="button" class="menu-item" id="save-character" disabled title="Download the character as a file; it is also kept in the Gallery">Save character</button>
           <button type="button" class="menu-item" id="export-setup" disabled title="A file with how your files are read (what you assigned, colour masks, new body types), sheet sizes, sets, your colours, rules and options, to share with others">Save setup…</button>
           <button type="button" class="menu-item" id="save-set" disabled title="Save some of the current parts, with their colours, to put on other characters">Save set…</button>
+          <button type="button" class="menu-item primary-item" id="export-images" disabled title="Save the sheets as pictures for your game, as GIFs, or for Unite">Export image(s)…</button>
           <button type="button" class="menu-item" id="open-multi" disabled title="Up to 8 characters in one picture, like Actor1.png: their walk sheets 4 x 2 for img/characters and their faces 4 x 2 for img/faces">Several characters in one picture…</button>
-        </div>
-      </div>
-      <div class="menu" id="export-menu">
-        <button type="button" class="menu-button" id="export-menu-button" aria-haspopup="menu" aria-expanded="false" disabled title="Save the sheets as pictures for your game, GIFs, or for Unite">Export ▾</button>
-        <div class="menu-list export-panel" role="menu" hidden>
-          <div class="export" id="export-buttons">
-            <button data-export="FG" title="The face picture, for img/faces">Portrait</button>
-            <button data-export="TV">Walk</button>
-            <button data-export="TVD">Damage</button>
-            <button data-export="SV">Battler</button>
-            <button data-export="all" class="primary">All</button>
-          </div>
-          <div class="export gif-export">
-            <button type="button" id="gif-walk" title="The walk animation: the direction shown, or all four side by side when All walk directions is ticked">Walk GIF</button>
-            <button type="button" id="gif-sv" title="The battler motion shown (Walk, Wait, Chant...)">Battler GIF</button>
-            <button type="button" id="unite-export" title="For RPG Maker Unite: one picture per animation, its frames side by side with 1 pixel around and 2 between. The walk in 4 directions (down, left, right, up), the battler in its 18 motions and the damage poses, in one zip">Unite (zip)</button>
-            <label class="lock" title="Each pixel becomes this many pixels: sprites are small">size
-              <select id="gif-zoom"><option value="1" selected>1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
-          </div>
-          <label class="lock" title="The engine lifts characters 6 pixels; a file named !$Name.png is drawn where it stands. For objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> <span>Save the walk sheet as <code>!$</code>name.png: drawn without RPG Maker's 6-pixel lift</span></label>
-          <details class="export-help"><summary>Where the files go</summary>
-            <p class="muted small">Walk sheets are saved as <code>$name.png</code> (one character; with <code>$</code> any size works) for <code>img/characters</code>, battlers for <code>img/sv_actors</code>, portraits for <code>img/faces</code>. "All" also saves a <code>_credits.txt</code>. GIFs are transparent with Background on Checks or Transparent. "Unite (zip)": one picture per animation, as RPG Maker Unite's asset manager takes them.</p>
-          </details>
         </div>
       </div>
       <div class="menu" id="gallery-menu">
@@ -773,6 +751,46 @@
         <label>What is left as <select id="extract-rest-part"></select></label>
         <button type="button" id="extract-add" class="primary">Add as parts</button>
         <button type="button" id="extract-save" class="small-button" title="Both pictures as PNG files">Save as PNG</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="export-dialog" class="assign-form-dialog export-dialog">
+    <form method="dialog" class="assign-form">
+      <div class="files-head">
+        <h3>Export image(s)</h3>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <label class="export-for">Export for
+        <select id="export-for">
+          <option value="rm">RPG Maker 2000 – MZ</option>
+          <option value="unite">RPG Maker Unite (zip)</option>
+        </select>
+      </label>
+      <div class="export-label muted small">Sheets <span>(pick one or more, or All)</span></div>
+      <div class="export export-toggles" id="export-buttons">
+        <button type="button" data-export="FG" title="The face picture, for img/faces">Portrait</button>
+        <button type="button" data-export="TV">Walk</button>
+        <button type="button" data-export="TVD">Damage</button>
+        <button type="button" data-export="SV">Battler</button>
+        <button type="button" data-export="all">All</button>
+      </div>
+      <div id="export-format-box">
+        <div class="export-label muted small">As</div>
+        <div class="export export-toggles" id="export-format">
+          <button type="button" data-format="png" title="The sheets as pictures">Static PNG</button>
+          <button type="button" data-format="gif" title="The walk (the direction shown, or all four when All walk directions is ticked), the battler motion shown and the damage poses, animated">Animated GIF</button>
+          <label class="lock" id="gif-size" title="Each pixel becomes this many pixels: sprites are small. Above 1x you see it next to the original first">size
+            <select id="gif-zoom"><option value="1" selected>1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
+        </div>
+        <label class="lock" id="no-shift-box" title="Drawn without the 6-pixel lift: a file named !$Name.png stands where it is, for objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> <span>Save as <code>!$</code>name.png</span></label>
+      </div>
+      <p id="export-note" class="muted small"></p>
+      <details class="export-help"><summary>Where the files go</summary>
+        <p class="muted small">Walk sheets are saved as <code>$name.png</code> (one character; with <code>$</code> any size works) for <code>img/characters</code>, battlers for <code>img/sv_actors</code>, portraits for <code>img/faces</code>. "All" also saves a <code>_credits.txt</code>. GIFs are transparent with Background on Checks or Transparent. Unite: one picture per animation, as RPG Maker Unite's asset manager takes them.</p>
+      </details>
+      <div class="dialog-actions">
+        <button type="button" id="export-now" class="primary">Export now</button>
       </div>
     </form>
   </dialog>
