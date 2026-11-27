@@ -737,10 +737,9 @@ function renderSidebar() {
   $('part-list').replaceChildren(...rows);
 
   renderSets();
-  $('packs').replaceChildren(
-    el('div', { textContent: 'Packs' }),
-    ...lib.packs.map((p) => el('div', { textContent: `• ${p.name} (${p.fileCount} files)` })),
-  );
+  const openPacks = el('button', { type: 'button', className: 'packs-head', textContent: 'Packs and Files', title: 'The packs and files you opened: take one out, or forget them all' });
+  openPacks.addEventListener('click', () => openFilesDialog('packs'));
+  $('packs').replaceChildren(openPacks, ...lib.packs.map((p) => el('div', { textContent: `• ${p.name} (${p.fileCount} files)` })));
 }
 
 /** The part editor's tabs: [id, label, what's in it]. "All" shows everything on one long page. */
@@ -3773,8 +3772,9 @@ function fileCard(file, observer) {
   ]);
 }
 
-const TAB_LABELS = { queue: 'To assign', odd: 'Odd names', hand: 'Assigned by you', all: 'All files', removed: 'Removed', folders: 'Folders' };
+const TAB_LABELS = { packs: 'Packs', queue: 'To assign', odd: 'Odd names', hand: 'Assigned by you', all: 'All files', removed: 'Removed', folders: 'Folders' };
 const TAB_NOTES = {
+  packs: 'The packs you opened: folders, dropped files and zips. Take one out, or forget them all. The files on your computer are never touched.',
   queue: 'Files the generator could not read from their name. Assign them one by one, or pick one.',
   odd: 'Files with unusual names, read by guessing. Reassign any that were guessed wrong.',
   hand: 'Files you assigned. Reassign or unassign them if one went wrong.',
@@ -3798,6 +3798,33 @@ function renderFiles() {
     const tab = b.dataset.tab;
     b.classList.toggle('active', tab === filesTab);
     b.textContent = tab in counts ? `${TAB_LABELS[tab]} (${counts[tab]})` : TAB_LABELS[tab];
+  }
+  if (filesTab === 'packs') {
+    $('files-start').hidden = true;
+    $('files-more').hidden = true;
+    $('files-note').textContent = TAB_NOTES.packs;
+    const packs = state.library.packs.filter((p) => !query || p.name.toLowerCase().includes(query));
+    const forgetAll = el('button', { type: 'button', className: 'small-button', textContent: 'Forget all',
+      title: 'Every pack, what you assigned or removed in them, your Gallery, sets, randomize rules and sheet templates. Undo brings the last four back' });
+    forgetAll.addEventListener('click', () => forgetEverything());
+    $('files-list').replaceChildren(
+      ...packs.map((p) => {
+        const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Take out', title: p.folderKey ? 'Take it out and forget the folder (and what you assigned in it)' : 'Take its parts out' });
+        remove.addEventListener('click', async () => {
+          if (p.folderKey) await forgetAndUnload(p.folderKey);
+          else {
+            forgetPackSettings(p.name);
+            unloadPack(p.name);
+          }
+          renderRecentFolders();
+          renderFiles();
+          toast(`Took "${p.name}" out.`);
+        });
+        return el('div', { className: 'file-row' }, [el('span', { textContent: `${p.name} (${p.fileCount} file${p.fileCount === 1 ? '' : 's'})${p.folderKey ? ' · remembered folder' : ''}` }), remove]);
+      }),
+      ...(state.library.packs.length ? [forgetAll] : [el('p', { className: 'muted', textContent: 'No packs open.' })]),
+    );
+    return;
   }
   if (filesTab === 'folders') {
     $('files-start').hidden = true;
@@ -5417,6 +5444,52 @@ async function forgetAndUnload(key) {
   return packs.length;
 }
 
+/**
+ * Forget all: every pack (remembered folders, dropped files, zips), what was assigned or removed in
+ * them, the Gallery, sets, randomize rules and sheet templates. Undo brings the last four back.
+ */
+async function forgetEverything() {
+  const folders = canRememberFolders ? await rememberedFolders() : [];
+  let removed = 0;
+  for (const f of folders) removed += await forgetAndUnload(f.key);
+  // Packs that aren't remembered folders (dropped files, zips, extracted or stretched parts).
+  const others = state.library.packs.map((p) => p.name);
+  for (const name of others) {
+    forgetPackSettings(name);
+    unloadPack(name);
+  }
+  removed += others.length;
+  // Everything goes: saved characters, sets and randomize rules too. Undo brings those back.
+  const gallery = galleryEntries();
+  const sets = state.settings.sets || [];
+  const savedRules = state.settings.randomRules;
+  // Sheet templates: frame sizes, sheets turned off or renamed, sheets added.
+  const TEMPLATE_FIELDS = ['templates', 'sheetOptions', 'extraSheets'];
+  const savedTemplates = Object.fromEntries(TEMPLATE_FIELDS.filter((k) => state.settings[k] !== undefined).map((k) => [k, state.settings[k]]));
+  const hadTemplates = Object.values(savedTemplates).some((v) => (Array.isArray(v) ? v.length : Object.keys(v || {}).length));
+  saveGallery([]);
+  state.settings.sets = [];
+  delete state.settings.randomRules;
+  for (const k of TEMPLATE_FIELDS) delete state.settings[k];
+  saveSettings();
+  if (hadTemplates) sheetsChanged();
+  renderSets();
+  renderRecentFolders();
+  const kept = gallery.length || sets.length || savedRules || hadTemplates;
+  toast(`Forgot ${folders.length + others.length > 1 ? 'the packs' : 'the pack'} and what you assigned in them${removed ? ', and took their parts out' : ''}${gallery.length || sets.length ? `, your ${gallery.length} saved character${gallery.length === 1 ? '' : 's'} and ${sets.length} set${sets.length === 1 ? '' : 's'}` : ''}${savedRules || hadTemplates ? `, and your ${[savedRules && 'randomize rules', hadTemplates && 'sheet templates'].filter(Boolean).join(' and ')}` : ''}.`,
+    10000, kept ? { label: 'Undo', run: () => {
+      saveGallery(gallery);
+      state.settings.sets = sets;
+      if (savedRules) state.settings.randomRules = savedRules;
+      Object.assign(state.settings, savedTemplates);
+      saveSettings();
+      if (hadTemplates) sheetsChanged();
+      renderSets();
+      toast('Your saved characters, sets, rules and sheet templates are back.');
+    } } : undefined);
+  renderFiles();
+}
+
 /** Opens remembered folders; asks for access where needed (only inside a click). */
 async function reopenFolders(folders, ask) {
   let reopened = 0;
@@ -5457,7 +5530,7 @@ async function renderRecentInto(box, note) {
   const openAll = el('button', { className: 'primary', textContent: folders.length > 1 ? `Reopen all ${folders.length}` : `Reopen ${folders[0].key}` });
   if (folders.length === 1) openAll.title = `Reopen ${folders[0].key}`;
   openAll.addEventListener('click', () => reopenFolders(folders, true));
-  box.replaceChildren(el('span', { className: 'muted small', textContent: 'Last time:' }), openAll);
+  box.replaceChildren(openAll);
   if (folders.length > 1) {
     for (const f of folders) {
       const open = el('button', { type: 'button', textContent: f.key, title: `Open only ${f.key}` });
@@ -5473,38 +5546,7 @@ async function renderRecentInto(box, note) {
   }
   const forgetAll = el('button', { className: 'forget', textContent: folders.length > 1 ? 'Forget all' : 'Forget',
     title: 'Forget these folders, what you assigned, removed or decided about look-alikes in them, your saved characters (Gallery), sets, randomize rules and sheet templates' });
-  forgetAll.addEventListener('click', async () => {
-    let removed = 0;
-    for (const f of folders) removed += await forgetAndUnload(f.key);
-    // Everything goes: saved characters, sets and randomize rules too. Undo brings those back.
-    const gallery = galleryEntries();
-    const sets = state.settings.sets || [];
-    const savedRules = state.settings.randomRules;
-    // Sheet templates: frame sizes, sheets turned off or renamed, sheets added.
-    const TEMPLATE_FIELDS = ['templates', 'sheetOptions', 'extraSheets'];
-    const savedTemplates = Object.fromEntries(TEMPLATE_FIELDS.filter((k) => state.settings[k] !== undefined).map((k) => [k, state.settings[k]]));
-    const hadTemplates = Object.values(savedTemplates).some((v) => (Array.isArray(v) ? v.length : Object.keys(v || {}).length));
-    saveGallery([]);
-    state.settings.sets = [];
-    delete state.settings.randomRules;
-    for (const k of TEMPLATE_FIELDS) delete state.settings[k];
-    saveSettings();
-    if (hadTemplates) sheetsChanged();
-    renderSets();
-    renderRecentFolders();
-    const kept = gallery.length || sets.length || savedRules || hadTemplates;
-    toast(`Forgot ${folders.length > 1 ? 'the folders' : `"${folders[0].key}"`} and what you assigned in them${removed ? ', and took their parts out' : ''}${gallery.length || sets.length ? `, your ${gallery.length} saved character${gallery.length === 1 ? '' : 's'} and ${sets.length} set${sets.length === 1 ? '' : 's'}` : ''}${savedRules || hadTemplates ? `, and your ${[savedRules && 'randomize rules', hadTemplates && 'sheet templates'].filter(Boolean).join(' and ')}` : ''}.`,
-      10000, kept ? { label: 'Undo', run: () => {
-        saveGallery(gallery);
-        state.settings.sets = sets;
-        if (savedRules) state.settings.randomRules = savedRules;
-        Object.assign(state.settings, savedTemplates);
-        saveSettings();
-        if (hadTemplates) sheetsChanged();
-        renderSets();
-        toast('Your saved characters, sets, rules and sheet templates are back.');
-      } } : undefined);
-  });
+  forgetAll.addEventListener('click', () => forgetEverything());
   box.append(forgetAll);
 }
 

@@ -397,6 +397,10 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .gif-compare { display: flex; gap: 16px; align-items: flex-end; overflow: auto; max-height: 70vh; }
 .gif-compare figure { margin: 0; display: grid; gap: 4px; justify-items: center; }
 .gif-compare img { image-rendering: pixelated; background: repeating-conic-gradient(#0000 0 25%, #8882 0 50%) 0 0 / 12px 12px; }
+#sidebar:not([hidden]) { display: flex; flex-direction: column; }
+#sidebar .packs { margin-top: auto; padding-top: 12px; }
+.packs-head { font: inherit; font-size: 12px; color: var(--muted); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline dotted; }
+.packs-head:hover { color: var(--text); }
 .extract-dialog { width: min(980px, calc(100vw - 32px)); }
 .extract-dialog .assign-form { width: auto; }
 .extract-controls, .extract-out { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 12px; margin: 6px 0; }
