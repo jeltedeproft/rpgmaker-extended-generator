@@ -390,6 +390,14 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .stretch-item { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
 .stretch-item input.tpl-num { width: 50px; }
 .stretch-item .small-button.active { background: var(--accent); color: #10141c; }
+.extract-dialog { width: min(980px, calc(100vw - 32px)); }
+.extract-dialog .assign-form { width: auto; }
+.extract-controls, .extract-out { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 12px; margin: 6px 0; }
+.extract-controls .tpl-num { width: 52px; }
+.extract-views { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.extract-views figure { margin: 0; display: grid; gap: 4px; max-width: min(100%, 320px); }
+.extract-views canvas { image-rendering: pixelated; max-width: 100%; background: repeating-conic-gradient(#0000 0 25%, #8882 0 50%) 0 0 / 12px 12px; border: 1px solid var(--line); }
+#extract-canvas { cursor: crosshair; }
 .use-dialog { width: min(620px, calc(100vw - 32px)); overflow-x: hidden; }
 .use-dialog .assign-form { width: auto; }
 .use-options { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 6px; }

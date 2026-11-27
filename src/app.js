@@ -13,6 +13,7 @@ import { WALK_LAYOUTS } from './xp.js';
 import { cropBox, cropScale } from './crop.js';
 import { diagonalFallback, join8 } from './dir8.js';
 import { normalizeStretch, isStretched, stretchFrames, lineY } from './stretch.js';
+import { selectByColour, growSelection, keepSelected, removeSelected, nearestOutside, selectedCount } from './extract.js';
 import { packCharacters, MULTI_COLS, MULTI_ROWS } from './multi.js';
 import { uniteStrip } from './unite.js';
 import { zipFiles, unzip } from './zip.js';
@@ -6274,6 +6275,191 @@ async function saveStretchedParts() {
   const zip = zipFiles(await Promise.all(files.map(async (f) => ({ name: f.path, bytes: await fileBytes(f.src) }))));
   downloadBlob(new Blob([zip], { type: 'application/zip' }), `${safeFileName(state.character.name || 'character')}_stretched_parts.zip`);
 }
+
+// ---------- extract: a piece of a picture (e.g. the eyes) made a part of its own ----------
+
+/** {sheet, sources: [{label, image, mask}], seeds: [{x, y, out}], zoom} while the dialog is open. */
+let extracting = null;
+
+function openExtract() {
+  const sheet = $('layer-sheet').value;
+  const c = state.composites[sheet];
+  if (!c) return;
+  const base = sheetBase(sheet);
+  const sources = [{ label: `The ${sheetLabel(sheet).toLowerCase()} as shown (every part)`, image: c.plain?.image || c.image, mask: null, part: null }];
+  // The picked part's own pictures on this sheet, with their colour masks.
+  const key = state.selectedPart && state.selectedPart !== ALL_COLOURS ? itemOfKey(state.selectedPart) : null;
+  const variant = key && state.library.variants.get(state.character.parts[key]);
+  if (variant) {
+    for (const l of sheetLayers(variant, base, state.library)) {
+      if (!l.base?.pixels || l.base.cells) continue;
+      sources.push({ label: `${partOfKey(key)}: its picture ${l.key || l.layer}`, image: l.base.pixels, mask: (l.paint || l.mask)?.pixels || null, part: variant.part });
+    }
+  }
+  extracting = { sheet: base, label: sheetLabel(sheet), sources, seeds: [] };
+  $('extract-title').textContent = `Extract a part: ${sheetLabel(sheet)}`;
+  $('extract-source').replaceChildren(...sources.map((src, i) => el('option', { value: i, textContent: src.label })));
+  $('extract-source').value = sources.length > 1 ? '1' : '0';
+  const parts = [...new Set([...PART_ORDER, ...partNames(state.library, state.character.bodyType)])];
+  $('extract-part').replaceChildren(...parts.map((p) => el('option', { value: p, textContent: p })));
+  $('extract-part').value = parts.includes('Eyes') ? 'Eyes' : parts[0];
+  $('extract-rest-part').replaceChildren(el('option', { value: '', textContent: "don't add it" }), ...parts.map((p) => el('option', { value: p, textContent: p })));
+  $('extract-rest-part').value = '';
+  extractSourceChanged();
+  $('extract-dialog').showModal();
+}
+$('focus-extract').addEventListener('click', openExtract);
+
+function extractSource() {
+  return extracting?.sources[Number($('extract-source').value)] || extracting?.sources[0];
+}
+
+function extractSourceChanged() {
+  const src = extractSource();
+  $('extract-by').value = src.mask ? 'mask' : 'picture';
+  $('extract-by').querySelector('[value="mask"]').disabled = !src.mask;
+  if (src.part && $('extract-rest-part').querySelector(`[value="${CSS.escape(src.part)}"]`)) $('extract-rest-part').value = src.part;
+  extracting.seeds = [];
+  drawExtract();
+}
+
+/** The picked pixels: the colours clicked, less the ones Shift-clicked, grown or shrunk. */
+function extractSelection() {
+  const src = extractSource();
+  const opts = {
+    by: $('extract-by').value === 'mask' && src.mask ? src.mask : src.image,
+    tolerance: within(Number($('extract-tolerance').value), 0, 128, 12),
+    touching: $('extract-touching').checked,
+  };
+  const take = extracting.seeds.filter((s) => !s.out);
+  const back = extracting.seeds.filter((s) => s.out);
+  let sel = selectByColour(src.image, take, opts);
+  if (back.length) {
+    const minus = selectByColour(src.image, back, opts);
+    for (let i = 0; i < sel.length; i++) if (minus[i]) sel[i] = 0;
+  }
+  const grow = within(Math.round(Number($('extract-grow').value)), -4, 4, 0);
+  if (grow) {
+    sel = growSelection(sel, src.image.width, src.image.height, grow);
+    // Only where there is something to take.
+    for (let i = 0; i < sel.length; i++) if (src.image.data[i * 4 + 3] === 0) sel[i] = 0;
+  }
+  return sel;
+}
+
+/** The piece and what is left (and their colour masks, when the picture has one). */
+function extractResult() {
+  const src = extractSource();
+  const sel = extractSelection();
+  const fill = $('extract-fill').checked;
+  const from = fill ? nearestOutside(src.image, sel) : null;
+  const mask = src.mask && src.mask.width === src.image.width && src.mask.height === src.image.height ? src.mask : null;
+  return {
+    sel,
+    piece: keepSelected(src.image, sel),
+    rest: removeSelected(src.image, sel, { fill, from }),
+    pieceMask: mask && keepSelected(mask, sel),
+    restMask: mask && removeSelected(mask, sel, { fill, from }),
+  };
+}
+
+function drawExtract() {
+  if (!extracting) return;
+  const src = extractSource();
+  const { sel, piece, rest } = extractResult();
+  const img = src.image;
+  const room = Math.min(window.innerWidth - 120, 940) / 3;
+  const zoom = Math.max(1, Math.min(8, Math.floor(room / img.width), Math.floor(Math.min(560, window.innerHeight - 330) / img.height)));
+  extracting.zoom = zoom;
+  const show = (id, image, overlay = null) => {
+    const canvas = $(id);
+    canvas.width = image.width * zoom;
+    canvas.height = image.height * zoom;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(toCanvas(image), 0, 0, canvas.width, canvas.height);
+    if (!overlay) return;
+    ctx.fillStyle = 'rgba(255, 40, 200, 0.6)';
+    for (let i = 0; i < overlay.length; i++) if (overlay[i]) ctx.fillRect((i % image.width) * zoom, Math.floor(i / image.width) * zoom, zoom, zoom);
+  };
+  show('extract-canvas', $('extract-by').value === 'mask' && src.mask ? src.mask : img, sel);
+  show('extract-piece', piece);
+  show('extract-rest', rest);
+  const n = selectedCount(sel);
+  $('extract-count').textContent = n ? `Picked: ${n} pixels (pink)` : 'Click a colour to pick it.';
+  $('extract-add').disabled = $('extract-save').disabled = !n;
+}
+
+$('extract-canvas').addEventListener('click', (e) => {
+  if (!extracting) return;
+  const canvas = $('extract-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const k = canvas.width / (rect.width || 1);
+  const x = Math.floor(((e.clientX - rect.left) * k) / extracting.zoom);
+  const y = Math.floor(((e.clientY - rect.top) * k) / extracting.zoom);
+  extracting.seeds.push({ x, y, out: e.shiftKey });
+  drawExtract();
+});
+$('extract-source').addEventListener('change', extractSourceChanged);
+for (const id of ['extract-by', 'extract-tolerance', 'extract-touching', 'extract-grow', 'extract-fill']) $(id).addEventListener('change', drawExtract);
+$('extract-clear').addEventListener('click', () => {
+  extracting.seeds = [];
+  drawExtract();
+});
+$('extract-dialog').addEventListener('close', () => {
+  extracting = null;
+});
+
+/** The next free part number of a part in a pack: "07". */
+function nextPid(packName, bodyType, part, taken = new Set()) {
+  let max = 0;
+  for (const v of state.library.variants.values()) {
+    if (v.pack !== packName || v.bodyType !== bodyType || v.part !== part) continue;
+    max = Math.max(max, Number(/^p(\d+)/.exec(v.pid)?.[1]) || 0);
+  }
+  let n = max + 1;
+  while (taken.has(`${part}${n}`)) n++;
+  taken.add(`${part}${n}`);
+  return String(n).padStart(2, '0');
+}
+
+$('extract-add').addEventListener('click', async () => {
+  if (!extracting) return;
+  const { piece, rest, pieceMask, restMask } = extractResult();
+  const PACK = 'Extracted';
+  const body = state.character.bodyType;
+  const sheet = extracting.sheet;
+  const taken = new Set();
+  const entries = [];
+  const added = [];
+  const addOne = async (part, image, mask) => {
+    const nn = nextPid(PACK, body, part, taken);
+    const dir = `${PACK}/${body}/`;
+    entries.push({ path: `${dir}${sheet}_${part}_p${nn}.png`, src: await pngBlob(image) });
+    if (mask) entries.push({ path: `${dir}${sheet}_${part}_p${nn}_c.png`, src: await pngBlob(mask) });
+    added.push(`${part} p${nn}`);
+  };
+  await addOne($('extract-part').value, piece, pieceMask);
+  if ($('extract-rest-part').value) await addOne($('extract-rest-part').value, rest, restMask);
+  $('extract-dialog').close();
+  const pack = state.library.packs.find((p) => p.name === PACK);
+  if (pack) {
+    addFilesToPack(state.library, PACK, entries);
+    (pack.entries ||= []).push(...entries);
+    afterFilesChanged();
+  } else {
+    await importEntries(entries, PACK, { loose: true });
+  }
+  toast(`Added ${added.join(' and ')} (in "${PACK}") to the part lists. They last until the page is closed; Save as PNG keeps them as files.`, 10000);
+});
+
+$('extract-save').addEventListener('click', async () => {
+  if (!extracting) return;
+  const { piece, rest } = extractResult();
+  const name = safeFileName(state.character.name || 'character');
+  downloadImage(piece, `${name}_${extracting.sheet}_${$('extract-part').value}.png`);
+  downloadImage(rest, `${name}_${extracting.sheet}_rest.png`);
+});
 
 // ---------- close up: one image big, the picked part glowing, moved by mouse or arrow keys ----------
 
