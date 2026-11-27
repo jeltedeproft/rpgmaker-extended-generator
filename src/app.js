@@ -7430,7 +7430,7 @@ function croppedPortrait(crop, t, byId, character = state.character) {
 
 // 8 directions: the diagonals are drawn like the walk sheet, from each picture's diagonal rows: its
 // own (a part made with 8 rows) or, for a part with 4 directions, made from its 4 directions: turned
-// (the front or back over the side picture), or the side each diagonal faces.
+// (the front or back picture turned toward the side, see dir8.js), or the side each diagonal faces.
 const diagonalPictures = { turned: new WeakMap(), more: new WeakMap(), side: new WeakMap() };
 function diagonalOf(ref, mode) {
   if (!ref?.pixels) return null;
@@ -7616,7 +7616,7 @@ function renderTemplates() {
     }
     // 8 directions: how the diagonals of parts drawn in 4 directions are made.
     if (base === 'DIR8' && onDiagonals) {
-      const pick = el('select', { className: 'tpl-diagonals', title: 'Diagonals of parts drawn in 4 directions. Turned: the front (or back) turned toward the side, over the side picture; it may need touching up, e.g. wide wings. Side view: the side each diagonal faces' },
+      const pick = el('select', { className: 'tpl-diagonals', title: 'Diagonals of parts drawn in 4 directions. Turned: the front (or back) turned toward the side, in one outline; going up, the side of the face peeks out. Turned more: further. Side view: the side each diagonal faces' },
         Object.entries(DIAGONAL_MODES).map(([key, m]) => el('option', { value: key, textContent: `Diagonals: ${m.label}`, selected: (diagonals || 'turned') === key })));
       pick.addEventListener('change', () => onDiagonals(pick.value));
       actions.unshift(pick);
