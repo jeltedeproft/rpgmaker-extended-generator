@@ -525,7 +525,7 @@ $('use-dialog').addEventListener('close', () => {
 function unsupportedHint(gradientFiles) {
   if (gradientFiles) return `only colour sheets were found (${gradientFiles}); they've been added to the colour lists.`;
   return 'no files are named like MV/MZ generator parts (FG_..., TV_..., SV_...) or VX Ace ones (Face/..., Mini/...). '
-    + 'RPG Maker XP and 2000/2003 sprites can be assigned by hand (Files → To assign); cut a 2000/2003 charset into its 8 characters first (Cut…).';
+    + 'XP and 2000/2003 sprites can be assigned by hand (Files → To assign); cut a 2000/2003 charset into its 8 characters first (Cut…).';
 }
 
 /** The Files menu: how many files wait to be assigned, and how many look-alikes there are. */
@@ -3156,7 +3156,7 @@ function setRecolourAll(on) {
 function recolourAllToggle() {
   const box = el('input', { type: 'checkbox', className: 'recolour-all', checked: state.settings.recolourAll !== false });
   box.addEventListener('change', () => setRecolourAll(box.checked));
-  return el('label', { className: 'lock', title: 'Parts drawn without a colour mask get one made by the generator, so they follow the colours like RPG Maker\'s own parts' },
+  return el('label', { className: 'lock', title: 'Parts drawn without a colour mask get one made by the generator, so they follow the colours like the generator\'s own parts' },
     [box, ' Recolour all: make every part without a colour mask recolourable']);
 }
 
@@ -4983,7 +4983,7 @@ function renderGallery() {
     if (title.startsWith('Presets') && !presets.length) continue;
     sections.push(el('h4', { textContent: `${title} (${items.length})` }));
     if (title.startsWith('Presets')) {
-      sections.push(el('p', { className: 'muted small', textContent: 'Character files (.json) that came inside the folders you opened, e.g. RPG Maker MZ\'s own generator presets or characters a pack maker included. Click one to see it, Use to load it.' }));
+      sections.push(el('p', { className: 'muted small', textContent: 'Character files (.json) that came inside the folders you opened, e.g. the MZ generator\'s own presets or characters a pack maker included. Click one to see it, Use to load it.' }));
     }
     sections.push(items.length
       ? el('div', { className: 'gallery-grid' }, items.map((i) => galleryCard(i, observer)))
@@ -6837,7 +6837,7 @@ function renderTemplates() {
     return i;
   };
   const partsSelect = (value, onChange, xp = false) => {
-    const select = el('select', { title: 'Which parts it is made of. RPG Maker XP: the walk sheet as 4 x 4 frames (stand, step, stand, other step)' }, [
+    const select = el('select', { title: 'Which parts it is made of. XP: the walk sheet as 4 x 4 frames (stand, step, stand, other step)' }, [
       ...SHEET_KEYS.map((s) => el('option', { value: s, textContent: `${SHEET_NAMES[s]} parts`, selected: s === value })),
       ...(xp ? Object.entries(WALK_LAYOUTS).map(([key, w]) => el('option', { value: key, textContent: w.label, selected: value === key })) : []),
     ]);
@@ -7197,7 +7197,7 @@ $('unite-export').addEventListener('click', async () => {
     for (const [file, image] of strips) files.push({ name: file, bytes: await pngBytes(image) });
     downloadBlob(new Blob([zipFiles(files)], { type: 'application/zip' }), `${name}_unite.zip`);
   });
-  toast(`Saved ${name}_unite.zip: ${strips.length} pictures for RPG Maker Unite.`);
+  toast(`Saved ${name}_unite.zip: ${strips.length} pictures for Unite.`);
 });
 
 $('save-character').addEventListener('click', () => {

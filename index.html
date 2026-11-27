@@ -9,20 +9,20 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>Extended Character Generator <span class="tag">MZ / MV / VX Ace / XP / 2000 / 2003</span></h1>
+    <h1>Extended Character Generator <span class="tag" title="Supports every RPG Maker from 2000 to Unite: 2000, 2003, XP, VX Ace, MV, MZ and Unite">RPG Maker</span></h1>
     <div id="busy" class="busy" role="status" aria-live="polite" hidden>
       <div class="busy-bar"><div id="busy-fill" class="busy-fill"></div></div>
       <span id="busy-label" class="busy-label"></span>
     </div>
     <div class="actions">
-      <label class="button primary" title="RPG Maker's Generator folder, an asset pack, or any folder of parts: every folder becomes its own pack">Open folder
+      <label class="button primary" title="A Generator folder, an asset pack, or any folder of parts: every folder becomes its own pack">Open folder
         <input id="folder-input" type="file" webkitdirectory multiple hidden>
       </label>
       <div class="menu" id="load-menu">
         <button type="button" class="menu-button" id="load-menu-button" aria-haspopup="menu" aria-expanded="false">Load ▾</button>
         <div class="menu-list" role="menu" hidden>
           <label class="button menu-item" title="Single part images (and their colour masks), without a folder: they become a pack of their own">Open files…<input id="files-input" type="file" accept=".png,image/png" multiple hidden></label>
-          <label class="button menu-item" id="load-character-label" title="A character file saved here, or a preset of RPG Maker MZ's generator">Load character…
+          <label class="button menu-item" id="load-character-label" title="A character file saved here, or a preset of the MZ generator">Load character…
             <input id="load-character" type="file" accept=".json,application/json" multiple hidden disabled>
           </label>
           <label class="button menu-item" title="A sets file (Gallery → Sets → Export): its sets are added to yours">Load set…<input type="file" id="import-sets" accept=".json,application/json" hidden></label>
@@ -37,11 +37,11 @@
           <button type="button" class="menu-item" id="save-character" disabled title="Download the character as a file; it is also kept in the Gallery">Save character</button>
           <button type="button" class="menu-item" id="export-setup" disabled title="A file with how your files are read (what you assigned, colour masks, new body types), sheet sizes, sets, your colours, rules and options, to share with others">Save setup…</button>
           <button type="button" class="menu-item" id="save-set" disabled title="Save some of the current parts, with their colours, to put on other characters">Save set…</button>
-          <button type="button" class="menu-item" id="open-multi" disabled title="Up to 8 characters in one picture, like RPG Maker's Actor1.png: their walk sheets 4 x 2 for img/characters and their faces 4 x 2 for img/faces">Several characters in one picture…</button>
+          <button type="button" class="menu-item" id="open-multi" disabled title="Up to 8 characters in one picture, like Actor1.png: their walk sheets 4 x 2 for img/characters and their faces 4 x 2 for img/faces">Several characters in one picture…</button>
         </div>
       </div>
       <div class="menu" id="export-menu">
-        <button type="button" class="menu-button" id="export-menu-button" aria-haspopup="menu" aria-expanded="false" disabled title="Save the sheets as pictures for RPG Maker, GIFs, or for RPG Maker Unite">Export ▾</button>
+        <button type="button" class="menu-button" id="export-menu-button" aria-haspopup="menu" aria-expanded="false" disabled title="Save the sheets as pictures for your game, GIFs, or for Unite">Export ▾</button>
         <div class="menu-list export-panel" role="menu" hidden>
           <div class="export" id="export-buttons">
             <button data-export="FG" title="The face picture, for img/faces">Portrait</button>
@@ -57,7 +57,7 @@
             <label class="lock" title="Each pixel becomes this many pixels: sprites are small">size
               <select id="gif-zoom"><option value="1">1x</option><option value="2" selected>2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
           </div>
-          <label class="lock" title="RPG Maker lifts characters 6 pixels; a file named !$Name.png is drawn where it stands. For objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> <span>Save the walk sheet as <code>!$</code>name.png: drawn without RPG Maker's 6-pixel lift</span></label>
+          <label class="lock" title="The engine lifts characters 6 pixels; a file named !$Name.png is drawn where it stands. For objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> <span>Save the walk sheet as <code>!$</code>name.png: drawn without RPG Maker's 6-pixel lift</span></label>
           <details class="export-help"><summary>Where the files go</summary>
             <p class="muted small">Walk sheets are saved as <code>$name.png</code> (one character; with <code>$</code> any size works) for <code>img/characters</code>, battlers for <code>img/sv_actors</code>, portraits for <code>img/faces</code>. "All" also saves a <code>_credits.txt</code>. GIFs are transparent with Background on Checks or Transparent. "Unite (zip)": one picture per animation, as RPG Maker Unite's asset manager takes them.</p>
           </details>
@@ -96,7 +96,7 @@
     <section id="welcome" class="welcome">
       <div class="drop-hint">
         <h2>Drop a generator folder here</h2>
-        <p>Point it at RPG Maker's <code>Generator</code> folder, an asset pack, or both. Every folder you add becomes its own pack, so nothing gets overwritten.</p>
+        <p>Point it at a <code>Generator</code> folder, an asset pack, or both. Every folder you add becomes its own pack, so nothing gets overwritten.</p>
         <p class="muted">Everything runs in your browser and no files are uploaded.</p>
         <p class="muted small">RPG Maker MZ on Steam keeps its parts in<br><code>steamapps\common\RPG Maker MZ\generator</code></p>
         <p class="muted small">VX Ace generator folders (<code>Face</code> and <code>Mini</code>) work too: their colours come painted, one swatch per colour.</p>
@@ -232,7 +232,7 @@
         <p id="pieces-status" class="note small"></p>
       </div>
       <div class="colour-options" data-tab="colours">
-        <label class="lock" title="Only for packs whose gradients run dark to light. RPG Maker's own run light to dark."><input type="checkbox" id="flip-gradient"> Flip gradient direction (for packs whose gradients run dark → light)</label>
+        <label class="lock" title="Only for packs whose gradients run dark to light. The generator's own run light to dark."><input type="checkbox" id="flip-gradient"> Flip gradient direction (for packs whose gradients run dark → light)</label>
       </div>
       <div id="slots" class="slots" data-tab="colours"></div>
       </div>
@@ -248,7 +248,7 @@
         </div>
         <p id="layer-note" class="muted small">One row per part, the top one drawn on top: drag it up or down. A part with several layers folds them under ▸ (Eyes 1, Eyes 2…). Tick parts to move them together with the selected one, 👁 hides a part, a name picks it.</p>
         <ol id="layer-list" class="layer-list"></ol>
-        <button id="layer-reset" class="small-button" disabled>Reset to RPG Maker's order</button>
+        <button id="layer-reset" class="small-button" disabled>Reset to the standard order</button>
         <button id="layer-show-all" class="small-button" hidden title="Shows every hidden part, every part cut off by another (hair under a hood) and every part hidden on one image, whole again">Show everything again</button>
       </aside>
       </div>
@@ -298,10 +298,10 @@
             <option value="custom">Your own colour…</option>
           </select>
           <input type="color" id="pic-bg-colour" value="#3a6ea5" hidden title="The background colour"></label>
-        <label class="lock" title="Sprite frames grow so moved, enlarged and turned parts fit instead of being cut off at the frame's edge, by just what they need. The feet stay on the bottom of the frame (RPG Maker stands the frame's bottom on the tile), the sides grow alike and the rest goes on top. Every frame keeps one size, so sheets still divide into RPG Maker's grid: walk sheets 3 x 4 frames (saved with the $ prefix, one character per file), battlers 9 x 6. Portraits stay 144px.">
+        <label class="lock" title="Sprite frames grow so moved, enlarged and turned parts fit instead of being cut off at the frame's edge, by just what they need. The feet stay on the bottom of the frame (the engine stands the frame's bottom on the tile), the sides grow alike and the rest goes on top. Every frame keeps one size, so sheets still divide into RPG Maker's grid: walk sheets 3 x 4 frames (saved with the $ prefix, one character per file), battlers 9 x 6. Portraits stay 144px.">
           <input type="checkbox" id="make-room"> Make room: bigger frames so nothing is cut off</label>
-        <label class="lock" title="Nothing is cut off, and the sheets keep RPG Maker's size: when moved, enlarged or turned parts stick out, the whole picture is shrunk (all frames alike, proportions kept) until it fits the frame: the body's frame size, RPG Maker's 144px portraits, 48px walk frames, 64px battler frames, or your sheet template. Touch it up under Whole image.">
-          <input type="checkbox" id="fit-frame"> Fit into RPG Maker's size: shrink what sticks out instead of cutting it off</label>
+        <label class="lock" title="Nothing is cut off, and the sheets keep the standard size: when moved, enlarged or turned parts stick out, the whole picture is shrunk (all frames alike, proportions kept) until it fits the frame: the body's frame size, RPG Maker's 144px portraits, 48px walk frames, 64px battler frames, or your sheet template. Touch it up under Whole image.">
+          <input type="checkbox" id="fit-frame"> Fit into the standard size: shrink what sticks out instead of cutting it off</label>
         <label class="lock" title="Parts turned by an angle or made bigger are drawn from a smoothed 4x picture (Scale2x, like RotSprite) instead of blowing up square pixels.">
           <input type="checkbox" id="smooth-pixels"> Pixel-art smoothing for turned and enlarged parts</label>
       </div>
@@ -623,8 +623,8 @@
         <select id="assign-sheet">
           <option value="FG">Portrait (FG, face picture)</option>
           <option value="TV">Walk (TV)</option>
-          <option value="XP">Walk, RPG Maker XP (4 × 4 frames, any size)</option>
-          <option value="RM2K">Walk, RPG Maker 2000/2003 (rows up, right, down, left)</option>
+          <option value="XP">Walk, XP (4 × 4 frames, any size)</option>
+          <option value="RM2K">Walk, 2000/2003 (rows up, right, down, left)</option>
           <option value="DIR8">Walk, 8 directions (3 × 8 frames: the walk rows, then the diagonals)</option>
           <option value="TVD">Damage (TVD)</option>
           <option value="SV">Battler (SV)</option>
@@ -705,12 +705,12 @@
         <h3>Sheet templates</h3>
         <button value="close" class="small-button">Close</button>
       </div>
-      <p class="muted small">Frame size (and grid) of each sheet. Leave empty for automatic: the body's size and RPG Maker's grid. Sprite parts with other frame sizes are placed frame by frame, centred and standing on the bottom; other parts are centred.</p>
+      <p class="muted small">Frame size (and grid) of each sheet. Leave empty for automatic: the body's size and the standard grid. Sprite parts with other frame sizes are placed frame by frame, centred and standing on the bottom; other parts are centred.</p>
       <p class="muted small">Untick a sheet to leave it out of the preview and the export, rename it, or pick which parts it is made of. "Add a sheet" makes another one with a frame size and grid of its own (e.g. a face set of 4 x 2 portraits, or "Walk, RPG Maker XP": the walk sheet as XP's 4 x 4 frames); it is exported as name_sheet.png. A portrait with columns and rows repeats the face in every cell. "Crop…" (sheets of portrait parts) cuts a face or a smaller picture out of a big portrait, e.g. the face of a full-body picture.</p>
       <div id="template-hints" class="template-hints" hidden title="Parts whose frames are another size than the sheet's"></div>
       <div id="template-grid" class="template-grid"></div>
       <div class="dialog-actions">
-        <button type="button" id="restore-sheets" class="small-button" hidden>Bring back RPG Maker's sheets</button>
+        <button type="button" id="restore-sheets" class="small-button" hidden>Bring back the standard sheets</button>
         <button type="button" id="add-sheet" class="small-button">+ Add a sheet</button>
       </div>
     </form>
@@ -722,7 +722,7 @@
         <h3>Several characters in one picture</h3>
         <button value="close" class="small-button">Close</button>
       </div>
-      <p class="muted small">Like RPG Maker's own Actor1.png: 8 characters, 4 across and 2 down. Pick who goes where (the current character, your Gallery, or the presets in your folders). Characters of different sizes are placed in frames as big as the biggest one, standing on the bottom.</p>
+      <p class="muted small">Like the standard Actor1.png: 8 characters, 4 across and 2 down. Pick who goes where (the current character, your Gallery, or the presets in your folders). Characters of different sizes are placed in frames as big as the biggest one, standing on the bottom.</p>
       <div id="multi-slots" class="multi-slots"></div>
       <div class="multi-options">
         <label>Name <input id="multi-name" type="text" value="Actors" placeholder="e.g. Actor1"></label>
@@ -754,7 +754,7 @@
         <h3 id="crop-title">Crop</h3>
         <button value="close" class="small-button">Done</button>
       </div>
-      <p class="muted small">For big portrait parts (a bust or a full-body picture): drag the box over what this sheet shows, e.g. the face for RPG Maker's 144 × 144 face. The slider sets how much it takes in; the sheet's Width and Height set the size it is made.</p>
+      <p class="muted small">For big portrait parts (a bust or a full-body picture): drag the box over what this sheet shows, e.g. the face for the standard 144 × 144 face. The slider sets how much it takes in; the sheet's Width and Height set the size it is made.</p>
       <div class="crop-area">
         <canvas id="crop-canvas" width="0" height="0" title="Drag the box, or click where it should go"></canvas>
         <figure><canvas id="crop-result" width="0" height="0"></canvas><figcaption class="muted small">The sheet</figcaption></figure>
