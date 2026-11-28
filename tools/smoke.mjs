@@ -183,7 +183,7 @@ try {
     await evaluate(`document.getElementById('setup-list').textContent.slice(0, 200)`));
   await evaluate(`document.getElementById('gallery-dialog').close()`);
   check('Rules holds the sheet templates, Files the look-alikes', await evaluate(`document.querySelector('#rules-menu .menu-list').contains(document.getElementById('open-templates')) && document.querySelector('#files-menu .menu-list').contains(document.getElementById('open-alikes'))`));
-  check('the Load menu holds pack, character, set, setup and sample kit', await evaluate(`['files-input', 'load-character', 'import-sets', 'import-setup', 'sample-kit'].every(id => document.querySelector('#load-menu .menu-list').contains(document.getElementById(id)))`));
+  check('the Load menu holds pack, character, set, setup and sample kit', await evaluate(`['folder-input', 'files-input', 'load-character', 'import-sets', 'import-setup', 'sample-kit'].every(id => document.querySelector('#load-menu .menu-list').contains(document.getElementById(id)))`));
   await click('#open-sets');
   await sleep(300);
   check('the sets are in the Gallery, with Export', await evaluate(`document.getElementById('gallery-dialog').open && !document.getElementById('gallery-sets').hidden && !!document.querySelector('#gallery-sets #export-sets')`));
@@ -1418,6 +1418,17 @@ try {
     for (let i = 0; i < 20 && !(await evaluate(`/FG_Eyes_p02_c1_m002/.test(document.getElementById('packs').textContent)`)); i++) await sleep(500);
     check('a file dragged in from the computer is read', await evaluate(`/FG_Eyes_p02_c1_m002/.test(document.getElementById('packs').textContent)`),
       await evaluate(`document.getElementById('toast').textContent`));
+  }
+  // Dropping is Load pack: a zip and a picture dropped together both open (the zip like a folder).
+  {
+    const { zipFiles } = await import('../src/zip.js');
+    const face = 'sample-kit/Generator/Face/Male/FG_Face_p02_c1_m001.png';
+    writeFileSync(join(OUT, 'dropped-pack.zip'), zipFiles([{ name: 'Dropped zip/Generator/Face/Male/FG_Face_p02_c1_m001.png', bytes: new Uint8Array(readFileSync(join(process.cwd(), face))) }]));
+    const data = { items: [], files: [join(OUT, 'dropped-pack.zip'), join(process.cwd(), 'sample-kit/Generator/Face/Male/FG_BeastEars_p01_c1_m006.png')], dragOperationsMask: 1 };
+    for (const type of ['dragEnter', 'dragOver', 'drop']) await send('Input.dispatchDragEvent', { type, x: 600, y: 400, data });
+    const both = `/Dropped zip/.test(document.getElementById('packs').textContent) && /FG_BeastEars_p01/.test(document.getElementById('packs').textContent)`;
+    for (let i = 0; i < 20 && !(await evaluate(both)); i++) await sleep(500);
+    check('a zip and a picture dropped together both open', await evaluate(both), await evaluate(`document.getElementById('packs').textContent.slice(0, 300)`));
   }
   // The page starts with an added sheet saved (v0.3.32 stopped starting then): it can be removed and added.
   {

@@ -15,13 +15,15 @@
       <span id="busy-label" class="busy-label"></span>
     </div>
     <div class="actions">
-      <label class="button primary" title="A Generator folder, an asset pack, or any folder of parts: every folder becomes its own pack">Open folder
-        <input id="folder-input" type="file" webkitdirectory multiple hidden>
-      </label>
       <div class="menu" id="load-menu">
-        <button type="button" class="menu-button" id="load-menu-button" aria-haspopup="menu" aria-expanded="false">Load ▾</button>
+        <button type="button" class="menu-button primary" id="load-menu-button" aria-haspopup="menu" aria-expanded="false" title="Load a pack (a folder, zips or pictures), a character, a set or a setup. Dropping any of these on the page does the same as Load pack">Load ▾</button>
         <div class="menu-list" role="menu" hidden>
-          <label class="button menu-item" title="Part pictures (and their colour masks) or zips: pictures become a pack of their own; a zip opens like a folder (a shared setup in it is offered)">Load pack…<input id="files-input" type="file" accept=".png,image/png,.zip,application/zip" multiple hidden></label>
+          <div class="menu-group">Pack (or drop it on the page)</div>
+          <label class="button menu-item" title="A Generator folder, an asset pack, or any folder of parts: every folder becomes its own pack, remembered for next time">Load pack: a folder…
+            <input id="folder-input" type="file" webkitdirectory multiple hidden>
+          </label>
+          <label class="button menu-item" title="Zips, part pictures (and their colour masks), and character, set or setup files, all at once: a zip opens like a folder (a shared setup in it is offered), pictures become a pack of their own">Load pack: files or zips…<input id="files-input" type="file" accept=".png,image/png,.zip,application/zip,.json,application/json" multiple hidden></label>
+          <div class="menu-group">Other</div>
           <label class="button menu-item" id="load-character-label" title="A character file saved here, or a preset of the MZ generator">Load character…
             <input id="load-character" type="file" accept=".json,application/json" multiple hidden disabled>
           </label>
@@ -79,7 +81,7 @@
   <main id="app" class="empty">
     <section id="welcome" class="welcome">
       <div class="drop-hint">
-        <h2>Drop a generator folder here</h2>
+        <h2>Drop a generator folder here, or Load → Load pack</h2>
         <p>Point it at a <code>Generator</code> folder, an asset pack, or both. Every folder you add becomes its own pack, so nothing gets overwritten.</p>
         <p class="muted">Everything runs in your browser and no files are uploaded.</p>
         <div id="recent-folders" class="recent" hidden></div>

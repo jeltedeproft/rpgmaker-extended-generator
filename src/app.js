@@ -5882,21 +5882,60 @@ $('folder-input').parentElement.addEventListener('click', async (e) => {
 $('folder-input').addEventListener('change', async (e) => {
   const entries = entriesFromFileList(e.target.files);
   e.target.value = '';
-  await importEntries(entries, packNameFromEntries(entries));
+  await loadPack(entries);
 });
 
-// Load pack: zips open like folders; single pictures without a folder become a pack named after
-// the first one.
 $('files-input').addEventListener('change', async (e) => {
-  const picked = [...e.target.files];
+  const entries = entriesFromFileList([...e.target.files]);
   e.target.value = '';
-  const isZip = (f) => /\.zip$/i.test(f.name) || f.type === 'application/zip';
-  for (const file of picked.filter(isZip)) await openZip(file).catch((err) => toast(`Could not open ${file.name}: ${err.message}`));
-  const entries = entriesFromFileList(picked.filter((f) => !isZip(f)));
-  if (!entries.length) return;
-  const first = entries[0].path.replace(/\.png$/i, '');
-  await importEntries(entries, entries.length > 1 ? `${first} +${entries.length - 1}` : first, { ask: true });
+  await loadPack(entries);
 });
+
+/**
+ * Load pack, and anything dropped on the page: folders, zips, pictures and JSON files (characters,
+ * sets, setups), in any mix. Folders and pictures first, then zips, then the JSON files, which
+ * need the parts.
+ * @param {{path:string, src:File|Blob}[]} entries
+ * @param {FileSystemDirectoryHandle[]} [folders] dropped or picked folders, remembered for next time
+ */
+async function loadPack(entries, folders = []) {
+  const inFolder = (x) => folders.some((h) => x.path.startsWith(`${h.name}/`));
+  const isZip = (x) => /\.zip$/i.test(x.path);
+  const isJson = (x) => /\.json$/i.test(x.path);
+  // A folder brings its own zips and JSON (generator presets): those stay with it.
+  const zips = entries.filter((x) => isZip(x) && !inFolder(x));
+  const jsons = entries.filter((x) => isJson(x) && !inFolder(x));
+  const pictures = entries.filter((x) => !zips.includes(x) && !jsons.includes(x));
+  for (const h of folders.filter((h) => entries.some((x) => x.path.startsWith(`${h.name}/`)))) await importHandle(h);
+  const rest = pictures.filter((x) => !inFolder(x));
+  // Pictures in folders: every folder its own pack. Loose pictures: one pack, named after the first.
+  const inDirs = rest.filter((x) => x.path.includes('/'));
+  const loose = rest.filter((x) => !x.path.includes('/'));
+  if (inDirs.length) await importEntries(inDirs, packNameFromEntries(inDirs));
+  if (loose.length) {
+    const first = loose[0].path.replace(/\.png$/i, '');
+    await importEntries(loose, loose.length > 1 ? `${first} +${loose.length - 1}` : first, { loose: true, ask: true });
+  }
+  for (const x of zips) await openZip(x.src).catch((err) => toast(`Could not open ${x.path}: ${err.message}`));
+  if (!jsons.length) return;
+  const files = await Promise.all(jsons.map(async (x) => ({ name: x.path.split('/').pop(), text: await readText(x.src) })));
+  // Setups: used for the packs that are open.
+  const others = [];
+  for (const f of files) {
+    let data = null;
+    try {
+      data = JSON.parse(f.text);
+    } catch { /* not JSON: reported with the others */ }
+    if (data && isSetup(data)) {
+      if (state.library.packs.length) useSetup(data, state.library.packs.map((p) => p.name));
+      else {
+        keepSetup(data, 'loaded');
+        toast(`Kept the setup "${data.name || f.name}" in Gallery → Setups: open its pack, then Use it.`, 8000);
+      }
+    } else others.push(f);
+  }
+  if (others.length) await importJsonFiles(others);
+}
 
 async function loadSampleKit() {
   try {
@@ -5941,30 +5980,11 @@ document.addEventListener('drop', async (e) => {
   const reading = entriesFromDrop(e.dataTransfer, (n) => busyStep(`Reading the dropped files: ${n} so far`));
   const entries = await withBusy('Reading the dropped files', () => reading);
   if (!entries.length) {
-    toast('Nothing could be read from that drop. Try again, or use "Open folder".');
+    toast('Nothing could be read from that drop. Try again, or use Load → Load pack.');
     return;
   }
-  // Zips: shared setups (with their pictures) or packs of parts, each opened like a folder.
-  if (entries.every((x) => /\.zip$/i.test(x.path))) {
-    for (const x of entries) await openZip(x.src).catch((err) => toast(`Could not open ${x.path}: ${err.message}`));
-    return;
-  }
-  // Only JSON files: characters and sets, all at once.
-  if (entries.length && entries.every((x) => /\.json$/i.test(x.path))) {
-    await withBusy(`Reading ${entries.length} JSON file(s)`, async () => {
-      await importJsonFiles(await Promise.all(entries.map(async (x) => ({ name: x.path.split('/').pop(), text: await readText(x.src) }))));
-    });
-    return;
-  }
-  const folders = await handles;
-  // Dropped folders open like picked ones, so they are remembered for next time too.
-  if (folders.length && entries.every((x) => folders.some((h) => x.path.startsWith(h.name + '/')))) {
-    for (const h of folders) await importHandle(h);
-  } else {
-    // Loose files are named after the first one, as with Load → Load pack.
-    const first = entries[0].path.split('/').pop().replace(/\.png$/i, '');
-    await importEntries(entries, packNameFromEntries(entries, entries.length > 1 ? `${first} +${entries.length - 1}` : first), { loose: true, ask: true });
-  }
+  // The same as Load pack; dropped folders are remembered for next time, like picked ones.
+  await loadPack(entries, await handles);
 });
 
 // ---------- editor events ----------
@@ -8143,6 +8163,7 @@ function renderExport() {
 }
 
 function openExport() {
+  showSheetOptions(); // the sheets added since, as buttons
   $('export-for').value = state.settings.exportFor || 'rm';
   renderExport();
   $('export-dialog').showModal();
@@ -8165,7 +8186,7 @@ $('export-buttons').addEventListener('click', (e) => {
     if (exportPick.has(pick)) exportPick.delete(pick);
     else exportPick.add(pick);
     // Every sheet picked one by one is All.
-    const each = [...$('export-buttons').querySelectorAll('[data-export]')].map((b) => b.dataset.export).filter((k) => k !== 'all');
+    const each = [...$('export-buttons').querySelectorAll('[data-export]')].filter((b) => !b.hidden).map((b) => b.dataset.export).filter((k) => k !== 'all');
     if (!exportPick.size || each.every((k) => exportPick.has(k))) {
       exportPick.clear();
       exportPick.add('all');
