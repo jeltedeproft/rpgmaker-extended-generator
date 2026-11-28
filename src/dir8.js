@@ -46,10 +46,11 @@ export function join8(walk, diagonal) {
 
 /** How the diagonals of a part drawn in 4 directions are made: turned (a little or more), or the side view. */
 export const DIAGONAL_MODES = {
-  // The head turned and skewed toward the side; below the neck the body of the side picture, which
-  // stands turned already (its stance, legs and arm).
-  turned: { label: 'Turned', options: { near: 0.65, far: 1.25, shift: 4, skew: 2, inside: 'up', faceShift: 2, sideBody: { from: 0.6, shift: 1 } } },
-  more: { label: 'Turned more', options: { near: 0.55, far: 1.35, shift: 5, skew: 3, inside: 'up', faceShift: 3, sideBody: { from: 0.6, shift: 1 } } },
+  // The head turned and skewed toward the side. Below the neck both: the front (or back) body turned
+  // a little, with the side picture's body (its stance, legs and near arm) drawn over it, so the
+  // chest or back and the far arm still show.
+  turned: { label: 'Turned', options: { near: 0.65, far: 1.25, shift: 4, skew: 2, inside: 'up', faceShift: 2, body: { near: 0.75, far: 1.0, shift: 3 }, sideBody: { from: 0.6, shift: 1, over: true } } },
+  more: { label: 'Turned more', options: { near: 0.55, far: 1.35, shift: 5, skew: 3, inside: 'up', faceShift: 3, body: { near: 0.65, far: 1.0, shift: 4 }, sideBody: { from: 0.6, shift: 1, over: true } } },
   side: { label: 'Side view', options: null },
 };
 
@@ -100,8 +101,10 @@ export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, in
     // Seen from the back, the middle of the back moves away from the side it turns to.
     const side = back ? -dir : dir;
     for (let y = 0; y < fh; y++) {
-      // Below the neck, the body from the side picture it turns to (its stance and legs).
-      if (sideBody && (y + 0.5) / fh >= sideBody.from) {
+      // Below the neck, the body from the side picture it turns to (its stance and legs); with
+      // over, drawn over the turned front (or back) body, whose far arm and shoulder show past it.
+      const sideHere = sideBody && (y + 0.5) / fh >= sideBody.from;
+      const drawSide = () => {
         const off = Math.round(-dir * (sideBody.shift || 0));
         for (let c = 0; c < n; c++) {
           const o = (d * fh + y) * out.width + c * fw;
@@ -113,6 +116,9 @@ export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, in
             if (walk.data[si + 3]) out.data.set(walk.data.subarray(si, si + 4), (o + x) * 4);
           }
         }
+      };
+      if (sideHere && !sideBody.over) {
+        drawSide();
         continue;
       }
       const turn = rowTurn(y);
@@ -146,6 +152,7 @@ export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, in
           if (walk.data[si + 3]) out.data.set(walk.data.subarray(si, si + 4), oi);
         }
       }
+      if (sideHere) drawSide();
     }
   }
   return out;
