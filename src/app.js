@@ -8164,7 +8164,12 @@ $('export-buttons').addEventListener('click', (e) => {
     exportPick.delete('all');
     if (exportPick.has(pick)) exportPick.delete(pick);
     else exportPick.add(pick);
-    if (!exportPick.size) exportPick.add('all');
+    // Every sheet picked one by one is All.
+    const each = [...$('export-buttons').querySelectorAll('[data-export]')].map((b) => b.dataset.export).filter((k) => k !== 'all');
+    if (!exportPick.size || each.every((k) => exportPick.has(k))) {
+      exportPick.clear();
+      exportPick.add('all');
+    }
   }
   renderExport();
 });
