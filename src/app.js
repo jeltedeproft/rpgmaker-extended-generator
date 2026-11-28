@@ -8205,6 +8205,45 @@ function enlarged(image, zoom) {
   return out;
 }
 
+/** Show preview: each sheet picked at the original size (left) and at the size picked (right). */
+let previewUrls = [];
+$('export-preview').addEventListener('click', () => {
+  const want = (key) => exportPick.has('all') || exportPick.has(key);
+  const zoom = exportZoom();
+  const gif = $('export-for').value !== 'unite' && exportFormat === 'gif';
+  for (const u of previewUrls) URL.revokeObjectURL(u);
+  previewUrls = [];
+  const rows = [];
+  const pair = (name, make) => {
+    const figure = (z) => el('figure', {}, [make(z), el('figcaption', { className: 'muted small', textContent: z === 1 ? '1x (original)' : `${z}x` })]);
+    rows.push(el('div', {}, [el('h4', { textContent: name }), el('div', { className: 'gif-compare' }, [figure(1), ...(zoom > 1 ? [figure(zoom)] : [])])]));
+  };
+  if (gif) {
+    const gifs = [want('TV') && sheetOn('TV') && walkGif(), want('TVD') && sheetOn('TVD') && damageGif(), want('SV') && sheetOn('SV') && battlerGif()].filter(Boolean);
+    for (const g of gifs) {
+      pair(g.name, (z) => {
+        const url = URL.createObjectURL(new Blob([g.make(z)], { type: 'image/gif' }));
+        previewUrls.push(url);
+        return el('img', { src: url, alt: g.name });
+      });
+    }
+  } else {
+    for (const key of SHEET_KEYS.filter((k) => sheetOn(k) && want(k))) {
+      const c = state.composites[key];
+      if (c?.image) pair(sheetLabel(key), (z) => toCanvas(enlarged(c.image, z)));
+    }
+    if ($('export-for').value !== 'unite') {
+      for (const x of state.extraComposites || []) {
+        if (x.image && want(`extra:${x.sheet.id}`)) pair(x.sheet.name || 'Sheet', (z) => toCanvas(enlarged(x.image, z)));
+      }
+    }
+  }
+  if (!rows.length) return toast(gif ? 'Nothing to animate: pick the walk, damage or battler.' : 'Nothing to show: no picked sheet has parts.');
+  $('export-preview-title').textContent = zoom > 1 ? `Preview: 1x (original) and ${zoom}x` : 'Preview: 1x (original); pick a Size to compare';
+  $('export-preview-list').replaceChildren(...rows);
+  $('export-preview-dialog').showModal();
+});
+
 async function exportPngs(want) {
   const all = exportPick.has('all');
   const name = safeFileName(state.character.name);

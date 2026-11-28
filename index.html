@@ -811,6 +811,7 @@
       </div>
       <label class="lock" id="gif-size" title="Each pixel becomes this many pixels: sprites are small. For pictures in your game keep 1x (RPG Maker expects the standard size); bigger is for showing them off. GIFs above 1x are shown next to the original first">Size
         <select id="gif-zoom"><option value="1" selected>1x (original)</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="6">6x</option><option value="8">8x</option></select></label>
+      <button type="button" id="export-preview" class="small-button" title="The original size on the left, the size picked on the right, for each sheet picked">Show preview</button>
       <div id="export-shift-box">
         <label class="lock" id="no-shift-box" title="Drawn without the 6-pixel lift: a file named !$Name.png stands where it is, for objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> <span>Save as <code>!$</code>name.png</span></label>
       </div>
@@ -821,6 +822,16 @@
       <div class="dialog-actions">
         <button type="button" id="export-now" class="primary">Export now</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="export-preview-dialog" class="assign-form-dialog gif-preview">
+    <form method="dialog" class="assign-form">
+      <div class="files-head">
+        <h3 id="export-preview-title">Preview</h3>
+        <button value="close" class="small-button">Close</button>
+      </div>
+      <div id="export-preview-list" class="export-preview-list"></div>
     </form>
   </dialog>
 
