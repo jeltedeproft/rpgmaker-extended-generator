@@ -46,8 +46,10 @@ export function join8(walk, diagonal) {
 
 /** How the diagonals of a part drawn in 4 directions are made: turned (a little or more), or the side view. */
 export const DIAGONAL_MODES = {
-  turned: { label: 'Turned', options: { near: 0.7, far: 1.2, shift: 3, inside: 'up', faceShift: 2, body: { near: 0.9, far: 1.02, shift: 2 } } },
-  more: { label: 'Turned more', options: { near: 0.6, far: 1.3, shift: 4, inside: 'up', faceShift: 3, body: { near: 0.85, far: 1.04, shift: 2 } } },
+  // The head turned and skewed toward the side; below the neck the body of the side picture, which
+  // stands turned already (its stance, legs and arm).
+  turned: { label: 'Turned', options: { near: 0.65, far: 1.25, shift: 4, skew: 2, inside: 'up', faceShift: 2, sideBody: { from: 0.6, shift: 1 } } },
+  more: { label: 'Turned more', options: { near: 0.55, far: 1.35, shift: 5, skew: 3, inside: 'up', faceShift: 3, sideBody: { from: 0.6, shift: 1 } } },
   side: { label: 'Side view', options: null },
 };
 
@@ -77,7 +79,7 @@ export function diagonalsOf(walk, mode = 'turned', kind = null) {
  * @param {{cols?:number, near?:number, far?:number, shift?:number, inside?:boolean|'up', sideShift?:number, gap?:number}} [options]
  *   near: how wide the half it turns to stays; far: how wide the other half becomes; shift: pixels
  */
-export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, inside = false, sideShift = 3, gap = 2, body = null, neck = [0.5, 0.62] } = {}) {
+export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, inside = false, sideShift = 3, gap = 2, body = null, neck = [0.5, 0.62], skew = 0, sideBody = null } = {}) {
   if (!walk || walk.height % 4) return walk;
   const fh = walk.height / 4;
   const n = cols || (walk.width % 3 === 0 ? 3 : Math.max(1, Math.round(walk.width / fh)));
@@ -98,8 +100,25 @@ export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, in
     // Seen from the back, the middle of the back moves away from the side it turns to.
     const side = back ? -dir : dir;
     for (let y = 0; y < fh; y++) {
+      // Below the neck, the body from the side picture it turns to (its stance and legs).
+      if (sideBody && (y + 0.5) / fh >= sideBody.from) {
+        const off = Math.round(-dir * (sideBody.shift || 0));
+        for (let c = 0; c < n; c++) {
+          const o = (d * fh + y) * out.width + c * fw;
+          const s = ((back && sideBody.backRow != null ? sideBody.backRow : sideRow) * fh + y) * walk.width + c * fw;
+          for (let x = 0; x < fw; x++) {
+            const sx = x - off;
+            if (sx < 0 || sx >= fw) continue;
+            const si = (s + sx) * 4;
+            if (walk.data[si + 3]) out.data.set(walk.data.subarray(si, si + 4), (o + x) * 4);
+          }
+        }
+        continue;
+      }
       const turn = rowTurn(y);
-      const mid = cx + side * turn.shift;
+      // Skew: the top of the head leans further into the turn than the chin.
+      const lean = skew ? skew * Math.max(0, neck[0] - (y + 0.5) / fh) / neck[0] : 0;
+      const mid = cx + side * (turn.shift + lean);
       const from = [];
       for (let x = 0; x < fw; x++) {
         const u = x + 0.5 - mid;
