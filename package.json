@@ -1,6 +1,6 @@
 {
   "name": "rpgmaker-extended-generator",
-  "version": "0.3.38",
+  "version": "0.3.39",
   "private": true,
   "description": "PixMix (Pixel Mixer): browser-based character generator for RPG Maker MV/MZ generator assets.",
   "type": "module",
