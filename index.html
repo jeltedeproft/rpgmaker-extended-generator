@@ -785,9 +785,11 @@
         <div class="export export-toggles" id="export-format">
           <button type="button" data-format="png" title="The sheets as pictures">Static PNG</button>
           <button type="button" data-format="gif" title="The walk (the direction shown, or all four when All walk directions is ticked), the battler motion shown and the damage poses, animated">Animated GIF</button>
-          <label class="lock" id="gif-size" title="Each pixel becomes this many pixels: sprites are small. Above 1x you see it next to the original first">size
-            <select id="gif-zoom"><option value="1" selected>1x</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option></select></label>
         </div>
+      </div>
+      <label class="lock" id="gif-size" title="Each pixel becomes this many pixels: sprites are small. For pictures in your game keep 1x (RPG Maker expects the standard size); bigger is for showing them off. GIFs above 1x are shown next to the original first">Size
+        <select id="gif-zoom"><option value="1" selected>1x (original)</option><option value="2">2x</option><option value="3">3x</option><option value="4">4x</option><option value="6">6x</option><option value="8">8x</option></select></label>
+      <div id="export-shift-box">
         <label class="lock" id="no-shift-box" title="Drawn without the 6-pixel lift: a file named !$Name.png stands where it is, for objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> <span>Save as <code>!$</code>name.png</span></label>
       </div>
       <p id="export-note" class="muted small"></p>

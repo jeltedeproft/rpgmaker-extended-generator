@@ -7853,7 +7853,7 @@ function renderExport() {
   for (const b of $('export-format').querySelectorAll('[data-format]')) b.classList.toggle('on', b.dataset.format === exportFormat);
   const unite = $('export-for').value === 'unite';
   $('export-format-box').hidden = unite;
-  $('gif-size').hidden = exportFormat !== 'gif';
+  $('export-shift-box').hidden = unite;
   $('no-shift-box').hidden = exportFormat === 'gif';
   $('export-note').textContent = unite
     ? 'A zip with a folder per sheet: one picture per animation, its frames side by side, as RPG Maker Unite takes them.'
@@ -7901,19 +7901,38 @@ $('export-now').addEventListener('click', async () => {
   else await exportPngs(want);
 });
 
+/** The export's Size: each pixel becomes this many pixels (1 = the original size). */
+const exportZoom = () => Math.max(1, Number($('gif-zoom').value) || 1);
+
+/** A picture enlarged `zoom` times, pixel for pixel (no smoothing). */
+function enlarged(image, zoom) {
+  if (zoom <= 1) return image;
+  const out = createImage(image.width * zoom, image.height * zoom);
+  for (let y = 0; y < out.height; y++) {
+    const row = Math.floor(y / zoom) * image.width;
+    for (let x = 0; x < out.width; x++) {
+      const si = (row + Math.floor(x / zoom)) * 4;
+      out.data.set(image.data.subarray(si, si + 4), (y * out.width + x) * 4);
+    }
+  }
+  return out;
+}
+
 async function exportPngs(want) {
   const all = exportPick.has('all');
   const name = safeFileName(state.character.name);
+  const zoom = exportZoom();
+  const big = (file) => (zoom > 1 ? file.replace(/\.png$/, `_${zoom}x.png`) : file);
   let count = 0;
   for (const key of SHEET_KEYS.filter((k) => sheetOn(k) && want(k))) {
     const c = state.composites[key];
     if (!c) continue;
-    await downloadImage(c.image, SHEET_FILE_NAMES[key](name));
+    await downloadImage(enlarged(c.image, zoom), big(SHEET_FILE_NAMES[key](name)));
     count++;
   }
   for (const x of state.extraComposites || []) {
     if (!x.image || !want(`extra:${x.sheet.id}`)) continue;
-    await downloadImage(x.image, `${name}_${safeFileName(x.sheet.name || 'sheet')}.png`);
+    await downloadImage(enlarged(x.image, zoom), big(`${name}_${safeFileName(x.sheet.name || 'sheet')}.png`));
     count++;
   }
   if (all) {
@@ -8018,7 +8037,7 @@ function exportGifs(want) {
  * @param {{name:string, make:(zoom:number) => Uint8Array}[]} gifs
  */
 function saveGifs(gifs) {
-  const zoom = Number($('gif-zoom').value) || 1;
+  const zoom = exportZoom();
   const save = () => {
     for (const g of gifs) downloadBlob(new Blob([g.make(zoom)], { type: 'image/gif' }), g.name);
     toast(`Saved ${gifs.map((g) => g.name).join(', ')}.`);
@@ -8071,7 +8090,8 @@ async function exportUnite(want = () => true) {
   if (!strips.length) return toast('Nothing to export: no sheet has parts.');
   await withBusy('Making the Unite pictures', async () => {
     const files = [];
-    for (const [file, image] of strips) files.push({ name: file, bytes: await pngBytes(image) });
+    const zoom = exportZoom();
+    for (const [file, image] of strips) files.push({ name: file, bytes: await pngBytes(enlarged(image, zoom)) });
     downloadBlob(new Blob([zipFiles(files)], { type: 'application/zip' }), `${name}_unite.zip`);
   });
   toast(`Saved ${name}_unite.zip: ${strips.length} pictures for Unite.`);
