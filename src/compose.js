@@ -4,7 +4,7 @@ import { normalizeStretch, isStretched, stretchFrames } from './stretch.js';
 import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
 import { createImage, recolorLayer, blendOver, blendFrames, transformFrames, frameCentres, gridCentres, isTransformed, swapFrameRows } from './recolor.js';
 import { islandLabels, keepIsland } from './islands.js';
-import { solidOf, insideOutline, applyClip } from './clip.js';
+import { solidOf, insideOutline, applyClip, growRegion } from './clip.js';
 import { VX_ORDER, cellOf, paintedIndex, followedSlot } from './vxace.js';
 
 /**
@@ -187,13 +187,25 @@ export function sheetLayers(variant, sheet, library) {
 }
 
 /**
- * How an item or piece is clipped: {by: item key, mode: "inside"|"over"|"outside"}, or null.
- * Pieces follow their item's clip unless they have their own.
+ * How an item or piece is clipped: {by: item key, mode: "inside"|"over"|"outside", grow?}, or null.
+ * Pieces follow their item's clip unless they have their own. A clip can differ per sheet and per
+ * frame: clip.at["TV"] (the walk) or clip.at["TV|1,2"] (one frame) goes over the clip for all
+ * pictures; {mode: ""} there means not clipped.
+ * @param {string} [sheet] @param {string} [cell] "col,row"
  */
-export function clipOf(character, key) {
-  const clip = character.clip?.[key] || character.clip?.[itemOfKey(key)];
-  if (!clip?.by || clip.by === key || clip.by === itemOfKey(key)) return null;
+export function clipOf(character, key, sheet = null, cell = null) {
+  const entry = character.clip?.[key] || character.clip?.[itemOfKey(key)];
+  if (!entry) return null;
+  const clip = (cell && entry.at?.[`${sheet}|${cell}`]) || (sheet && entry.at?.[sheet]) || entry;
+  if (!clip.mode || !clip.by || clip.by === key || clip.by === itemOfKey(key)) return null;
   return clip;
+}
+
+/** The frames ("col,row") of a sheet with a clip of their own for an item or piece. */
+export function clippedCells(character, key, sheet) {
+  const entry = character.clip?.[key] || character.clip?.[itemOfKey(key)];
+  const prefix = `${sheet}|`;
+  return Object.keys(entry?.at || {}).filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
 }
 
 /** The colour a slot gets for an item or piece: its own choice, else its item's, else the character's. */
@@ -563,8 +575,8 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
 
   // 3. Draw bottom to top. Clipped items only show inside (or outside) another item's shape.
   const regions = new Map();
-  const regionOf = (by, mode) => {
-    const key = `${by}|${mode}`;
+  const regionOf = ({ by, mode, grow }) => {
+    const key = `${by}|${mode}|${grow || 0}`;
     if (!regions.has(key)) {
       const own = placed.filter((q) => q.item === by || itemOfKey(q.item) === by);
       if (!own.length) regions.set(key, null);
@@ -572,20 +584,37 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
         const shape = createImage(size.w, size.h);
         for (const q of own) draw(shape, q);
         const solid = solidOf(shape);
-        regions.set(key, mode === 'inside' ? insideOutline(solid, size.w, size.h, own[0].frame) : solid);
+        const region = mode === 'inside' ? insideOutline(solid, size.w, size.h, own[0].frame) : solid;
+        regions.set(key, growRegion(region, size.w, size.h, mode === 'outside' ? -(grow || 0) : grow || 0, own[0].frame));
       }
     }
     return regions.get(key);
   };
   for (const p of placed) {
-    const clip = clipOf(character, p.item);
-    const region = clip && regionOf(clip.by, clip.mode);
-    if (!region) {
-      draw(out, p);
+    const clip = clipOf(character, p.item, sheet);
+    const cells = p.frame ? clippedCells(character, p.item, sheet) : [];
+    if (!cells.length) {
+      const region = clip && regionOf(clip);
+      if (!region) {
+        draw(out, p);
+        continue;
+      }
+      const moved = draw(createImage(size.w, size.h), p);
+      blendOver(out, applyClip(moved, region, clip.mode));
       continue;
     }
+    // Frames with a clip of their own: each frame is clipped its own way.
     const moved = draw(createImage(size.w, size.h), p);
-    blendOver(out, applyClip(moved, region, clip.mode));
+    const fw = p.frame.w;
+    const fh = p.frame.h;
+    for (let fy = 0; fy + fh <= size.h; fy += fh) {
+      for (let fx = 0; fx + fw <= size.w; fx += fw) {
+        const c = clipOf(character, p.item, sheet, `${fx / fw},${fy / fh}`);
+        const region = c && regionOf(c);
+        if (region) applyClip(moved, region, c.mode, { x: fx, y: fy, w: fw, h: fh });
+      }
+    }
+    blendOver(out, moved);
   }
   const whole = { ...sheetTransformOf(character, sheet), smooth: !!settings?.smoothPixels };
   const image = transformSheet(out, sheet, frame, whole);

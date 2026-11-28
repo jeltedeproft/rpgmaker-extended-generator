@@ -191,16 +191,31 @@
       </div>
       <div id="clip-box" class="offsets" data-tab="visibility" hidden>
         <h3>Visibility</h3>
+        <div class="layer-head" title="Each picture, and each frame of a sprite sheet, can be clipped its own way. What you set for a picture or frame goes over what is set for all pictures">
+          <span class="small">For</span>
+          <select id="clip-sheet">
+            <option value="">all pictures</option>
+            <option value="FG">the portrait</option>
+            <option value="TV">the walk</option>
+            <option value="TVD">the damage</option>
+            <option value="SV">the battler</option>
+          </select>
+          <select id="clip-group" hidden></select>
+          <select id="clip-frame" hidden></select>
+        </div>
         <div class="layer-head">
           <span class="small">Show this part</span>
           <select id="clip-mode">
+            <option value="=" hidden>as for all pictures</option>
             <option value="">everywhere</option>
             <option value="inside">only inside the outline of</option>
             <option value="over">only where it overlaps</option>
             <option value="outside">except where it overlaps</option>
           </select>
           <select id="clip-by"></select>
+          <label class="small" id="clip-grow-box" title="Lets through this many pixels past the edge it is cut at: for an ear right beside a hat that gets cut off">let through <input type="number" id="clip-grow" min="0" max="8" step="1" value="0"> px more</label>
         </div>
+        <p id="clip-note" class="note small"></p>
         <p class="muted small">Example: hair under a hood. Set the hair to "only inside the outline of" the cloak, and only the bit in the hood's opening shows.</p>
         <div id="cover-box" class="move-group" title="Clip Content, for a hood, hat, helmet or mask: the ticked parts only show inside its outline. The fringe in a hood's opening stays; hair sticking out at the back or sides is clipped"></div>
       </div>

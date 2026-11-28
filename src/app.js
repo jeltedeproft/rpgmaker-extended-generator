@@ -1236,17 +1236,106 @@ $('hide-item').addEventListener('change', () => {
 });
 
 
+// ---------- clips for all pictures, one picture, or some frames ----------
+
+/**
+ * Where the Visibility box's choices go: null = all pictures, else the keys of clip.at: a sheet
+ * ("TV") or its frames ("TV|1,2").
+ */
+function clipScope() {
+  const sheet = $('clip-sheet').value;
+  if (!sheet) return null;
+  if (sheet === 'FG' || $('clip-group').value === 'all') return [sheet];
+  const group = cellGroups(sheet)[Number($('clip-group').value)] || { cells: [] };
+  const frame = $('clip-frame').value;
+  const cells = frame === 'all' ? group.cells : [group.cells[Number(frame)]].filter(Boolean);
+  return cells.map((c) => `${sheet}|${c}`);
+}
+
+/** What one scope sets for an item: its own clip, or null when it follows a wider one. */
+function scopedClip(entry, scope) {
+  if (!scope) return entry ? { mode: entry.mode || '', by: entry.by, grow: entry.grow } : null;
+  return entry?.at?.[scope[0]] || null;
+}
+
+/** The clip that applies in a scope (its own, else the sheet's, else the one for all pictures). */
+function clipIn(entry, scope) {
+  if (!entry) return null;
+  const k = scope?.[0];
+  const own = k && entry.at?.[k];
+  const sheet = k && entry.at?.[k.split('|')[0]];
+  return own || sheet || entry;
+}
+
+/** Sets an item's clip in a scope; value null = follow the wider one again. */
+function setClipIn(key, scope, value) {
+  const all = (state.character.clip ||= {});
+  const entry = (all[key] ||= {});
+  if (!scope) {
+    for (const f of ['mode', 'by', 'grow']) delete entry[f];
+    if (value?.mode) Object.assign(entry, { mode: value.mode, by: value.by }, value.grow ? { grow: value.grow } : {});
+  } else {
+    entry.at ||= {};
+    for (const k of scope) {
+      if (value) entry.at[k] = value.mode ? { mode: value.mode, by: value.by, ...(value.grow ? { grow: value.grow } : {}) } : { mode: '' };
+      else delete entry.at[k];
+    }
+    if (!Object.keys(entry.at).length) delete entry.at;
+  }
+  if (!entry.mode && !entry.at) delete all[key];
+}
+
+function renderClipScope() {
+  const sheet = $('clip-sheet').value;
+  const sprite = !!sheet && sheet !== 'FG';
+  $('clip-group').hidden = !sprite;
+  if (sprite) {
+    const groups = cellGroups(sheet);
+    const keep = $('clip-group').value;
+    $('clip-group').replaceChildren(el('option', { value: 'all', textContent: 'all frames' }), ...groups.map((g, i) => el('option', { value: i, textContent: g.name })));
+    $('clip-group').value = keep && keep !== 'all' && Number(keep) < groups.length ? keep : 'all';
+  }
+  const group = sprite && $('clip-group').value !== 'all' ? cellGroups(sheet)[Number($('clip-group').value)] : null;
+  $('clip-frame').hidden = !group || group.cells.length < 2;
+  if (group) {
+    const keep = $('clip-frame').value || 'all';
+    $('clip-frame').replaceChildren(el('option', { value: 'all', textContent: `all ${group.cells.length} frames` }),
+      ...group.cells.map((_, i) => el('option', { value: i, textContent: `frame ${i + 1} only` })));
+    $('clip-frame').value = keep === 'all' || Number(keep) < group.cells.length ? keep : 'all';
+  }
+}
+
+const CLIP_WORDS = { inside: 'only inside the outline of', over: 'only where it overlaps', outside: 'except where it overlaps' };
+
 /** The "Visibility" box: show this item only inside / over / outside another item. */
 function renderClip() {
   const key = state.selectedPart;
-  const clip = state.character.clip?.[key];
+  renderClipScope();
+  const scope = clipScope();
+  const entry = state.character.clip?.[key];
+  const own = scopedClip(entry, scope);
+  const shown = clipIn(entry, scope);
   const others = selectedItems(state.character, state.library).map((i) => i.key).filter((k) => k !== itemOfKey(key));
-  const missing = clip?.by && !others.includes(clip.by) ? [el('option', { value: clip.by, textContent: `${clip.by} (not worn)` })] : [];
+  const missing = shown?.by && !others.includes(shown.by) ? [el('option', { value: shown.by, textContent: `${shown.by} (not worn)` })] : [];
   $('clip-by').replaceChildren(...others.map((k) => el('option', { value: k, textContent: k })), ...missing);
-  $('clip-mode').value = clip?.mode || '';
-  if (clip?.by) $('clip-by').value = clip.by;
+  // A frame follows its sheet's choice, if it has one, else the one for all pictures.
+  const sheetKey = scope?.[0].includes('|') && entry?.at?.[scope[0].split('|')[0]] ? scope[0].split('|')[0] : null;
+  const wider = sheetKey ? entry.at[sheetKey] : entry;
+  const widerName = sheetKey ? `the ${sheetLabel(sheetKey).toLowerCase()}` : 'all pictures';
+  const follow = $('clip-mode').querySelector('[value="="]');
+  follow.hidden = !scope;
+  follow.textContent = `as for ${widerName}`;
+  $('clip-mode').value = scope && !own ? '=' : own?.mode || '';
+  if (shown?.by) $('clip-by').value = shown.by;
   $('clip-by').disabled = !others.length;
-  $('clip-by').hidden = !clip?.mode;
+  const clipped = !!shown?.mode;
+  $('clip-by').hidden = !clipped;
+  $('clip-grow-box').hidden = !clipped;
+  $('clip-grow').value = shown?.grow || 0;
+  const pictures = entry?.at ? Object.keys(entry.at).length : 0;
+  $('clip-note').textContent = scope && !own
+    ? `As for ${widerName}${wider?.mode ? `: ${CLIP_WORDS[wider.mode]} ${wider.by}` : ': shown everywhere'}. Pick another choice to set it here only.`
+    : !scope && pictures ? `${pictures} picture(s) or frame(s) have a choice of their own (For: pick one to see it).` : '';
   renderCovers(others);
 }
 
@@ -1262,11 +1351,16 @@ function renderCovers(worn) {
   const others = [...worn, ...partNames(state.library, state.character.bodyType).filter((p) => p !== own && !worn.includes(p))];
   $('cover-box').hidden = !others.length;
   $('cover-box').replaceChildren(el('span', { className: 'small', textContent: 'Clip Content (these only show inside it):' }), ...others.map((other) => {
-    const box = el('input', { type: 'checkbox', checked: clips[other]?.mode === 'inside' && clips[other]?.by === key });
+    const scope = clipScope();
+    const now = clipIn(clips[other], scope);
+    const box = el('input', { type: 'checkbox', checked: now?.mode === 'inside' && now?.by === key });
     box.addEventListener('change', () => {
-      const all = (state.character.clip ||= {});
-      if (box.checked) all[other] = { mode: 'inside', by: key };
-      else if (all[other]?.by === key) delete all[other];
+      if (box.checked) setClipIn(other, scope, { mode: 'inside', by: key });
+      else if (clipIn(state.character.clip?.[other], scope)?.by === key) {
+        // Off for this picture or frame only: a wider clip by this part stays, but not here.
+        const wider = scope && clipIn(state.character.clip?.[other], null);
+        setClipIn(other, scope, scope && wider?.mode === 'inside' && wider.by === key ? { mode: '' } : null);
+      }
       renderClip();
       renderPreview();
     });
@@ -1279,9 +1373,10 @@ function updateClip() {
   const key = state.selectedPart;
   const mode = $('clip-mode').value;
   const by = $('clip-by').value;
-  const clips = (state.character.clip ||= {});
-  if (mode && by) clips[key] = { mode, by };
-  else delete clips[key];
+  const grow = Math.max(0, Math.min(8, Math.round(Number($('clip-grow').value) || 0)));
+  const scope = clipScope();
+  if (mode === '=') setClipIn(key, scope, null);
+  else setClipIn(key, scope, mode && by ? { mode, by, grow } : { mode: '' });
   renderClip();
   renderPreview();
 }
@@ -2369,7 +2464,7 @@ function renderLayers() {
     ]);
     pick.addEventListener('click', () => pickItem(item));
     // Cut off by another part (hair under a hood): one click shows it whole again.
-    const clip = clipOf(state.character, item);
+    const clip = clipOf(state.character, item, $('layer-sheet').value);
     const scissors = clip ? el('button', { type: 'button', className: 'layer-eye layer-clip', textContent: '✂',
       title: `${item} ${clip.mode === 'inside' ? `only shows inside the outline of ${clip.by}` : clip.mode === 'over' ? `only shows where it overlaps ${clip.by}` : `is hidden where it overlaps ${clip.by}`}: click to show it whole again` }) : '';
     if (scissors) {
@@ -5822,6 +5917,26 @@ $('remove-item').addEventListener('click', () => {
 
 $('clip-mode').addEventListener('change', updateClip);
 $('clip-by').addEventListener('change', updateClip);
+$('clip-grow').addEventListener('input', updateClip);
+for (const id of ['clip-sheet', 'clip-group', 'clip-frame']) {
+  $(id).addEventListener('change', () => {
+    if (id === 'clip-sheet') $('clip-group').value = 'all';
+    renderClip();
+    // Shows the picked direction or motion in the preview.
+    const sheet = $('clip-sheet').value;
+    const group = Number($('clip-group').value);
+    if (Number.isNaN(group)) return;
+    if (sheet === 'TV') {
+      state.walkDir = Math.min(group, 3);
+      for (const b of $('dir-buttons').children) b.classList.toggle('active', Number(b.dataset.dir) === state.walkDir);
+    }
+    if (sheet === 'SV') {
+      state.svMotion = group;
+      $('sv-motion').value = group;
+    }
+    renderPreview();
+  });
+}
 $('split-item').addEventListener('click', () => splitSelected(Math.max(0, Math.min(8, Number($('split-gap').value) || 0))));
 $('unsplit-item').addEventListener('click', unsplitSelected);
 $('split-gap').addEventListener('change', () => {

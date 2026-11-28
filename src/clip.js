@@ -50,11 +50,53 @@ export function insideOutline(solid, width, height, frame = null) {
 /**
  * Applies a clip to `image` in place.
  * @param {Uint8Array} region solidOf (for "over"/"outside") or insideOutline (for "inside")
+ * @param {{x:number,y:number,w:number,h:number}} [rect] only within this box (one frame)
  */
-export function applyClip(image, region, mode) {
+export function applyClip(image, region, mode, rect = null) {
   const keepInside = mode !== 'outside';
-  for (let i = 0; i < region.length; i++) {
-    if (!!region[i] !== keepInside) image.data[i * 4 + 3] = 0;
+  const { width } = image;
+  const x0 = rect?.x || 0;
+  const y0 = rect?.y || 0;
+  const x1 = rect ? rect.x + rect.w : width;
+  const y1 = rect ? rect.y + rect.h : image.height;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = y * width + x;
+      if (!!region[i] !== keepInside) image.data[i * 4 + 3] = 0;
+    }
   }
   return image;
+}
+
+/**
+ * A region grown by `n` pixels on every side (shrunk when n < 0), within each frame: a clip that
+ * cut one pixel too much (an ear right beside a hat) lets it through.
+ * @param {{w:number,h:number}|null} frame
+ */
+export function growRegion(region, width, height, n, frame = null) {
+  if (!n) return region;
+  const fw = frame?.w || width;
+  const fh = frame?.h || height;
+  const want = n > 0 ? 1 : 0;
+  const reach = Math.abs(n);
+  const out = new Uint8Array(region);
+  for (let y = 0; y < height; y++) {
+    const top = y - (y % fh);
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!!region[i] === !!want) continue;
+      const left = x - (x % fw);
+      let hit = false;
+      for (let ny = Math.max(top, y - reach); ny <= Math.min(top + fh - 1, y + reach) && !hit; ny++) {
+        for (let nx = Math.max(left, x - reach); nx <= Math.min(left + fw - 1, x + reach); nx++) {
+          if (!!region[ny * width + nx] === !!want) {
+            hit = true;
+            break;
+          }
+        }
+      }
+      if (hit) out[i] = want;
+    }
+  }
+  return out;
 }
