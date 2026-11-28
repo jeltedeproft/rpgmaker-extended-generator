@@ -51,6 +51,10 @@ export const DIAGONAL_MODES = {
   // chest or back and the far arm still show.
   turned: { label: 'Turned', options: { near: 0.65, far: 1.25, shift: 4, skew: 2, inside: 'up', faceShift: 2, body: { near: 0.75, far: 1.0, shift: 3 }, sideBody: { from: 0.6, shift: 1, over: true } } },
   more: { label: 'Turned more', options: { near: 0.55, far: 1.35, shift: 5, skew: 3, inside: 'up', faceShift: 3, body: { near: 0.65, far: 1.0, shift: 4 }, sideBody: { from: 0.6, shift: 1, over: true } } },
+  // Subtle: the front (or back) picture barely turned, in whole pixels: the head leans 2 to 3 pixels
+  // into the turn, the face a pixel further, the body 1 to 2, the legs stay (a slight twist). Little
+  // is squeezed, so the pixel art stays as drawn; no side picture is used.
+  subtle: { label: 'Subtle', options: { near: 0.88, far: 1.0, shift: 2, skew: 2, faceShift: 1, body: { near: 0.92, far: 1.0, shift: 1 }, legs: { from: 0.66, shift: 0 } } },
   side: { label: 'Side view', options: null },
 };
 
@@ -80,7 +84,7 @@ export function diagonalsOf(walk, mode = 'turned', kind = null) {
  * @param {{cols?:number, near?:number, far?:number, shift?:number, inside?:boolean|'up', sideShift?:number, gap?:number}} [options]
  *   near: how wide the half it turns to stays; far: how wide the other half becomes; shift: pixels
  */
-export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, inside = false, sideShift = 3, gap = 2, body = null, neck = [0.5, 0.62], skew = 0, sideBody = null } = {}) {
+export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, inside = false, sideShift = 3, gap = 2, body = null, neck = [0.5, 0.62], skew = 0, sideBody = null, legs = null } = {}) {
   if (!walk || walk.height % 4) return walk;
   const fh = walk.height / 4;
   const n = cols || (walk.width % 3 === 0 ? 3 : Math.max(1, Math.round(walk.width / fh)));
@@ -91,6 +95,8 @@ export function diagonalWarp(walk, { cols, near = 0.8, far = 1.12, shift = 2, in
   // their width instead of one going thin and the other fat. Between the two it changes gradually.
   const lerp = (a, b, t) => a + (b - a) * t;
   const rowTurn = (y) => {
+    // The legs: moved on their own (a little back, so the body twists), not turned.
+    if (legs && (y + 0.5) / fh >= legs.from) return { near: 1, far: 1, shift: legs.shift };
     if (!body) return { near, far, shift };
     const t = Math.min(1, Math.max(0, ((y + 0.5) / fh - neck[0]) / (neck[1] - neck[0])));
     return { near: lerp(near, body.near, t), far: lerp(far, body.far, t), shift: lerp(shift, body.shift, t) };

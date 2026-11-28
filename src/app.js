@@ -7939,7 +7939,7 @@ function renderTemplates() {
     }
     // 8 directions: how the diagonals of parts drawn in 4 directions are made.
     if (base === 'DIR8' && onDiagonals) {
-      const pick = el('select', { className: 'tpl-diagonals', title: 'Diagonals of parts drawn in 4 directions. Turned: the front (or back) turned toward the side, in one outline; going up, the side of the face peeks out. Turned more: further. Side view: the side each diagonal faces' },
+      const pick = el('select', { className: 'tpl-diagonals', title: 'Diagonals of parts drawn in 4 directions. Turned: the front (or back) turned toward the side, in one outline; going up, the side of the face peeks out. Turned more: further. Subtle: barely turned, a few pixels, so the drawing stays as it is. Side view: the side each diagonal faces' },
         Object.entries(DIAGONAL_MODES).map(([key, m]) => el('option', { value: key, textContent: `Diagonals: ${m.label}`, selected: (diagonals || 'turned') === key })));
       pick.addEventListener('change', () => onDiagonals(pick.value));
       const only = el('input', { type: 'checkbox', className: 'tpl-only-diagonals', checked: !!onlyDiagonals });
