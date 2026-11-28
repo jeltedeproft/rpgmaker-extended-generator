@@ -5180,6 +5180,11 @@ function galleryCard(item, observer) {
   use.addEventListener('click', load);
   pics.addEventListener('click', () => openCharacterView(item, load));
   const exportOne = el('button', { type: 'button', className: 'small-button', textContent: 'Export', title: 'Download this character as a file' });
+  const images = el('button', { type: 'button', className: 'small-button', textContent: 'Save image(s)…', title: 'Put this character on and save its sheets as pictures or GIFs (Export image(s))' });
+  images.addEventListener('click', async () => {
+    await load();
+    openExport();
+  });
   exportOne.addEventListener('click', () => downloadBlob(new Blob([item.text], { type: 'application/json' }), `${safeFileName(item.name)}.json`));
   const buttons = [use];
   if (item.id) {
@@ -5206,7 +5211,7 @@ function galleryCard(item, observer) {
     });
     buttons.push(edit, copy);
   }
-  buttons.push(exportOne);
+  buttons.push(images, exportOne);
   if (item.id) {
     const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Remove from the gallery (files on your computer stay)' });
     remove.addEventListener('click', () => {
