@@ -1433,6 +1433,19 @@ try {
     await evaluate(`(async () => { document.getElementById('export-images').click(); await new Promise(r => setTimeout(r, 400)); document.getElementById('export-to-downloads').click(); await new Promise(r => setTimeout(r, 300)); document.getElementById('export-dialog').close(); })()`);
     await sleep(800);
   }
+  // 8 directions: Only the diagonals leaves the walk rows out (4 rows instead of 8).
+  {
+    await evaluate(`(() => { document.getElementById('add-sheet').click(); return 1; })()`);
+    await sleep(1200);
+    await evaluate(`(() => { const s = [...document.querySelectorAll('#template-grid select')].filter(s => [...s.options].some(o => o.value === 'DIR8')).pop(); s.value = 'DIR8'; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
+    await sleep(1800);
+    const size = () => evaluate(`(() => { const c = [...document.querySelectorAll('#extra-previews canvas')].pop(); return c ? c.width + 'x' + c.height : 'none'; })()`);
+    const before = await size();
+    await evaluate(`[...document.querySelectorAll('.tpl-only-diagonals')].pop().click()`);
+    await sleep(1800);
+    const after = await size();
+    check('8 directions: Only the diagonals makes 4 rows instead of 8', before.endsWith('x' + (2 * Number(after.split('x')[1]))) && after !== 'none', `${before} -> ${after}`);
+  }
   // Dropping is Load pack: a zip and a picture dropped together both open (the zip like a folder).
   {
     const { zipFiles } = await import('../src/zip.js');

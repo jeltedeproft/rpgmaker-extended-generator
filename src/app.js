@@ -2272,12 +2272,13 @@ async function renderPreview() {
   state.extraComposites = extraSheets().filter((x) => !x.off).map((x) => {
     // One sheet that can't be drawn doesn't stop the others (it says why in its preview).
     try {
-      // 8 directions: the walk sheet, with the diagonals drawn the same way under it.
+      // 8 directions: the walk sheet, with the diagonals drawn the same way under it (or only the
+      // diagonals, as a sheet of their own next to the walk).
       if (x.base === 'DIR8') {
         const settings = extraSettings({ ...x, base: 'TV', cols: 3, rows: 4 });
         const walk = composeSheet('TV', state.character, state.library, byId, settings).image;
         const diagonal = walk && composeSheet('TV', state.character, diagonalLibrary(x.diagonals), byId, settings).image;
-        return { sheet: x, image: walk && diagonal && join8(walk, diagonal) };
+        return { sheet: x, image: walk && diagonal && (x.onlyDiagonals ? diagonal : join8(walk, diagonal)) };
       }
       // RPG Maker XP: the walk sheet, as 4 x 4 frames.
       const other = WALK_LAYOUTS[x.base];
@@ -7154,7 +7155,7 @@ const focusExtra = () => (focusExtraId ? (state.extraComposites || []).find((x) 
 function extraFrameOf(x) {
   const img = x?.image;
   if (!img) return null;
-  const kind = { DIR8: [3, 8], XP: [4, 4], RM2K: [3, 4] }[x.sheet.base] || [SHEETS[x.sheet.base]?.frame?.cols || 1, SHEETS[x.sheet.base]?.frame?.rows || 1];
+  const kind = { DIR8: [3, x.sheet.onlyDiagonals ? 4 : 8], XP: [4, 4], RM2K: [3, 4] }[x.sheet.base] || [SHEETS[x.sheet.base]?.frame?.cols || 1, SHEETS[x.sheet.base]?.frame?.rows || 1];
   const cols = x.sheet.cols > 0 ? x.sheet.cols : kind[0];
   const rows = x.sheet.rows > 0 ? x.sheet.rows : kind[1];
   return { w: Math.floor(img.width / cols), h: Math.floor(img.height / rows), cols, rows };
@@ -7800,7 +7801,8 @@ let newSheetId = null;
 /** The extra sheets in the preview: the whole sheet, or why there is nothing to see yet. */
 function renderExtraPreviews() {
   $('extra-previews').replaceChildren(...(state.extraComposites || []).map((x) => {
-    const from = WALK_LAYOUTS[x.sheet.base] ? WALK_LAYOUTS[x.sheet.base].note : `from the ${SHEET_NAMES[x.sheet.base]} parts`;
+    const from = x.sheet.base === 'DIR8' && x.sheet.onlyDiagonals ? 'only the diagonals: down-left, down-right, up-left, up-right'
+      : WALK_LAYOUTS[x.sheet.base] ? WALK_LAYOUTS[x.sheet.base].note : `from the ${SHEET_NAMES[x.sheet.base]} parts`;
     const big = x.image && toCanvas(x.image);
     if (big) {
       big.title = 'Click: a close up of this sheet';
@@ -7921,7 +7923,7 @@ function renderTemplates() {
     return select;
   };
   /** One row: on, name, parts, width, height, columns, rows, Remove. Every sheet alike. */
-  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove, onCrop = null, cropped = false, xp = false, diagonals = null, onDiagonals = null }) => {
+  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove, onCrop = null, cropped = false, xp = false, diagonals = null, onlyDiagonals = false, onOnlyDiagonals = null, onDiagonals = null }) => {
     const tick = el('input', { type: 'checkbox', checked: on, title: 'Untick to leave it out of the preview and the export' });
     tick.addEventListener('change', () => onToggle(tick.checked));
     const nameBox = el('input', { type: 'text', className: 'tpl-name', value: name || '', placeholder, title: 'Its name in the preview and on the export button' });
@@ -7940,7 +7942,9 @@ function renderTemplates() {
       const pick = el('select', { className: 'tpl-diagonals', title: 'Diagonals of parts drawn in 4 directions. Turned: the front (or back) turned toward the side, in one outline; going up, the side of the face peeks out. Turned more: further. Side view: the side each diagonal faces' },
         Object.entries(DIAGONAL_MODES).map(([key, m]) => el('option', { value: key, textContent: `Diagonals: ${m.label}`, selected: (diagonals || 'turned') === key })));
       pick.addEventListener('change', () => onDiagonals(pick.value));
-      actions.unshift(pick);
+      const only = el('input', { type: 'checkbox', className: 'tpl-only-diagonals', checked: !!onlyDiagonals });
+      only.addEventListener('change', () => onOnlyDiagonals(only.checked));
+      actions.unshift(pick, el('label', { className: 'lock small', title: 'Leave out the walk rows (down, left, right, up): the sheet is just the 4 diagonals, down-left, down-right, up-left, up-right' }, [only, ' Only the diagonals']));
     }
     return [tick, nameBox, partsSelect(base, onBase, xp),
       ...['fw', 'fh', 'cols', 'rows'].map((f, k) => number(size?.[f], ['width', 'height', 'columns', 'rows'][k], (v) => onSize(f, v))),
@@ -7985,6 +7989,8 @@ function renderTemplates() {
     onCrop: () => openCrop(x.name || 'Sheet', () => x.crop, (c) => { x.crop = c || undefined; }, () => x),
     diagonals: x.diagonals,
     onDiagonals: (v) => { x.diagonals = v === 'turned' ? undefined : v; sheetsChanged(); },
+    onlyDiagonals: x.onlyDiagonals,
+    onOnlyDiagonals: (v) => { x.onlyDiagonals = v || undefined; sheetsChanged(); },
   }));
   $('template-grid').replaceChildren(...head, ...builtIn, ...extras);
   const removed = SHEET_KEYS.filter((s) => sheetOption(s).removed);
