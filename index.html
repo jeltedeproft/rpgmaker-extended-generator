@@ -225,7 +225,9 @@
           <button id="split-item" class="small-button" title="Cut this part where transparent gaps separate it, e.g. into a left and a right eye">Split into pieces</button>
           <button id="unsplit-item" class="small-button" hidden>Join the pieces again</button>
           <label class="small">bridge gaps up to <input type="number" id="split-gap" min="0" max="8" step="1" value="0"> px</label>
+          <label class="lock small" title="Also a piece per frame: the walk's Down 1, Down 2... each on its own. Many pieces: the battler has 54 frames"><input type="checkbox" id="split-frames"> one piece per frame too</label>
         </div>
+        <p class="muted small">Each picture gets its own pieces: Beard - Portrait, Beard - Walk 1, Beard - Walk 2... To cut a piece out by hand, open the close up, Extract, From: the part's picture, and pick it: Split off as a piece.</p>
         <p id="pieces-status" class="note small"></p>
       </div>
       <div class="colour-options" data-tab="colours">
@@ -487,6 +489,11 @@
             <label class="extract-row">Add the piece as <select id="extract-part"></select></label>
             <label class="extract-row">What is left as <select id="extract-rest-part"></select></label>
             <div class="extract-row"><button type="button" id="extract-add" class="primary">Add as parts</button><button type="button" id="extract-save" class="small-button" title="Both pictures as PNG files">Save as PNG</button></div>
+            <div class="extract-row" id="extract-part-row"><span class="muted small" id="extract-part-text">This part, on this picture:</span>
+              <button type="button" id="extract-split" class="small-button" title="The picked pixels become a piece of this part of their own (Visibility → Pieces), to move, recolour and order on its own">Split off as a piece</button>
+              <button type="button" id="extract-hide" class="small-button" title="Clip: the picked pixels of this part are not shown on this picture">Hide them</button>
+              <button type="button" id="extract-unhide" class="small-button" title="Show the picked pixels again (that were hidden with Hide them)">Show them again</button></div>
+            <p id="extract-hidden-note" class="muted small"></p>
             <label class="extract-row" title="The colour the picked pixels are shown in">Highlight <input type="color" id="extract-colour" value="#ff28c8"></label>
             <p class="muted small">Right-click (or Shift): take away, the same way. Mouse wheel: scroll; Ctrl + wheel: zoom; hold the middle button and drag: pan.</p>
           </div>

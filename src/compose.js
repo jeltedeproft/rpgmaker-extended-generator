@@ -3,7 +3,7 @@
 import { normalizeStretch, isStretched, stretchFrames } from './stretch.js';
 import { DRAW_ORDER, DEFAULT_SIZE, SHEETS } from './format.js';
 import { createImage, recolorLayer, blendOver, blendFrames, transformFrames, frameCentres, gridCentres, isTransformed, swapFrameRows } from './recolor.js';
-import { islandLabels, keepIsland } from './islands.js';
+import { islandLabels, keepIsland, decodeMask, maskPicture } from './islands.js';
 import { solidOf, insideOutline, applyClip, growRegion } from './clip.js';
 import { VX_ORDER, cellOf, paintedIndex, followedSlot } from './vxace.js';
 
@@ -255,11 +255,17 @@ export function layersForSheet(sheet, character, library) {
     const source = itemOnSheet(character, key, selected, sheet, library);
     if (!source) continue;
     const pieces = pieceKeys(character, key);
+    const metas = character.split?.[key]?.pieces;
     for (const layer of sheetLayers(source, sheet, library)) {
       if (!layer.base) continue;
       if (!pieces.length) draws.push({ layer, item: key });
-      // A split item draws each piece as its own layer (own position, colours and draw order).
-      pieces.forEach((piece, i) => draws.push({ layer, item: piece, piece: { of: key, n: i + 1 } }));
+      // A split item draws each piece as its own layer (own position, colours and draw order). A
+      // piece of one sheet (and one frame) is drawn only there; old splits: island n everywhere.
+      pieces.forEach((piece, i) => {
+        const meta = metas?.[i];
+        if (meta && meta.sheet !== sheet) return;
+        draws.push({ layer, item: piece, piece: { of: key, n: meta ? meta.n : i + 1, cell: meta?.cell || null, cut: meta?.rle != null ? meta : null } });
+      });
     }
   }
   // character.only: just this item or piece (a piece on its own, to see which one it is).
@@ -450,6 +456,70 @@ export function piecesPerSheet(character, library, key, gap, settings = null) {
 }
 
 /**
+ * How an item falls apart on each sheet: {sheet: {count, frames: {"col,row": count} | null}}.
+ * Layers must be decoded.
+ */
+export function pieceDetail(character, library, key, gap, settings = null) {
+  const variant = library.variants.get(character.parts[key]);
+  const result = {};
+  if (!variant) return result;
+  for (const sheet of ['FG', 'TV', 'TVD', 'SV']) {
+    const source = itemOnSheet(character, key, variant, sheet, library);
+    const own = source ? sheetLayers(source, sheet, library).filter((l) => l.base?.pixels) : [];
+    if (!own.length) continue;
+    const draws = layersForSheet(sheet, { ...character, parts: { [key]: character.parts[key] }, split: {} }, library);
+    const layout = sheetLayout(sheet, draws, settings);
+    const placed = own.map((l) => placeOnSheet(l.base.pixels, sheet, layout));
+    const tiled = placed[0].tiled;
+    const found = islandLabels(placed.map((p) => p.image), tiled ? layout.frame : null, gap);
+    if (found.count) result[sheet] = { count: found.count, frames: tiled ? found.frames : null };
+  }
+  return result;
+}
+
+/**
+ * Splits an item into pieces, sheet by sheet: one piece per island of the portrait, of the walk,
+ * and so on ("Beard - Walk 1", "Beard - Walk 2", "Beard - Portrait"), and with byFrame one per
+ * island of every frame. Pieces cut out by hand (cut) are kept when their picture still fits.
+ * @returns {{gap, byFrame, count, sheets, pieces:{sheet, n?, cell?, rle?, w?, h?}[], apart:boolean}}
+ */
+export function makeSplit(character, library, key, gap, byFrame = false, settings = null, cuts = []) {
+  const detail = pieceDetail(character, library, key, gap, settings);
+  const pieces = [];
+  const sheets = {};
+  for (const [sheet, d] of Object.entries(detail)) {
+    sheets[sheet] = d.count;
+    if (byFrame && d.frames) {
+      const cells = Object.keys(d.frames).sort((a, b) => {
+        const [ac, ar] = a.split(',').map(Number);
+        const [bc, br] = b.split(',').map(Number);
+        return ar - br || ac - bc;
+      });
+      for (const cell of cells) for (let n = 1; n <= d.frames[cell]; n++) pieces.push({ sheet, cell, n });
+    } else {
+      for (let n = 1; n <= d.count; n++) pieces.push({ sheet, n });
+    }
+  }
+  pieces.push(...cuts.filter((c) => detail[c.sheet]));
+  return { gap, byFrame: !!byFrame, count: pieces.length, sheets, pieces, apart: Math.max(0, ...Object.values(sheets)) > 1 };
+}
+
+/** The pieces cut out by hand of a split item, on one sheet. */
+const cutsOn = (split, sheet) => (split?.pieces || []).filter((p) => p.rle != null && p.sheet === sheet);
+
+/** The picked pixels of a piece cut out by hand, for a picture of that size; else null. */
+const cutMasks = new Map();
+function cutMask(cut, image) {
+  if (!cut || cut.w !== image.width || cut.h !== image.height) return null;
+  const key = `${cut.w}x${cut.h}|${cut.rle}`;
+  if (!cutMasks.has(key)) {
+    if (cutMasks.size > 64) cutMasks.delete(cutMasks.keys().next().value);
+    cutMasks.set(key, decodeMask(cut.rle, cut.w * cut.h));
+  }
+  return cutMasks.get(key);
+}
+
+/**
  * Number of pieces to split an item into: the most of any sheet. On a sheet with fewer islands
  * the extra pieces are simply empty (a one-piece face is all "piece 1").
  */
@@ -520,10 +590,25 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     // VX Ace parts are painted, not recoloured: the colour picks a cell of the file.
     const painted = !!layer.base.cells;
     const paintedColour = painted ? itemColor(character, item, layer.slotId) : null;
-    const base = painted && layer.base.pixels ? cellOf(layer.base, paintedIndex(paintedColour)) : layer.base.pixels;
+    let base = painted && layer.base.pixels ? cellOf(layer.base, paintedIndex(paintedColour)) : layer.base.pixels;
     if (!base) {
       problems.push(`${layer.base.path}: not decoded`);
       continue;
+    }
+    // Pixels marked by hand: hidden on this sheet (clip.cut), or cut out as a piece of their own.
+    // (Not on pictures made from others, like the diagonals: their pixels are elsewhere.)
+    const ownPicture = !String(layer.base.path || '').includes('#diagonal');
+    const owner = piece ? piece.of : item;
+    const hidden = ownPicture && cutMask(character.clip?.[itemOfKey(owner)]?.cut?.[sheet], base);
+    if (hidden) base = maskPicture(base, hidden, false);
+    if (piece?.cut) {
+      const mine = ownPicture && cutMask(piece.cut, base);
+      base = mine ? maskPicture(base, mine, true) : maskPicture(base, new Uint8Array(base.width * base.height), true);
+    } else if (piece && ownPicture) {
+      for (const c of cutsOn(character.split?.[piece.of], sheet)) {
+        const theirs = cutMask(c, base);
+        if (theirs) base = maskPicture(base, theirs, false);
+      }
     }
     // A mask painted by hand (maskpaint.js) goes over the layer's own one.
     const mask = (layer.paint || layer.mask)?.pixels ?? null;
@@ -537,9 +622,11 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
       : follow ? recolorLayer(base, null, follow, gradientFor, settings) : base;
     const onSheet = placeOnSheet(recoloured, sheet, layout);
     let image = onSheet.image;
-    if (piece) {
+    if (piece && !piece.cut) {
       const labels = islandsOf(piece.of);
       if (labels) image = keepIsland(image, labels, piece.n);
+      // A piece of one frame: nothing of the other frames.
+      if (piece.cell && onSheet.tiled && frame) image = keepFrame(image, frame, piece.cell);
     }
     // Sprite sheets are shifted inside each animation frame, so nothing bleeds into the next one.
     const tiled = onSheet.tiled ? frame : null;
@@ -737,4 +824,15 @@ export function transformSheet(image, sheet, frame, t) {
   result = transformFrames(result, t, frame, gridCentres(result.width, result.height, frame));
   if (!t.x && !t.y) return result;
   return blendOver(createImage(result.width, result.height), result, t.x, t.y, frame);
+}
+
+/** A copy of `image` with only one frame ("col,row") left. */
+function keepFrame(image, frame, cell) {
+  const [col, row] = cell.split(',').map(Number);
+  const out = { width: image.width, height: image.height, data: new Uint8ClampedArray(image.data.length) };
+  for (let y = row * frame.h; y < Math.min(image.height, (row + 1) * frame.h); y++) {
+    const from = (y * image.width + col * frame.w) * 4;
+    out.data.set(image.data.subarray(from, from + Math.min(frame.w, image.width - col * frame.w) * 4), from);
+  }
+  return out;
 }

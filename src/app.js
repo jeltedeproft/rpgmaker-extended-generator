@@ -6,12 +6,13 @@ import { createLibrary, addPack, removePack, removeFile, restoreFile, variantLab
 import { colourMean, matchAdjust, createCustomGradient, gradientsToImage, preferredCategories, recommendColours, adjustGradient, createAdjustedGradient, customGradientToJson, customGradientFromJson, createSourceAdjust, SOURCE_SAMPLE, uniqueGradients } from './gradients.js';
 import {
   composeSheet, selectedVariants, variantsToDecode, variantForSheet, partOffset, partOfKey, itemColor,
-  layersForSheet, drawId, itemOfKey, frameFor, clipOf, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, selectedItems, sheetLayers,
+  layersForSheet, drawId, itemOfKey, frameFor, clipOf, itemOnSheet, HIDDEN, pieceKeys, countPieces, piecesPerSheet, makeSplit, selectedItems, sheetLayers,
 } from './compose.js';
 import { createImage, scanMask, matchSlot, recolorLayer, blendOver } from './recolor.js';
 import { WALK_LAYOUTS } from './xp.js';
 import { cropBox, cropScale } from './crop.js';
 import { diagonalsOf, join8, DIAGONAL_MODES } from './dir8.js';
+import { encodeMask, decodeMask } from './islands.js';
 import { normalizeStretch, isStretched, stretchFrames, lineY } from './stretch.js';
 import { selectByColour, growSelection, keepSelected, removeSelected, nearestOutside, selectedCount } from './extract.js';
 import { packCharacters, MULTI_COLS, MULTI_ROWS } from './multi.js';
@@ -706,6 +707,60 @@ function renderAll() {
 /** Parts whose extra items and pieces are shown in the part list (folded by default). */
 const openPartGroups = new Set();
 
+/** Folded piece groups in the list on the left: "Beard|TV" (a picture) or "Beard|TV|1,0" (a frame). */
+const openPieceGroups = new Set();
+
+/**
+ * The rows of a split item's pieces, nested by picture, then frame (for pieces per frame), then the
+ * pieces themselves: Beard ▸ Walk ▸ Down 1 ▸ Beard - Walk Down 1 - 2.
+ */
+function pieceRows(key, button) {
+  const split = state.character.split?.[key];
+  const pieces = pieceKeys(state.character, key);
+  const link = (piece) => (linkOf(piece) ? ' ⛓' : '');
+  if (!split?.pieces) return pieces.map((piece) => button(piece, pieceLabel(piece) + link(piece), ''));
+  const rows = [];
+  const fold = (id, label, count, depth) => {
+    const holds = state.selectedPart.startsWith(`${key} #`) && pieces.some((p, i) => p === state.selectedPart && `${key}|${split.pieces[i].sheet}${depth > 1 ? `|${split.pieces[i].cell}` : ''}` === id);
+    // Pieces per frame are many: their groups start folded.
+    const open = openPieceGroups.has(id) ? true : openPieceGroups.has(`-${id}`) ? false : holds || !split.byFrame;
+    const head = el('button', { type: 'button', className: `piece-group depth-${depth}`, textContent: `${open ? '▾' : '▸'} ${label} (${count})`,
+      title: `${open ? 'Fold' : 'Show'} the ${count} pieces` });
+    head.addEventListener('click', () => {
+      openPieceGroups.delete(id);
+      openPieceGroups.delete(`-${id}`);
+      openPieceGroups.add(open ? `-${id}` : id);
+      openPartGroups.add(partOfKey(key));
+      renderSidebar();
+    });
+    rows.push(head);
+    return open;
+  };
+  const bySheet = new Map();
+  split.pieces.forEach((meta, i) => {
+    if (!bySheet.has(meta.sheet)) bySheet.set(meta.sheet, []);
+    bySheet.get(meta.sheet).push(i);
+  });
+  for (const [sheet, list] of bySheet) {
+    if (!fold(`${key}|${sheet}`, SHEET_NAMES[sheet] || sheet, list.length, 1)) continue;
+    const byCell = new Map();
+    for (const i of list) {
+      const cell = split.pieces[i].rle == null ? split.pieces[i].cell || '' : '';
+      if (!byCell.has(cell)) byCell.set(cell, []);
+      byCell.get(cell).push(i);
+    }
+    for (const [cell, inCell] of byCell) {
+      if (cell && !fold(`${key}|${sheet}|${cell}`, cellName(sheet, cell), inCell.length, 2)) continue;
+      for (const i of inCell) {
+        const b = button(pieces[i], pieceLabel(pieces[i]) + link(pieces[i]), '');
+        b.classList.add(cell ? 'depth-3' : 'depth-2');
+        rows.push(b);
+      }
+    }
+  }
+  return rows;
+}
+
 function renderSidebar() {
   const lib = state.library;
   const select = $('body-type');
@@ -741,9 +796,7 @@ function renderSidebar() {
     const inside = [];
     for (const key of [part, ...itemKeys(state.character, part)]) {
       if (key !== part) inside.push(button(key, key, valueOf(key)));
-      for (const piece of pieceKeys(state.character, key)) {
-        inside.push(button(piece, `${key} · ${piece.split('#').pop()}${linkOf(piece) ? ' ⛓' : ''}`, ''));
-      }
+      inside.push(...pieceRows(key, button));
     }
     const selectedInside = state.selectedPart !== part && partOfKey(state.selectedPart) === part && state.selectedPart !== ALL_COLOURS;
     const head = button(part, part, valueOf(part), selectedInside ? ' holds-active' : '');
@@ -816,7 +869,7 @@ async function renderEditor() {
   const isPiece = !isColours && itemOfKey(key) !== key;
   const isExtra = !isColours && !isPiece && key !== part;
   const worn = !isColours && !!state.character.parts[itemOfKey(key)];
-  $('editor-title').textContent = isColours ? 'All colours' : isPiece ? `${itemOfKey(key)} · piece ${key.split('#').pop()}` : key;
+  $('editor-title').textContent = isColours ? 'All colours' : isPiece ? pieceLabel(key) : key;
   $('lock-part').checked = state.locked.has(key);
   $('lock-part').parentElement.hidden = isColours || isPiece;
   $('offsets').hidden = !worn;
@@ -964,9 +1017,8 @@ ${variant.id}${selected ? '\nWorn: click again to take it off' : ''}` : 'None' }
     const split = state.character.split?.[key];
     if (split) {
       await ensureVariants(variantsToDecode(state.character, state.library));
-      const sheets = variant ? piecesPerSheet(state.character, state.library, key, split.gap, state.settings) : {};
-      const count = Math.max(0, ...Object.values(sheets));
-      if (count > 1) Object.assign(split, { count, sheets });
+      const next = variant && makeSplit(state.character, state.library, key, split.gap, split.byFrame, state.settings, handCuts(split));
+      if (next?.count > 1) state.character.split[key] = { ...next, ...(split.links ? { links: split.links } : {}) };
       else delete state.character.split[key];
     }
     renderSidebar();
@@ -1282,7 +1334,7 @@ function setClipIn(key, scope, value) {
     }
     if (!Object.keys(entry.at).length) delete entry.at;
   }
-  if (!entry.mode && !entry.at) delete all[key];
+  if (!entry.mode && !entry.at && !entry.cut) delete all[key];
 }
 
 function renderClipScope() {
@@ -1388,25 +1440,58 @@ function renderPieces() {
   $('split-item').hidden = !!split;
   $('unsplit-item').hidden = !split;
   $('split-gap').value = split?.gap ?? $('split-gap').value ?? 0;
-  const SHEET_WORD = { FG: 'portrait', TV: 'walk', TVD: 'damage', SV: 'battler' };
-  const perSheet = split?.sheets && Object.entries(split.sheets).map(([s, n]) => `${SHEET_WORD[s] || s} ${n}`).join(', ');
+  if (split) $('split-frames').checked = !!split.byFrame;
+  const perSheet = split?.pieces
+    ? Object.entries(split.pieces.reduce((a, p) => ({ ...a, [p.sheet]: (a[p.sheet] || 0) + 1 }), {})).map(([s, n]) => `${sheetLabel(s).toLowerCase()} ${n}`).join(', ')
+    : split?.sheets && Object.entries(split.sheets).map(([s, n]) => `${sheetLabel(s).toLowerCase()} ${n}`).join(', ');
   $('pieces-status').textContent = split
-    ? `Split into ${split.count} pieces${perSheet ? ` (${perSheet})` : ''}, listed under ${key} on the left. Each can be moved, turned, recoloured and reordered on its own. An image with fewer pieces keeps its whole picture in piece 1.`
+    ? `Split into ${split.count} pieces${perSheet ? ` (${perSheet})` : ''}, listed under ${key} on the left. Each can be moved, turned, recoloured and reordered on its own.`
     : '';
+}
+
+/** The pieces of a split item that were cut out by hand (Extract → Split off as a piece). */
+const handCuts = (split) => (split?.pieces || []).filter((p) => p.rle != null);
+
+
+/** A frame's name: "Down 2", "Walk 3" (battler motion), or "frame 1,2". */
+function cellName(sheet, cell) {
+  for (const g of cellGroups(sheet)) {
+    const i = g.cells.indexOf(cell);
+    if (i >= 0) return g.cells.length > 1 ? `${g.name} ${i + 1}` : g.name;
+  }
+  return `frame ${cell}`;
+}
+
+/**
+ * A piece's name: "Beard - Walk 2", "Beard - Portrait" (one piece there), "Beard - Walk Down 1 - 2"
+ * (a piece of one frame), "Beard - Walk, cut 1" (cut out by hand). Old splits: "Beard · 2".
+ */
+function pieceLabel(key) {
+  const item = itemOfKey(key);
+  const split = state.character.split?.[item];
+  const i = Number(key.split('#').pop()) - 1;
+  const meta = split?.pieces?.[i];
+  if (!meta) return `${item} · ${i + 1}`;
+  const sheet = SHEET_NAMES[meta.sheet] || meta.sheet;
+  if (meta.rle != null) {
+    const n = handCuts(split).filter((p) => p.sheet === meta.sheet).indexOf(meta) + 1;
+    return `${item} - ${sheet}, cut ${n}`;
+  }
+  const alike = split.pieces.filter((p) => p.rle == null && p.sheet === meta.sheet && (p.cell || null) === (meta.cell || null)).length;
+  const where = meta.cell ? `${sheet} ${cellName(meta.sheet, meta.cell)}` : sheet;
+  return `${item} - ${where}${alike > 1 ? (meta.cell ? ` - ${meta.n}` : ` ${meta.n}`) : ''}`;
 }
 
 async function splitSelected(gap) {
   const key = state.selectedPart;
   await ensureVariants(variantsToDecode(state.character, state.library));
-  const sheets = piecesPerSheet(state.character, state.library, key, gap, state.settings);
-  const count = Math.max(0, ...Object.values(sheets));
-  if (count < 2) {
-    toast(gap > 0
-      ? `${key} stays one piece with a gap of ${gap}px. Try a smaller gap.`
-      : `${key} is one piece in every image (portrait, walk, damage, battler): no transparent gap separates its parts.`);
+  const old = state.character.split?.[key];
+  const split = makeSplit(state.character, state.library, key, gap, $('split-frames').checked, state.settings, handCuts(old));
+  if (split.count < 2) {
+    toast(`${key} is on one picture only, in one piece: nothing to split. Cut a piece out by hand: close up → Extract → Split off as a piece.`);
     return;
   }
-  (state.character.split ||= {})[key] = { gap, count, sheets };
+  (state.character.split ||= {})[key] = { ...split, ...(old?.links ? { links: old.links } : {}) };
   renderAll();
 }
 
@@ -1421,14 +1506,14 @@ function splitWorn() {
   for (const key of Object.keys(state.character.parts)) {
     const id = state.character.parts[key];
     if (!id || state.character.split?.[key] || keptWhole.has(`${key}|${id}|${gap}`)) continue;
-    const sheets = piecesPerSheet(state.character, state.library, key, gap, state.settings);
-    const count = Math.max(0, ...Object.values(sheets));
-    if (count < 2) {
+    // Only parts that fall apart somewhere (two eyes, horns): the others stay whole.
+    const made = makeSplit(state.character, state.library, key, gap, false, state.settings);
+    if (!made.apart) {
       keptWhole.add(`${key}|${id}|${gap}`);
       whole++;
       continue;
     }
-    (state.character.split ||= {})[key] = { gap, count, sheets };
+    (state.character.split ||= {})[key] = made;
     split++;
   }
   return { split, whole };
@@ -1630,9 +1715,11 @@ function renderLink() {
   $('link-box').hidden = !info || info.split.count < 2;
   if ($('link-box').hidden) return;
   const link = linkOf(state.selectedPart);
-  const others = Array.from({ length: info.split.count }, (_, i) => i + 1).filter((n) => n !== info.n);
+  const sheetOfPiece = (n) => info.split.pieces?.[n - 1]?.sheet;
+  const others = Array.from({ length: info.split.count }, (_, i) => i + 1)
+    .filter((n) => n !== info.n && sheetOfPiece(n) === sheetOfPiece(info.n));
   $('link-to').replaceChildren(el('option', { value: '', textContent: 'nothing' }),
-    ...others.map((n) => el('option', { value: n, textContent: `piece ${n}` })));
+    ...others.map((n) => el('option', { value: n, textContent: pieceLabel(`${info.item} #${n}`) })));
   $('link-to').value = link ? link.partner.split('#').pop() : '';
   $('link-mode').value = link?.mode || 'mirror';
 }
@@ -2459,8 +2546,9 @@ function renderLayers() {
       else openLayerGroups.add(item);
       renderLayers();
     });
-    const pick = el('button', { type: 'button', className: 'layer-name', title: `Pick ${item}` }, [
-      item, ...(many ? [el('span', { className: 'layer-count', textContent: ` ${draws.length}` })] : []),
+    const name = item.includes(' #') ? pieceLabel(item) : item;
+    const pick = el('button', { type: 'button', className: 'layer-name', title: `Pick ${name}` }, [
+      name, ...(many ? [el('span', { className: 'layer-count', textContent: ` ${draws.length}` })] : []),
     ]);
     pick.addEventListener('click', () => pickItem(item));
     // Cut off by another part (hair under a hood): one click shows it whole again.
@@ -6757,6 +6845,17 @@ function renderExtract() {
   if (focusExtraId) $('extract-add').disabled = true;
   $('extract-add').title = focusExtraId ? 'Pieces of an added sheet are saved as PNG (Save as PNG); pieces of the Walk, Battler, Damage or Portrait can be added as parts' : '';
   $('extract-undo').disabled = !ex.undo.length;
+  const t = extractTarget();
+  $('extract-part-row').hidden = !t;
+  const hidden = t && hiddenOf(t);
+  const nHidden = hidden ? selectedCount(hidden) : 0;
+  if (t) {
+    $('extract-part-text').textContent = `${t.key}, on the ${sheetLabel(t.sheet).toLowerCase()}:`;
+    $('extract-split').disabled = $('extract-hide').disabled = !n;
+    $('extract-unhide').disabled = !nHidden;
+    $('extract-unhide').title = n ? 'Show the picked pixels again (hidden with Hide them)' : 'Nothing picked: show every hidden pixel again';
+  }
+  $('extract-hidden-note').textContent = !t ? 'Split off a piece or hide pixels: pick From: one of the part\'s own pictures.' : nHidden ? `${nHidden} pixels of ${t.key} are hidden on this picture.` : '';
   $('extract-area-row').hidden = !ex.area;
   if (ex.area) $('extract-area-text').textContent = `Area ${ex.area.w} × ${ex.area.h}: colours are picked only in it.`;
 }
@@ -6927,6 +7026,74 @@ $('extract-add').addEventListener('click', async () => {
     await importEntries(entries, PACK, { loose: true });
   }
   toast(`Added ${added.join(' and ')} (in "${PACK}") to the part lists. They last until the page is closed; Save as PNG keeps them as files.`, 10000);
+});
+
+// ---------- by hand: split a piece off a part, or hide some of its pixels (clip) ----------
+
+/** The part Extract works on when it shows that part's own picture: {key, sheet, w, h}, else null. */
+function extractTarget() {
+  const src = ex && exSource();
+  if (!src?.part || focusExtraId || !state.selectedPart || state.selectedPart === ALL_COLOURS) return null;
+  const key = itemOfKey(state.selectedPart);
+  if (!state.character.parts[key]) return null;
+  return { key, sheet: ex.sheet, w: src.image.width, h: src.image.height };
+}
+
+/** The pixels of the part hidden on this picture (Hide them), or null. */
+function hiddenOf(t) {
+  const cut = state.character.clip?.[t.key]?.cut?.[t.sheet];
+  return cut && cut.w === t.w && cut.h === t.h ? decodeMask(cut.rle, t.w * t.h) : null;
+}
+
+function setHidden(t, sel) {
+  const all = (state.character.clip ||= {});
+  const entry = (all[t.key] ||= {});
+  const cuts = (entry.cut ||= {});
+  if (selectedCount(sel)) cuts[t.sheet] = { w: t.w, h: t.h, rle: encodeMask(sel) };
+  else delete cuts[t.sheet];
+  if (!Object.keys(cuts).length) delete entry.cut;
+  if (!entry.mode && !entry.at && !entry.cut) delete all[t.key];
+}
+
+$('extract-hide').addEventListener('click', () => {
+  const t = extractTarget();
+  if (!t || !selectedCount(ex.sel)) return;
+  const now = hiddenOf(t) || new Uint8Array(t.w * t.h);
+  for (let i = 0; i < now.length; i++) if (ex.sel[i]) now[i] = 1;
+  setHidden(t, now);
+  renderExtract();
+  renderPreview();
+  toast(`Hid ${selectedCount(ex.sel)} pixels of ${t.key} on the ${sheetLabel(t.sheet).toLowerCase()}. Show them again: pick them and click Show them again.`);
+});
+
+$('extract-unhide').addEventListener('click', () => {
+  const t = extractTarget();
+  const now = t && hiddenOf(t);
+  if (!now) return;
+  // Nothing picked: every hidden pixel shows again.
+  const all = !selectedCount(ex.sel);
+  for (let i = 0; i < now.length; i++) if (all || ex.sel[i]) now[i] = 0;
+  setHidden(t, now);
+  renderExtract();
+  renderPreview();
+});
+
+$('extract-split').addEventListener('click', async () => {
+  const t = extractTarget();
+  if (!t || !selectedCount(ex.sel)) return;
+  await ensureVariants(variantsToDecode(state.character, state.library));
+  const old = state.character.split?.[t.key];
+  const cuts = [...handCuts(old), { sheet: t.sheet, w: t.w, h: t.h, rle: encodeMask(ex.sel) }];
+  const made = makeSplit(state.character, state.library, t.key, old?.gap ?? 0, !!old?.byFrame, state.settings, cuts);
+  (state.character.split ||= {})[t.key] = { ...made, ...(old?.links ? { links: old.links } : {}) };
+  const piece = `${t.key} #${made.count}`;
+  ex.undo.push(ex.sel.slice());
+  ex.sel.fill(0);
+  state.selectedPart = piece;
+  renderAll();
+  renderExtract();
+  drawFocus();
+  toast(`Split off "${pieceLabel(piece)}": it moves, turns and is recoloured on its own (Layers, Position).`, 7000);
 });
 
 $('extract-save').addEventListener('click', async () => {

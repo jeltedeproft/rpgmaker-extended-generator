@@ -29,6 +29,8 @@ export function islandLabels(images, frame, gap = 0, cacheKey = null) {
   const fw = frame?.w || width;
   const fh = frame?.h || height;
   let count = 0;
+  // Islands per frame, "col,row" -> count (only frames with something in them).
+  const frames = {};
 
   for (let fy = 0; fy + fh <= height; fy += fh) {
     for (let fx = 0; fx + fw <= width; fx += fw) {
@@ -80,14 +82,56 @@ export function islandLabels(images, frame, gap = 0, cacheKey = null) {
         for (const p of island.pixels) labels[p] = Math.min(255, i + 1);
       });
       count = Math.max(count, kept.length);
+      if (kept.length) frames[`${fx / fw},${fy / fh}`] = kept.length;
     }
   }
-  const result = { labels, count };
+  const result = { labels, count, frames };
   if (key) {
     if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value);
     cache.set(key, result);
   }
   return result;
+}
+
+/**
+ * A picked area of a picture as text: runs of 0s and 1s ("12.3.40..."), first a run of 0s.
+ * @param {Uint8Array} sel 1 = picked
+ */
+export function encodeMask(sel) {
+  const runs = [];
+  let value = 0;
+  let run = 0;
+  for (let i = 0; i < sel.length; i++) {
+    if ((sel[i] ? 1 : 0) === value) run++;
+    else {
+      runs.push(run.toString(36));
+      value = 1 - value;
+      run = 1;
+    }
+  }
+  runs.push(run.toString(36));
+  return runs.join('.');
+}
+
+/** encodeMask back to a Uint8Array of `length` (shorter text: the rest is 0). */
+export function decodeMask(text, length) {
+  const sel = new Uint8Array(length);
+  let i = 0;
+  let value = 0;
+  for (const run of String(text || '').split('.')) {
+    const n = parseInt(run, 36) || 0;
+    if (value) sel.fill(1, i, Math.min(length, i + n));
+    i += n;
+    value = 1 - value;
+  }
+  return sel;
+}
+
+/** A copy of `image` without the picked pixels (keep = false), or with only them (keep = true). */
+export function maskPicture(image, sel, keep) {
+  const out = { width: image.width, height: image.height, data: new Uint8ClampedArray(image.data) };
+  for (let i = 0; i < sel.length; i++) if (!!sel[i] !== keep) out.data[i * 4 + 3] = 0;
+  return out;
 }
 
 /** A copy of `image` with only the pixels of island `n` (1-based) left. */

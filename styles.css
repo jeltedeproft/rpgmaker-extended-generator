@@ -597,3 +597,11 @@ html:has(#focus-dialog[open]) { overflow: hidden; }
 @media (max-width: 800px) { .focus-body { grid-template-columns: 1fr; } }
 #focus-note.warn { color: var(--accent); }
 #extra-previews canvas.zoomable { cursor: zoom-in; }
+
+/* Pieces nested by picture, then frame: Beard ▸ Walk ▸ Down 1 ▸ Beard - Walk Down 1 - 2. */
+.part-list button.piece > span:first-child { max-width: 100%; }
+.part-list button.piece-group { justify-content: flex-start; color: var(--muted); font-size: 12px; padding: 3px 8px; }
+.part-list button.piece-group:hover { color: var(--text); }
+.part-list button.depth-2 { padding-left: 24px; }
+.part-list button.depth-3 { padding-left: 40px; }
+.part-list button.piece-group.depth-2 { padding-left: 20px; }

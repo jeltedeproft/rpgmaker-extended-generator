@@ -989,7 +989,7 @@ try {
     await sleep(1500);
     await evaluate(`[...document.querySelectorAll('#variants .variant')].find(b => b.title.startsWith(${JSON.stringify(worn)})).click()`);
     await sleep(2500);
-    const eyesPieces = await evaluate(`(() => { const list = [...document.querySelectorAll('#part-list button')]; const i = list.findIndex(b => b.textContent.startsWith('Eyes')); return list.slice(i + 1).findIndex(b => !b.classList.contains('piece')); })()`);
+    const eyesPieces = await evaluate(`(() => { const list = [...document.querySelectorAll('#part-list button')]; const i = list.findIndex(b => b.textContent.startsWith('Eyes')); return list.slice(i + 1).filter(b => !b.classList.contains('piece-group')).findIndex(b => !b.classList.contains('piece')); })()`);
     check('split every part also splits parts worn later', before > 0 && eyesPieces > 1, `${before} pieces, then ${eyesPieces} for the new eyes`);
     await evaluate(`[...document.querySelectorAll('#part-list button')].find(b => b.textContent.startsWith('All colours')).click()`);
     await sleep(500);
