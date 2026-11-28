@@ -376,10 +376,15 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .assign-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0 10px; }
 .assign-form .field input, .assign-form .field select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
 .problems .assign { margin: 0 0 0 4px; padding: 0 6px; font-size: 11px; }
-.templates-dialog { width: min(660px, calc(100vw - 32px)); overflow-x: hidden; }
+.templates-dialog { width: min(960px, calc(100vw - 32px)); overflow-x: auto; }
+.templates-dialog .assign-form { width: auto; }
 .template-grid input.tpl-num { width: 100%; min-width: 0; }
 .template-grid select { width: 100%; min-width: 0; }
-.template-grid { display: grid; grid-template-columns: 22px minmax(80px, 1fr) minmax(90px, 130px) repeat(4, minmax(44px, 64px)) auto; gap: 4px 6px; align-items: center; font-size: 12px; }
+.template-grid { display: grid; grid-template-columns: 22px minmax(80px, 1fr) minmax(110px, 150px) repeat(4, minmax(56px, 64px)) minmax(120px, auto) auto; gap: 6px 6px; align-items: center; font-size: 12px; }
+.template-grid .tpl-dir8 { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.template-grid .tpl-dir8 select { width: 100%; }
+.template-grid .tpl-dir8 .lock { white-space: nowrap; display: flex; align-items: center; gap: 5px; }
+.template-grid .tpl-dir8 input[type="checkbox"] { width: auto; }
 .template-grid .tpl-head { color: var(--muted); font-size: 11px; }
 .template-grid input[type="checkbox"] { margin: 0; justify-self: center; }
 .template-grid .tpl-name { width: 100%; min-width: 0; }

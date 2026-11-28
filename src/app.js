@@ -2262,9 +2262,11 @@ async function renderPreview() {
     const crop = base === 'FG' && sheetOption(sheet).crop;
     const { image, problems: pr, ...p } = crop ? croppedPortrait(crop, state.settings.templates?.[sheet], byId)
       : composeSheet(base, state.character, state.library, byId, settings);
+    // 8 directions ticked: exported with the diagonals (the preview keeps animating the 4).
+    const dir8Image = image && base === 'TV' && sheetOption(sheet).dir8 ? withDiagonals(image, sheetOption(sheet), byId, settings) : null;
     problems.push(...pr);
     state.composites[sheet] = image ? {
-      image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame),
+      image, canvas: toCanvas(image), frame: frameOf(base, image, p.frame), dir8Image,
       // Squash and stretch: the picture before it, where the lines are drawn in the close up.
       plain: p.plainImage ? { image: p.plainImage, canvas: toCanvas(p.plainImage), frame: frameOf(base, p.plainImage, p.plainFrame) } : null,
     } : null;
@@ -2274,11 +2276,10 @@ async function renderPreview() {
     try {
       // 8 directions: the walk sheet, with the diagonals drawn the same way under it (or only the
       // diagonals, as a sheet of their own next to the walk).
-      if (x.base === 'DIR8') {
+      if (x.base === 'TV' && x.dir8) {
         const settings = extraSettings({ ...x, base: 'TV', cols: 3, rows: 4 });
         const walk = composeSheet('TV', state.character, state.library, byId, settings).image;
-        const diagonal = walk && composeSheet('TV', state.character, diagonalLibrary(x.diagonals), byId, settings).image;
-        return { sheet: x, image: walk && diagonal && (x.onlyDiagonals ? diagonal : join8(walk, diagonal)) };
+        return { sheet: x, image: walk && withDiagonals(walk, x, byId, settings) };
       }
       // RPG Maker XP: the walk sheet, as 4 x 4 frames.
       const other = WALK_LAYOUTS[x.base];
@@ -7155,7 +7156,7 @@ const focusExtra = () => (focusExtraId ? (state.extraComposites || []).find((x) 
 function extraFrameOf(x) {
   const img = x?.image;
   if (!img) return null;
-  const kind = { DIR8: [3, x.sheet.onlyDiagonals ? 4 : 8], XP: [4, 4], RM2K: [3, 4] }[x.sheet.base] || [SHEETS[x.sheet.base]?.frame?.cols || 1, SHEETS[x.sheet.base]?.frame?.rows || 1];
+  const kind = x.sheet.base === 'TV' && x.sheet.dir8 ? [3, x.sheet.onlyDiagonals ? 4 : 8] : { XP: [4, 4], RM2K: [3, 4] }[x.sheet.base] || [SHEETS[x.sheet.base]?.frame?.cols || 1, SHEETS[x.sheet.base]?.frame?.rows || 1];
   const cols = x.sheet.cols > 0 ? x.sheet.cols : kind[0];
   const rows = x.sheet.rows > 0 ? x.sheet.rows : kind[1];
   return { w: Math.floor(img.width / cols), h: Math.floor(img.height / rows), cols, rows };
@@ -7684,6 +7685,11 @@ function tidyExtraSheets() {
   state.settings.extraSheets = list.filter((x) => {
     if (!x || typeof x !== 'object') return false;
     x.id ||= newSheetKey();
+    // "Walk, 8 directions" was a kind of sheet; now it is the walk with 8 directions ticked.
+    if (x.base === 'DIR8') {
+      x.base = 'TV';
+      x.dir8 = true;
+    }
     if (seen.has(x.id)) return false;
     seen.add(x.id);
     return true;
@@ -7763,6 +7769,12 @@ function diagonalRef(ref, mode, kind = null) {
   if (!ref.diagonal) Object.defineProperties(d, { source: { value: ref }, warp: { value: (image) => diagonalsOf(image, mode, kind) } });
   return d;
 }
+/** A walk sheet with 8 directions: the diagonals under it, or (Diagonals only) just them. */
+function withDiagonals(walk, options, byId, settings) {
+  const diagonal = composeSheet('TV', state.character, diagonalLibrary(options.diagonals), byId, settings).image;
+  return diagonal && (options.onlyDiagonals ? diagonal : join8(walk, diagonal));
+}
+
 /** The library as the diagonals see it: walk pictures swapped for their diagonal rows. */
 function diagonalLibrary(mode = 'turned') {
   const swap = (v) => v && { ...v, layers: v.layers.map((l) => {
@@ -7801,7 +7813,7 @@ let newSheetId = null;
 /** The extra sheets in the preview: the whole sheet, or why there is nothing to see yet. */
 function renderExtraPreviews() {
   $('extra-previews').replaceChildren(...(state.extraComposites || []).map((x) => {
-    const from = x.sheet.base === 'DIR8' && x.sheet.onlyDiagonals ? 'only the diagonals: down-left, down-right, up-left, up-right'
+    const from = x.sheet.base === 'TV' && x.sheet.dir8 ? (x.sheet.onlyDiagonals ? 'only the diagonals: down-left, down-right, up-left, up-right' : WALK_LAYOUTS.DIR8.note)
       : WALK_LAYOUTS[x.sheet.base] ? WALK_LAYOUTS[x.sheet.base].note : `from the ${SHEET_NAMES[x.sheet.base]} parts`;
     const big = x.image && toCanvas(x.image);
     if (big) {
@@ -7917,47 +7929,69 @@ function renderTemplates() {
   const partsSelect = (value, onChange, xp = false) => {
     const select = el('select', { title: 'Which parts it is made of. XP: the walk sheet as 4 x 4 frames (stand, step, stand, other step)' }, [
       ...SHEET_KEYS.map((s) => el('option', { value: s, textContent: `${SHEET_NAMES[s]} parts`, selected: s === value })),
-      ...(xp ? Object.entries(WALK_LAYOUTS).map(([key, w]) => el('option', { value: key, textContent: w.label, selected: value === key })) : []),
+      // 8 directions is a tick box of its own (any walk sheet can have it).
+      ...(xp ? Object.entries(WALK_LAYOUTS).filter(([key]) => key !== 'DIR8').map(([key, w]) => el('option', { value: key, textContent: w.label, selected: value === key })) : []),
     ]);
     select.addEventListener('change', () => onChange(select.value));
     return select;
   };
   /** One row: on, name, parts, width, height, columns, rows, Remove. Every sheet alike. */
-  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove, onCrop = null, cropped = false, xp = false, diagonals = null, onlyDiagonals = false, onOnlyDiagonals = null, onDiagonals = null }) => {
+  const row = ({ on, onToggle, name, placeholder, onName, base, onBase, size, onSize, onRemove, onReset = null, onCrop = null, cropped = false, xp = false, dir8 = null }) => {
     const tick = el('input', { type: 'checkbox', checked: on, title: 'Untick to leave it out of the preview and the export' });
     tick.addEventListener('change', () => onToggle(tick.checked));
-    const nameBox = el('input', { type: 'text', className: 'tpl-name', value: name || '', placeholder, title: 'Its name in the preview and on the export button' });
+    // The standard sheets show their name as text of their own, so it looks (and is) changeable.
+    const nameBox = el('input', { type: 'text', className: 'tpl-name', value: name || placeholder || '', placeholder, title: 'Its name in the preview and on the export button: click to rename' });
     nameBox.addEventListener('change', () => onName(nameBox.value.trim()));
     const remove = el('button', { type: 'button', className: 'small-button', textContent: 'Remove', title: 'Take this sheet out of the list' });
     remove.addEventListener('click', onRemove);
     const actions = [remove];
+    if (onReset) {
+      const reset = el('button', { type: 'button', className: 'small-button', textContent: 'Reset', title: 'Back to the standard: its own name, parts, automatic size, 4 directions' });
+      reset.addEventListener('click', onReset);
+      actions.unshift(reset);
+    }
     if (base === 'FG' && onCrop) {
       const crop = el('button', { type: 'button', className: `small-button${cropped ? ' active' : ''}`, textContent: cropped ? 'Cropped' : 'Crop…',
         title: 'Cut it out of the whole portrait: pick the part (e.g. the face of a full-body picture); Width and Height set the size it is made' });
       crop.addEventListener('click', onCrop);
       actions.unshift(crop);
     }
-    // 8 directions: how the diagonals of parts drawn in 4 directions are made.
-    if (base === 'DIR8' && onDiagonals) {
-      const pick = el('select', { className: 'tpl-diagonals', title: 'Diagonals of parts drawn in 4 directions. Turned: the front (or back) turned toward the side, in one outline; going up, the side of the face peeks out. Turned more: further. Subtle: barely turned, a few pixels, so the drawing stays as it is. Side view: the side each diagonal faces' },
-        Object.entries(DIAGONAL_MODES).map(([key, m]) => el('option', { value: key, textContent: `Diagonals: ${m.label}`, selected: (diagonals || 'turned') === key })));
-      pick.addEventListener('change', () => onDiagonals(pick.value));
-      const only = el('input', { type: 'checkbox', className: 'tpl-only-diagonals', checked: !!onlyDiagonals });
-      only.addEventListener('change', () => onOnlyDiagonals(only.checked));
-      actions.unshift(pick, el('label', { className: 'lock small', title: 'Leave out the walk rows (down, left, right, up): the sheet is just the 4 diagonals, down-left, down-right, up-left, up-right' }, [only, ' Only the diagonals']));
+    // 8 directions (walk sheets): the diagonals made from the 4 directions, under them or alone.
+    const eight = el('div', { className: 'tpl-dir8' });
+    if (dir8 && base === 'TV') {
+      const o = dir8.get();
+      const box = el('input', { type: 'checkbox', className: 'tpl-dir8-on', checked: !!o.dir8 });
+      box.addEventListener('change', () => dir8.set({ dir8: box.checked || undefined }));
+      eight.append(el('label', { className: 'lock', title: 'Add the diagonals (down-left, down-right, up-left, up-right) under the 4 walk directions: 3 x 8 frames' }, [box, ' 8 directions']));
+      if (o.dir8) {
+        const pick = el('select', { className: 'tpl-diagonals', title: 'How the diagonals are made from parts drawn in 4 directions. Turned: the front (or back) turned toward the side; going up, the side of the face peeks out. Turned more: further. Subtle: barely turned, a few pixels, so the drawing stays as it is. Side view: the side each diagonal faces' },
+          Object.entries(DIAGONAL_MODES).map(([key, m]) => el('option', { value: key, textContent: m.label, selected: (o.diagonals || 'turned') === key })));
+        pick.addEventListener('change', () => dir8.set({ diagonals: pick.value === 'turned' ? undefined : pick.value }));
+        const only = el('input', { type: 'checkbox', className: 'tpl-only-diagonals', checked: !!o.onlyDiagonals });
+        only.addEventListener('change', () => dir8.set({ onlyDiagonals: only.checked || undefined }));
+        eight.append(pick, el('label', { className: 'lock', title: 'Leave out the walk rows (down, left, right, up): the sheet is just the 4 diagonals' }, [only, ' Diagonals only']));
+      }
     }
     return [tick, nameBox, partsSelect(base, onBase, xp),
       ...['fw', 'fh', 'cols', 'rows'].map((f, k) => number(size?.[f], ['width', 'height', 'columns', 'rows'][k], (v) => onSize(f, v))),
-      el('div', { className: 'tpl-actions' }, actions)];
+      eight, el('div', { className: 'tpl-actions' }, actions)];
   };
-  const head = ['', 'Name', 'Made of', 'Width', 'Height', 'Columns', 'Rows', ''].map((text) => el('span', { className: 'tpl-head', textContent: text }));
+  const head = ['', 'Name', 'Made of', 'Width', 'Height', 'Columns', 'Rows', '8 directions', ''].map((text) => el('span', { className: 'tpl-head', textContent: text }));
   const builtIn = SHEET_KEYS.filter((sheet) => !sheetOption(sheet).removed).flatMap((sheet) => {
     const options = () => ((state.settings.sheetOptions ||= {})[sheet] ||= {});
     return row({
       on: sheetOn(sheet),
       onToggle: (on) => { options().off = !on || undefined; sheetsChanged(); },
       name: sheetOption(sheet).name, placeholder: SHEET_NAMES[sheet],
-      onName: (v) => { options().name = v || undefined; sheetsChanged(); },
+      onName: (v) => { options().name = v && v !== SHEET_NAMES[sheet] ? v : undefined; sheetsChanged(); },
+      onReset: () => {
+        const removed = sheetOption(sheet).removed;
+        state.settings.sheetOptions[sheet] = removed ? { removed } : {};
+        if (state.settings.templates) delete state.settings.templates[sheet];
+        sheetsChanged();
+        renderTemplates();
+      },
+      dir8: { get: () => sheetOption(sheet), set: (v) => { Object.assign(options(), v); sheetsChanged(); renderTemplates(); } },
       base: sheetBase(sheet),
       onBase: (v) => { options().base = v === sheet ? undefined : v; sheetsChanged(); renderTemplates(); },
       size: t[sheet],
@@ -7987,10 +8021,7 @@ function renderTemplates() {
     onRemove: () => { state.settings.extraSheets = extraSheets().filter((s) => s.id !== x.id && s !== x); sheetsChanged(); renderTemplates(); },
     cropped: !!x.crop,
     onCrop: () => openCrop(x.name || 'Sheet', () => x.crop, (c) => { x.crop = c || undefined; }, () => x),
-    diagonals: x.diagonals,
-    onDiagonals: (v) => { x.diagonals = v === 'turned' ? undefined : v; sheetsChanged(); },
-    onlyDiagonals: x.onlyDiagonals,
-    onOnlyDiagonals: (v) => { x.onlyDiagonals = v || undefined; sheetsChanged(); },
+    dir8: { get: () => x, set: (v) => { Object.assign(x, v); sheetsChanged(); renderTemplates(); } },
   }));
   $('template-grid').replaceChildren(...head, ...builtIn, ...extras);
   const removed = SHEET_KEYS.filter((s) => sheetOption(s).removed);
@@ -8326,7 +8357,7 @@ $('export-preview').addEventListener('click', () => {
   } else {
     for (const key of SHEET_KEYS.filter((k) => sheetOn(k) && want(k))) {
       const c = state.composites[key];
-      if (c?.image) pair(sheetLabel(key), (z) => toCanvas(enlarged(c.image, z)));
+      if (c?.image) pair(sheetLabel(key), (z) => toCanvas(enlarged(c.dir8Image || c.image, z)));
     }
     if ($('export-for').value !== 'unite') {
       for (const x of state.extraComposites || []) {
@@ -8349,7 +8380,7 @@ async function exportPngs(want) {
   for (const key of SHEET_KEYS.filter((k) => sheetOn(k) && want(k))) {
     const c = state.composites[key];
     if (!c) continue;
-    await exportImage(enlarged(c.image, zoom), big(SHEET_FILE_NAMES[key](name)));
+    await exportImage(enlarged(c.dir8Image || c.image, zoom), big(SHEET_FILE_NAMES[key](name)));
     count++;
   }
   for (const x of state.extraComposites || []) {

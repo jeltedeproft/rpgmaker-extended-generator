@@ -1437,7 +1437,7 @@ try {
   {
     await evaluate(`(() => { document.getElementById('add-sheet').click(); return 1; })()`);
     await sleep(1200);
-    await evaluate(`(() => { const s = [...document.querySelectorAll('#template-grid select')].filter(s => [...s.options].some(o => o.value === 'DIR8')).pop(); s.value = 'DIR8'; s.dispatchEvent(new Event('change', { bubbles: true })); return 1; })()`);
+    await evaluate(`[...document.querySelectorAll('.tpl-dir8-on')].pop().click()`);
     await sleep(1800);
     const size = () => evaluate(`(() => { const c = [...document.querySelectorAll('#extra-previews canvas')].pop(); return c ? c.width + 'x' + c.height : 'none'; })()`);
     const before = await size();
@@ -1445,6 +1445,24 @@ try {
     await sleep(1800);
     const after = await size();
     check('8 directions: Only the diagonals makes 4 rows instead of 8', before.endsWith('x' + (2 * Number(after.split('x')[1]))) && after !== 'none', `${before} -> ${after}`);
+    // The standard Walk sheet has the tick box too: its export (and preview) has the 8 rows.
+    await evaluate(`[...document.querySelectorAll('.tpl-dir8-on')][0].click()`);
+    await sleep(1800);
+    await evaluate(`(() => { document.getElementById('export-images').click(); return 1; })()`);
+    await sleep(500);
+    await evaluate(`(() => { document.querySelector('#export-buttons [data-export="TV"]').click(); document.getElementById('export-preview').click(); return 1; })()`);
+    await sleep(800);
+    const walkRows = await evaluate(`(() => { const c = document.querySelector('#export-preview-list canvas'); return c ? c.width + 'x' + c.height : 'none'; })()`);
+    const [ww, wh] = walkRows.split('x').map(Number);
+    check('8 directions ticked on Walk: its export has 8 rows', wh * 3 === ww * 8, walkRows);
+    await evaluate(`(() => { document.getElementById('export-preview-dialog').close(); document.getElementById('export-dialog').close(); document.querySelector('.tpl-dir8-on').click(); return 1; })()`);
+    await sleep(1200);
+    // A sheet saved as "Walk, 8 directions" (before the tick box) becomes a walk sheet with it ticked.
+    await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('xgen-settings') || '{}'); s.extraSheets = [{ id: 'old8', base: 'DIR8', name: 'Old 8' }]; localStorage.setItem('xgen-settings', JSON.stringify(s)); })()`);
+    await send('Page.reload');
+    await sleep(6000);
+    const migrated = await evaluate(`(() => { const r = [...document.querySelectorAll('#template-grid .tpl-name')].pop(); const cells = []; for (let c = r; c; c = c.nextElementSibling) cells.push(c); return cells[1].value + '|' + !!cells[6].querySelector('.tpl-dir8-on')?.checked; })()`);
+    check('an old "Walk, 8 directions" sheet becomes Walk parts with 8 directions ticked', migrated === 'TV|true', migrated);
   }
   // Dropping is Load pack: a zip and a picture dropped together both open (the zip like a folder).
   {
@@ -1462,7 +1480,8 @@ try {
     await evaluate(`(() => { const s = JSON.parse(localStorage.getItem('xgen-settings') || '{}'); s.extraSheets = [{ id: 'kept', base: 'TV', name: 'Kept sheet' }]; localStorage.setItem('xgen-settings', JSON.stringify(s)); })()`);
     await send('Page.reload');
     await sleep(3000);
-    const names = `[...document.querySelectorAll('#template-grid .tpl-name')].map((i) => i.value).filter(Boolean)`;
+    // The standard sheets show their own names (as text): only the added ones are counted.
+    const names = `[...document.querySelectorAll('#template-grid .tpl-name')].map((i) => i.value).filter((v) => v && !['Portrait', 'Walk', 'Damage', 'Battler'].includes(v))`;
     check('a saved added sheet is listed after a reload', JSON.stringify(await evaluate(names)) === '["Kept sheet"]', JSON.stringify(await evaluate(names)));
     await evaluate(`[...document.querySelectorAll('#template-grid button')].filter(b => b.textContent === 'Remove').pop().click()`);
     await evaluate(`document.getElementById('add-sheet').click()`);
