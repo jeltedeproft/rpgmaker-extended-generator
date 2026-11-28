@@ -35,7 +35,7 @@ import {
   entriesFromFileList, entriesFromDrop, packNameFromEntries, sampleKitEntries, ensureImage, pngSize, fileBytes, decodeImage,
   ensureVariants, loadGradients, toCanvas, downloadBlob, downloadImage,
   canRememberFolders, pickFolder, entriesFromHandle, rememberFolder, forgetFolder, rememberedFolders,
-  ensureReadPermission, readText, ensureLayers, hasReadPermission, dropFolderHandles,
+  ensureReadPermission, readText, ensureLayers, hasReadPermission, dropFolderHandles, exportFolder, setExportFolder,
 } from './loader.js';
 
 const ALL_COLOURS = '__colours';
@@ -8167,7 +8167,65 @@ function renderExport() {
     : exportFormat === 'gif' ? 'Portraits are still pictures: they are left out of GIFs.' : '';
 }
 
-function openExport() {
+// ---------- where Export saves ----------
+// Chrome/Edge: a folder picked once (remembered); other browsers: their download folder.
+let exportDir = null;
+let exportDirLoaded = false;
+async function loadExportDir() {
+  if (!exportDirLoaded && canRememberFolders) exportDir = await exportFolder();
+  exportDirLoaded = true;
+}
+function exportPlace() {
+  return exportDir ? `the folder "${exportDir.name}"` : 'your Downloads folder';
+}
+function renderExportDest() {
+  $('export-dest').textContent = exportDir ? `the folder "${exportDir.name}"` : 'your Downloads folder (the browser\'s download location)';
+  $('export-pick-folder').hidden = !canRememberFolders;
+  $('export-pick-folder').textContent = exportDir ? 'Change folder…' : 'Choose folder…';
+  $('export-to-downloads').hidden = !exportDir;
+  if (!canRememberFolders) $('export-dest').title = 'This browser always saves to its download folder: change it in the browser\'s settings, or use Chrome or Edge to pick a folder here';
+}
+$('export-pick-folder').addEventListener('click', async () => {
+  try {
+    exportDir = await window.showDirectoryPicker({ id: 'xgen-export', mode: 'readwrite' });
+  } catch {
+    return; // cancelled
+  }
+  await setExportFolder(exportDir);
+  renderExportDest();
+});
+$('export-to-downloads').addEventListener('click', async () => {
+  exportDir = null;
+  await setExportFolder(null);
+  renderExportDest();
+});
+let exportDenied = false;
+/** Saves a file where Export saves: the folder picked, or the download folder. */
+async function exportBlob(blob, fileName) {
+  if (exportDir && !exportDenied) {
+    try {
+      const opts = { mode: 'readwrite' };
+      if ((await exportDir.queryPermission(opts)) !== 'granted' && (await exportDir.requestPermission(opts)) !== 'granted') throw new Error('not allowed');
+      const file = await exportDir.getFileHandle(fileName, { create: true });
+      const out = await file.createWritable();
+      await out.write(blob);
+      await out.close();
+      return;
+    } catch (err) {
+      // Not allowed or gone: the rest goes to the download folder.
+      exportDenied = true;
+      toast(`Could not save in "${exportDir.name}" (${err.message}): saved to your Downloads folder instead.`, 8000);
+    }
+  }
+  downloadBlob(blob, fileName);
+}
+function exportImage(image, fileName) {
+  return new Promise((resolve) => toCanvas(image).toBlob((blob) => resolve(exportBlob(blob, fileName)), 'image/png'));
+}
+
+async function openExport() {
+  await loadExportDir();
+  renderExportDest();
   showSheetOptions(); // the sheets added since, as buttons
   $('export-for').value = state.settings.exportFor || 'rm';
   renderExport();
@@ -8208,6 +8266,9 @@ $('export-format').addEventListener('click', (e) => {
 });
 $('export-now').addEventListener('click', async () => {
   const want = (key) => exportPick.has('all') || exportPick.has(key);
+  exportDenied = false;
+  // Asked right away, while the click still counts: browsers ask again after a reload.
+  if (exportDir) await exportDir.requestPermission({ mode: 'readwrite' }).catch(() => {});
   $('export-dialog').close();
   if ($('export-for').value === 'unite') await exportUnite(want);
   else if (exportFormat === 'gif') exportGifs(want);
@@ -8279,23 +8340,23 @@ async function exportPngs(want) {
   for (const key of SHEET_KEYS.filter((k) => sheetOn(k) && want(k))) {
     const c = state.composites[key];
     if (!c) continue;
-    await downloadImage(enlarged(c.image, zoom), big(SHEET_FILE_NAMES[key](name)));
+    await exportImage(enlarged(c.image, zoom), big(SHEET_FILE_NAMES[key](name)));
     count++;
   }
   for (const x of state.extraComposites || []) {
     if (!x.image || !want(`extra:${x.sheet.id}`)) continue;
-    await downloadImage(enlarged(x.image, zoom), big(`${name}_${safeFileName(x.sheet.name || 'sheet')}.png`));
+    await exportImage(enlarged(x.image, zoom), big(`${name}_${safeFileName(x.sheet.name || 'sheet')}.png`));
     count++;
   }
   if (all) {
-    downloadBlob(new Blob([currentCreditsText() + '\n'], { type: 'text/plain' }), `${name}_credits.txt`);
+    await exportBlob(new Blob([currentCreditsText() + '\n'], { type: 'text/plain' }), `${name}_credits.txt`);
   }
   if (all && state.customGradients.length) {
     // Shifted source colours aren't gradients: RPG Maker can't use them.
     const exportable = state.customGradients.filter((g) => !g.shiftSource);
-    if (exportable.length) await downloadImage(gradientsToImage(exportable), `${name}_custom_gradients.png`);
+    if (exportable.length) await exportImage(gradientsToImage(exportable), `${name}_custom_gradients.png`);
   }
-  toast(count ? `Exported ${count} image(s).` : 'Nothing to export for these sheets: no selected part has layers for them.');
+  toast(count ? `Saved ${count} image(s) to ${exportPlace()}.` : 'Nothing to export for these sheets: no selected part has layers for them.', 8000);
 }
 
 // ---------- animated GIFs ----------
@@ -8390,9 +8451,9 @@ function exportGifs(want) {
  */
 function saveGifs(gifs) {
   const zoom = exportZoom();
-  const save = () => {
-    for (const g of gifs) downloadBlob(new Blob([g.make(zoom)], { type: 'image/gif' }), g.name);
-    toast(`Saved ${gifs.map((g) => g.name).join(', ')}.`);
+  const save = async () => {
+    for (const g of gifs) await exportBlob(new Blob([g.make(zoom)], { type: 'image/gif' }), g.name);
+    toast(`Saved ${gifs.map((g) => g.name).join(', ')} to ${exportPlace()}.`, 8000);
   };
   if (zoom === 1) return save();
   const urls = [1, zoom].map((z) => URL.createObjectURL(new Blob([gifs[0].make(z)], { type: 'image/gif' })));
@@ -8444,9 +8505,9 @@ async function exportUnite(want = () => true) {
     const files = [];
     const zoom = exportZoom();
     for (const [file, image] of strips) files.push({ name: file, bytes: await pngBytes(enlarged(image, zoom)) });
-    downloadBlob(new Blob([zipFiles(files)], { type: 'application/zip' }), `${name}_unite.zip`);
+    await exportBlob(new Blob([zipFiles(files)], { type: 'application/zip' }), `${name}_unite.zip`);
   });
-  toast(`Saved ${name}_unite.zip: ${strips.length} pictures for Unite.`);
+  toast(`Saved ${name}_unite.zip to ${exportPlace()}: ${strips.length} pictures for Unite.`, 8000);
 }
 
 $('save-character').addEventListener('click', () => {

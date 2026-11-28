@@ -343,6 +343,45 @@ export function dropFolderHandles(dataTransfer) {
     .then((handles) => handles.filter((h) => h?.kind === 'directory'));
 }
 
+// ---------- the folder Export saves into (Chrome/Edge) ----------
+
+function openExportDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('xgen-export', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('dest');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+/** The folder picked to export into, or null (the browser's download folder). */
+export async function exportFolder() {
+  try {
+    const db = await openExportDb();
+    return await new Promise((resolve) => {
+      const req = db.transaction('dest', 'readonly').objectStore('dest').get('folder');
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Remembers (or with null forgets) the folder to export into. */
+export async function setExportFolder(handle) {
+  try {
+    const db = await openExportDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction('dest', 'readwrite');
+      if (handle) tx.objectStore('dest').put(handle, 'folder');
+      else tx.objectStore('dest').delete('folder');
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch { /* storage blocked: it is kept for this visit only */ }
+}
+
 /** Asks for read access again (must run inside a click handler). */
 export async function ensureReadPermission(handle) {
   const opts = { mode: 'read' };

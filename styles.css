@@ -414,6 +414,7 @@ dialog::backdrop { background: rgb(0 0 0 / .35); }
 .gif-preview .assign-form { width: auto; max-width: calc(100vw - 48px); }
 .gif-compare { display: flex; gap: 16px; align-items: flex-end; overflow: auto; max-height: 70vh; }
 .gif-compare figure { margin: 0; display: grid; gap: 4px; justify-items: center; }
+.export-dest { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 2px; }
 .export-preview-list { display: grid; gap: 14px; overflow: auto; max-height: 75vh; }
 .export-preview-list h4 { margin: 0 0 4px; font-size: 13px; }
 .export-preview-list .gif-compare { max-height: none; overflow: visible; }

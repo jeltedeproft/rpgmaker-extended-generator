@@ -518,7 +518,7 @@ try {
     check('a walk GIF is saved', await evaluate(`/_walk(_[a-z]+)?\.gif/.test(document.getElementById('toast').textContent)`), await evaluate(`document.getElementById('toast').textContent`));
     await evaluate(`(() => { document.getElementById('export-images').click(); const f = document.getElementById('export-for'); f.value = 'unite'; f.dispatchEvent(new Event('change')); document.querySelector('#export-buttons [data-export="all"]').click(); document.getElementById('export-now').click(); f.value = 'rm'; f.dispatchEvent(new Event('change')); document.querySelector('#export-format [data-format="png"]').click(); })()`);
     await sleep(1500);
-    check('a Unite zip is saved, one picture per animation', await evaluate(`document.getElementById('toast').textContent.includes('_unite.zip: 24 pictures')`), await evaluate(`document.getElementById('toast').textContent`));
+    check('a Unite zip is saved, one picture per animation', await evaluate(`document.getElementById('toast').textContent.includes(': 24 pictures for Unite')`), await evaluate(`document.getElementById('toast').textContent`));
     await toggle('smooth-pixels', true);
     await sleep(900);
     check('pixel-art smoothing redraws a turned part', (await evaluate(walkSigOf('walk-canvas'))) !== roomless);
@@ -1418,6 +1418,20 @@ try {
     for (let i = 0; i < 20 && !(await evaluate(`/FG_Eyes_p02_c1_m002/.test(document.getElementById('packs').textContent)`)); i++) await sleep(500);
     check('a file dragged in from the computer is read', await evaluate(`/FG_Eyes_p02_c1_m002/.test(document.getElementById('packs').textContent)`),
       await evaluate(`document.getElementById('toast').textContent`));
+  }
+  // Export says where it saves, and saves into a folder picked (a stand-in folder here).
+  {
+    await evaluate(`(() => { window.showDirectoryPicker = async () => navigator.storage.getDirectory(); document.getElementById('export-images').click(); return 1; })()`);
+    await sleep(600);
+    check('Export says it saves to the Downloads folder', await evaluate(`/Downloads/.test(document.getElementById('export-dest').textContent)`));
+    await evaluate(`document.getElementById('export-pick-folder').click()`);
+    await sleep(600);
+    await evaluate(`document.getElementById('export-now').click()`);
+    await sleep(2500);
+    const saved = await evaluate(`(async () => { const d = await navigator.storage.getDirectory(); const n = []; for await (const [k] of d.entries()) n.push(k); return n.join(','); })()`);
+    check('Export saves into the folder picked', /_face\.png/.test(saved), saved);
+    await evaluate(`(async () => { document.getElementById('export-images').click(); await new Promise(r => setTimeout(r, 400)); document.getElementById('export-to-downloads').click(); await new Promise(r => setTimeout(r, 300)); document.getElementById('export-dialog').close(); })()`);
+    await sleep(800);
   }
   // Dropping is Load pack: a zip and a picture dropped together both open (the zip like a folder).
   {

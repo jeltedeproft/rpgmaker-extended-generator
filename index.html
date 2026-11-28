@@ -817,6 +817,11 @@
       <div id="export-shift-box">
         <label class="lock" id="no-shift-box" title="Drawn without the 6-pixel lift: a file named !$Name.png stands where it is, for objects, doors and big sprites that should touch the ground"><input type="checkbox" id="no-shift"> <span>Save as <code>!$</code>name.png</span></label>
       </div>
+      <div class="export-dest" id="export-dest-box">
+        <span class="muted small">Saved to</span> <strong id="export-dest">your Downloads folder</strong>
+        <button type="button" id="export-pick-folder" class="small-button" title="Pick the folder to save into, for example your project's img/characters. Remembered for next time">Choose folder…</button>
+        <button type="button" id="export-to-downloads" class="small-button" hidden title="Save to the browser's download folder again">Use Downloads</button>
+      </div>
       <p id="export-note" class="muted small"></p>
       <details class="export-help"><summary>Where the files go</summary>
         <p class="muted small">Walk sheets are saved as <code>$name.png</code> (one character; with <code>$</code> any size works) for <code>img/characters</code>, battlers for <code>img/sv_actors</code>, portraits for <code>img/faces</code>. "All" also saves a <code>_credits.txt</code>. GIFs are transparent with Background on Checks or Transparent. Unite: one picture per animation, as RPG Maker Unite's asset manager takes them.</p>
