@@ -88,3 +88,25 @@ test('hidden by hand (clip.cut): those pixels are not drawn on that picture', ()
   assert.equal(image.data[(5 * 144 + 10) * 4 + 3], 0);
   assert.equal(image.data[(5 * 144 + 11) * 4 + 3], 255);
 });
+
+test('pieces on pictures made from others (the diagonals): cut out first, then turned', () => {
+  const { lib, character, walk } = accb();
+  character.split = { AccB: makeSplit(character, lib, 'AccB', 0, false, settings) };
+  // A stand-in for the diagonals: every frame mirrored, so the pixels end up elsewhere.
+  const mirror = (image) => {
+    const out = createImage(image.width, image.height);
+    for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
+      const fx = Math.floor(x / 48) * 48;
+      out.data.set(image.data.subarray((y * image.width + x) * 4, (y * image.width + x) * 4 + 4), (y * image.width + fx + 47 - (x - fx)) * 4);
+    }
+    return out;
+  };
+  const tv = lib.variants.get('P/Male/AccB/p01').layers.find((l) => l.sheet === 'TV');
+  const source = tv.base;
+  tv.base = Object.defineProperties({ path: `${source.path}#diagonal-test`, pixels: mirror(walk) }, { source: { value: source }, warp: { value: mirror } });
+  // Only the left horn (the first piece of the walk), mirrored: on the right.
+  const { image } = composeSheet('TV', { ...character, only: 'AccB #2' }, lib, new Map(), settings);
+  const a = (x, y) => image.data[(y * image.width + x) * 4 + 3];
+  assert.equal(a(47 - 10, 5), 255);
+  assert.equal(a(47 - 36, 5), 0);
+});

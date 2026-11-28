@@ -565,16 +565,46 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
   const { size, frame } = layout;
   const out = createImage(size.w, size.h);
   const islands = new Map();
-  const islandsOf = (itemKey) => {
-    if (!islands.has(itemKey)) {
-      const own = [...new Set(layers.filter((d) => d.piece?.of === itemKey && d.layer.base.pixels).map((d) => d.layer))];
+  // source: the islands of the pictures the diagonals are made from (see turnedPiece).
+  const islandsOf = (itemKey, source = false) => {
+    const id = source ? `source|${itemKey}` : itemKey;
+    if (!islands.has(id)) {
+      const own = [...new Set(layers.filter((d) => d.piece?.of === itemKey && d.layer.base.pixels).map((d) => d.layer))]
+        .map((l) => (source ? { base: l.base.source } : l)).filter((l) => l.base?.pixels);
       const placedOwn = own.map((l) => placeOnSheet(l.base.pixels, sheet, layout));
       const cacheKey = `${sheet}|${size.w}x${size.h}|${frame?.w}x${frame?.h}|` + own.map((l) => l.base.path).join(',');
-      islands.set(itemKey, placedOwn.length
+      islands.set(id, placedOwn.length
         ? islandLabels(placedOwn.map((p) => p.image), placedOwn[0].tiled ? frame : null, character.split[itemKey].gap, cacheKey).labels
         : null);
     }
-    return islands.get(itemKey);
+    return islands.get(id);
+  };
+  // A diagonal picture of a part cut into pieces, or with pixels hidden by hand: the piece is cut
+  // out of the picture it is made from, then turned (the diagonal's pixels are elsewhere).
+  const turnedPiece = (layer, item, piece) => {
+    const src = layer.base.source;
+    if (!layer.base.warp || !src?.pixels) return null;
+    const owner = piece ? piece.of : item;
+    const cut = character.clip?.[itemOfKey(owner)]?.cut?.[sheet];
+    if (!piece && !cut) return null;
+    let s = src.pixels;
+    const hidden = cutMask(cut, s);
+    if (hidden) s = maskPicture(s, hidden, false);
+    if (piece?.cut) {
+      s = maskPicture(s, cutMask(piece.cut, s) || new Uint8Array(s.width * s.height), true);
+    } else if (piece) {
+      for (const c of cutsOn(character.split?.[piece.of], sheet)) {
+        const theirs = cutMask(c, s);
+        if (theirs) s = maskPicture(s, theirs, false);
+      }
+      const labels = islandsOf(piece.of, true);
+      const fits = s.width === size.w && s.height === size.h;
+      // Islands are found at sheet size: a picture of another size is drawn whole, by its first piece.
+      if (labels && fits) s = keepIsland(s, labels, piece.n);
+      else if (piece.n !== 1) s = createImage(s.width, s.height);
+      if (piece.cell && frame && fits) s = keepFrame(s, frame, piece.cell);
+    }
+    return layer.base.warp(s);
   };
 
   // 1. Recolour every layer, bring it to sheet size and cut out pieces.
@@ -590,18 +620,19 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
     // VX Ace parts are painted, not recoloured: the colour picks a cell of the file.
     const painted = !!layer.base.cells;
     const paintedColour = painted ? itemColor(character, item, layer.slotId) : null;
-    let base = painted && layer.base.pixels ? cellOf(layer.base, paintedIndex(paintedColour)) : layer.base.pixels;
+    const turned = !painted && turnedPiece(layer, item, piece);
+    let base = turned || (painted && layer.base.pixels ? cellOf(layer.base, paintedIndex(paintedColour)) : layer.base.pixels);
     if (!base) {
       problems.push(`${layer.base.path}: not decoded`);
       continue;
     }
     // Pixels marked by hand: hidden on this sheet (clip.cut), or cut out as a piece of their own.
     // (Not on pictures made from others, like the diagonals: their pixels are elsewhere.)
-    const ownPicture = !String(layer.base.path || '').includes('#diagonal');
+    const ownPicture = !turned && !String(layer.base.path || '').includes('#diagonal');
     const owner = piece ? piece.of : item;
     const hidden = ownPicture && cutMask(character.clip?.[itemOfKey(owner)]?.cut?.[sheet], base);
     if (hidden) base = maskPicture(base, hidden, false);
-    if (piece?.cut) {
+    if (piece?.cut && !turned) {
       const mine = ownPicture && cutMask(piece.cut, base);
       base = mine ? maskPicture(base, mine, true) : maskPicture(base, new Uint8Array(base.width * base.height), true);
     } else if (piece && ownPicture) {
@@ -622,7 +653,9 @@ export function composeSheet(sheet, character, library, gradientsById, settings)
       : follow ? recolorLayer(base, null, follow, gradientFor, settings) : base;
     const onSheet = placeOnSheet(recoloured, sheet, layout);
     let image = onSheet.image;
-    if (piece && !piece.cut) {
+    if (turned) {
+      // Cut out already, before it was turned.
+    } else if (piece && !piece.cut) {
       const labels = islandsOf(piece.of);
       if (labels) image = keepIsland(image, labels, piece.n);
       // A piece of one frame: nothing of the other frames.

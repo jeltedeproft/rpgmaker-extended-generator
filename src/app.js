@@ -7757,7 +7757,10 @@ function diagonalOf(ref, mode, kind = null) {
 function diagonalRef(ref, mode, kind = null) {
   if (!ref) return ref;
   // A different path: pictures cut into pieces are cached by path.
-  return Object.defineProperty({ ...ref, path: `${ref.path}#diagonal-${mode || 'turned'}-${kind || 'body'}` }, 'pixels', { get: () => diagonalOf(ref, mode, kind), enumerable: true });
+  const d = Object.defineProperty({ ...ref, path: `${ref.path}#diagonal-${mode || 'turned'}-${kind || 'body'}` }, 'pixels', { get: () => diagonalOf(ref, mode, kind), enumerable: true });
+  // A piece of the part is cut out of the picture first, then turned (compose.js: turnedPiece).
+  if (!ref.diagonal) Object.defineProperties(d, { source: { value: ref }, warp: { value: (image) => diagonalsOf(image, mode, kind) } });
+  return d;
 }
 /** The library as the diagonals see it: walk pictures swapped for their diagonal rows. */
 function diagonalLibrary(mode = 'turned') {
